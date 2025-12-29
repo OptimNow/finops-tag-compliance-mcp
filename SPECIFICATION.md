@@ -109,6 +109,93 @@ The **FinOps Tag Compliance MCP Server** is a purpose-built remote MCP server th
   └──────────┘      └──────────┘  └──────────┘
 ```
 
+### Multi-Cloud Architecture: Single MCP vs. Separate MCPs
+
+**Design Decision**: This is a **single unified MCP server** that handles all three clouds (AWS, Azure, GCP), not three separate MCP servers.
+
+#### Why Single Multi-Cloud MCP Server?
+
+| Aspect | Single Multi-Cloud MCP | Separate Cloud-Specific MCPs |
+|--------|----------------------|------------------------------|
+| **Tagging Policy** | ✅ Single source of truth | ❌ Policy drift across 3 configs |
+| **Cross-Cloud Enforcement** | ✅ Native capability | ❌ Requires external orchestration |
+| **User Experience** | ✅ One MCP to configure | ❌ Configure 3 different MCPs |
+| **Operational Overhead** | ✅ One deployment pipeline | ❌ 3x deployments, monitoring, incidents |
+| **Compliance Reporting** | ✅ Unified dashboard | ❌ Manual aggregation required |
+| **Cost Attribution** | ✅ Cross-cloud gap analysis | ❌ Cloud-siloed reports |
+| **Tag Consistency** | ✅ Can compare/enforce standards | ❌ No cross-cloud visibility |
+
+#### Implementation Details
+
+The single MCP server internally uses cloud-specific SDKs:
+
+```python
+# Single MCP tool implementation
+@mcp.tool()
+async def check_tag_compliance(cloud_provider: str, filters: dict):
+    """Check tag compliance across AWS, Azure, GCP, or all clouds"""
+
+    if cloud_provider == "aws":
+        # Use boto3 internally
+        violations = await check_aws_compliance(filters)
+
+    elif cloud_provider == "azure":
+        # Use Azure SDK internally
+        violations = await check_azure_compliance(filters)
+
+    elif cloud_provider == "gcp":
+        # Use GCP client libraries internally
+        violations = await check_gcp_compliance(filters)
+
+    elif cloud_provider == "all":
+        # Run all three in parallel, merge results
+        aws, azure, gcp = await asyncio.gather(
+            check_aws_compliance(filters),
+            check_azure_compliance(filters),
+            check_gcp_compliance(filters)
+        )
+        violations = merge_cross_cloud_results(aws, azure, gcp)
+
+    return validate_against_policy(violations)
+```
+
+#### Credential Management
+
+Since it's a remote server, cloud credentials are centralized in the server's secrets manager:
+
+```yaml
+# AWS Secrets Manager / Azure Key Vault / GCP Secret Manager
+secrets/finops-tag-compliance:
+  AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/TagComplianceReadOnly"
+  AZURE_CLIENT_ID: "app-registration-client-id"
+  AZURE_CLIENT_SECRET: "app-registration-secret"
+  AZURE_TENANT_ID: "azure-ad-tenant-id"
+  GCP_SERVICE_ACCOUNT_KEY: "base64-encoded-key-json"
+```
+
+Users authenticate to the MCP server via OAuth 2.0, and the server uses its own credentials to call each cloud's APIs. No cloud credentials touch user laptops.
+
+#### When You WOULD Use Separate MCPs
+
+Separate cloud-specific MCP servers only make sense if:
+
+1. **Compliance isolation** - AWS resources must be managed from AWS GovCloud infrastructure, Azure from Azure Government
+2. **Organizational boundaries** - Different teams own different clouds with zero collaboration
+3. **Regional performance** - Cloud-specific servers in same region as resources (rarely necessary for tag compliance)
+4. **Vendor decoupling strategy** - Want to keep cloud logic completely separate for future migration
+
+For most enterprises, these constraints don't apply to tag governance. **Single unified MCP is the recommended architecture.**
+
+#### Real-World Precedent
+
+Multi-cloud SaaS platforms that use this pattern:
+- **CloudHealth (VMware)** - Single platform for AWS + Azure + GCP cost management
+- **Flexera** - Single platform for multi-cloud optimization
+- **Vantage** - Single platform for multi-cloud cost visibility
+- **CloudZero** - Single platform for multi-cloud cost intelligence
+
+All of these are single services with multiple cloud SDKs integrated—the same architecture this MCP server uses.
+
 ---
 
 ## Use Cases
