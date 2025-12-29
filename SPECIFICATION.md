@@ -1,10 +1,24 @@
 # FinOps Tag Compliance MCP Server - Specification
 
-**Version**: 1.0
+**Version**: 2.0
 **Last Updated**: December 2024
-**Status**: Specification (Implementation Pending)
+**Status**: Phased Implementation (3 Phases over 6 months)
 **Type**: Remote MCP Server (Cloud-Hosted)
 **Target Audience**: FinOps Practitioners, Solution Architects, DevOps Engineers
+
+---
+
+## Important: Phased Implementation Approach
+
+This specification describes the **full vision** for the FinOps Tag Compliance MCP Server. However, implementation follows a **three-phase approach** to deliver value incrementally:
+
+- **[Phase 1](./PHASE-1-SPECIFICATION.md)**: AWS-Only MVP on EC2 (Months 1-2) - Start here!
+- **[Phase 2](./PHASE-2-SPECIFICATION.md)**: Production-Grade ECS Fargate (Months 3-4)
+- **[Phase 3](./PHASE-3-SPECIFICATION.md)**: Multi-Cloud Support (Months 5-6)
+
+**See [ROADMAP.md](./ROADMAP.md) for the complete implementation timeline and decision points.**
+
+For development teams: Start with **[Phase 1 Specification](./PHASE-1-SPECIFICATION.md)** which provides a focused, deliverable MVP.
 
 ---
 
@@ -15,6 +29,8 @@ The **FinOps Tag Compliance MCP Server** is a purpose-built remote MCP server th
 **The Problem**: 30-50% of cloud resources are untagged or incorrectly tagged in typical enterprises, making cost allocation impossible and compliance reporting a nightmare.
 
 **The Solution**: A centralized MCP server that validates tags against your organization's policies, connects tag violations to dollar impact, suggests remediation, and automates bulk tagging workflows with approval controls.
+
+**The Strategy**: Build incrementally over 6 months, starting with AWS-only MVP, scaling to production infrastructure, then adding multi-cloud support.
 
 ---
 
