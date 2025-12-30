@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # Redis cache service
+  redis:
+    image: redis:7-alpine
+    container_name: finops-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - finops-network
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+
+  # MCP Server service
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finops-mcp-server
+    ports:
+      - "8080:8080"
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      # Server configuration
+      - MCP_SERVER_HOST=0.0.0.0
+      - MCP_SERVER_PORT=8080
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      
+      # Redis configuration
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379/0}
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - REDIS_TTL=${REDIS_TTL:-3600}
+      
+      # AWS configuration
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+      
+      # Policy configuration
+      - POLICY_FILE_PATH=${POLICY_FILE_PATH:-/app/policies/tagging-policy.json}
+      
+      # Database configuration
+      - DATABASE_PATH=${DATABASE_PATH:-/app/data/compliance.db}
+      
+      # Application configuration
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - DEBUG=${DEBUG:-false}
+    volumes:
+      - ./policies:/app/policies:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - finops-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  finops-network:
+    driver: bridge

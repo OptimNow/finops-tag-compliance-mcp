@@ -1,0 +1,140 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "finops-tag-compliance-mcp"
+version = "0.1.0"
+description = "FinOps Tag Compliance MCP Server - AWS resource tagging validation and compliance checking"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "OptimNow", email = "info@optimnow.com"}
+]
+keywords = ["finops", "aws", "tagging", "compliance", "mcp"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    "boto3>=1.28.0",
+    "redis>=5.0.0",
+    "hypothesis>=6.80.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.1.0",
+    "moto[aws]>=4.2.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.5.0",
+    "types-redis>=4.6.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/OptimNow/finops-tag-compliance-mcp"
+Repository = "https://github.com/OptimNow/finops-tag-compliance-mcp.git"
+Issues = "https://github.com/OptimNow/finops-tag-compliance-mcp/issues"
+
+[tool.setuptools]
+packages = ["mcp_server"]
+
+[tool.setuptools.package-data]
+mcp_server = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+addopts = "--strict-markers --tb=short"
+minversion = "7.0"
+console_output_style = "progress"
+markers = [
+    "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "unit: marks tests as unit tests",
+    "property: marks tests as property-based tests",
+]
+
+[tool.coverage.run]
+source = ["mcp_server"]
+omit = [
+    "*/tests/*",
+    "*/test_*.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "C",    # flake8-comprehensions
+    "B",    # flake8-bugbear
+    "UP",   # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by black)
+    "W191",  # indentation contains tabs
+]
+
+[tool.mypy]
+python_version = "3.11"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+strict_equality = true

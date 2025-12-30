@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FinOps Tag Compliance MCP Server - Phase 1 Infrastructure'
+
+Parameters:
+  EnvironmentName:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name for resource tagging
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    Description: EC2 instance type (t3.medium recommended for 4GB RAM)
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: Name of existing EC2 KeyPair for SSH access
+
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+    Description: VPC to deploy into
+
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+    Description: Subnet to deploy EC2 instance into
+
+  AllowedCIDR:
+    Type: String
+    Default: 0.0.0.0/0
+    Description: CIDR block allowed to access MCP server (restrict in production)
+
+Resources:
+  # IAM Role for EC2 Instance
+  MCPServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'finops-mcp-server-role-${EnvironmentName}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+      Tags:
+        - Key: Application
+          Value: finops-tag-compliance
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # IAM Policy for Tag Compliance Operations
+  MCPServerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub 'finops-mcp-server-policy-${EnvironmentName}'
+      Roles:
+        - !Ref MCPServerRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # EC2 Read Access
+          - Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeRegions
+            Resource: '*'
+          # RDS Read Access
+          - Effect: Allow
+            Action:
+              - rds:DescribeDBInstances
+              - rds:ListTagsForResource
+            Resource: '*'
+          # S3 Read Access
+          - Effect: Allow
+            Action:
+              - s3:ListAllMyBuckets
+              - s3:GetBucketTagging
+              - s3:GetBucketLocation
+            Resource: '*'
+          # Lambda Read Access
+          - Effect: Allow
+            Action:
+              - lambda:ListFunctions
+              - lambda:ListTags
+            Resource: '*'
+          # ECS Read Access
+          - Effect: Allow
+            Action:
+              - ecs:ListClusters
+              - ecs:ListServices
+              - ecs:DescribeServices
+              - ecs:ListTagsForResource
+            Resource: '*'
+          # Cost Explorer Access
+          - Effect: Allow
+            Action:
+              - ce:GetCostAndUsage
+              - ce:GetCostForecast
+            Resource: '*'
+
+  # Instance Profile
+  MCPServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub 'finops-mcp-server-profile-${EnvironmentName}'
+      Roles:
+        - !Ref MCPServerRole
+
+  # Security Group
+  MCPServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub 'finops-mcp-server-sg-${EnvironmentName}'
+      GroupDescription: Security group for FinOps MCP Server
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        # MCP Protocol
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: !Ref AllowedCIDR
+          Description: MCP Server API
+        # SSH Access (restrict in production)
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: !Ref AllowedCIDR
+          Description: SSH Access
+      SecurityGroupEgress:
+        # HTTPS for AWS APIs
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: AWS API Access
+        # HTTP for package downloads
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: HTTP for updates
+      Tags:
+        - Key: Application
+          Value: finops-tag-compliance
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # EC2 Instance
+  MCPServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref MCPServerInstanceProfile
+      SubnetId: !Ref SubnetId
+      SecurityGroupIds:
+        - !Ref MCPServerSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # Update system
+          yum update -y
+          
+          # Install Docker
+          yum install -y docker
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+          
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+          
+          # Install Git
+          yum install -y git
+          
+          # Create app directory
+          mkdir -p /opt/finops-mcp
+          chown ec2-user:ec2-user /opt/finops-mcp
+          
+          # Signal completion
+          echo "Setup complete" > /opt/finops-mcp/setup-complete.txt
+      Tags:
+        - Key: Name
+          Value: !Sub 'finops-mcp-server-${EnvironmentName}'
+        - Key: Application
+          Value: finops-tag-compliance
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # CloudWatch Log Group
+  MCPServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/finops-mcp-server/${EnvironmentName}'
+      RetentionInDays: 30
+      Tags:
+        - Key: Application
+          Value: finops-tag-compliance
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+Outputs:
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref MCPServerInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  InstancePublicIP:
+    Description: Public IP of the MCP Server
+    Value: !GetAtt MCPServerInstance.PublicIp
+    Export:
+      Name: !Sub '${AWS::StackName}-PublicIP'
+
+  MCPServerEndpoint:
+    Description: MCP Server endpoint URL
+    Value: !Sub 'http://${MCPServerInstance.PublicIp}:8080'
+    Export:
+      Name: !Sub '${AWS::StackName}-Endpoint'
+
+  SecurityGroupId:
+    Description: Security Group ID
+    Value: !Ref MCPServerSecurityGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityGroupId'
+
+  IAMRoleArn:
+    Description: IAM Role ARN for the MCP Server
+    Value: !GetAtt MCPServerRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-RoleArn'
+
+  LogGroupName:
+    Description: CloudWatch Log Group name
+    Value: !Ref MCPServerLogGroup
+    Export:
+      Name: !Sub '${AWS::StackName}-LogGroup'
