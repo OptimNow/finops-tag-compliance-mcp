@@ -368,6 +368,36 @@ class ViolationSummary(BaseModel):
 
 **Validates: Requirements 13.2**
 
+### Property 14: Tool Budget Enforcement
+
+*For any* agent session with a configured step budget (max tool calls), the MCP Server SHALL reject additional tool calls once the budget is exhausted and return a graceful degradation response explaining the limit was reached. The response SHALL NOT be an error but a structured message indicating budget exhaustion.
+
+**Validates: Requirements 15.3, 15.5**
+
+### Property 15: Loop Detection
+
+*For any* sequence of tool calls within a session, the MCP Server SHALL detect when the same tool is called with identical parameters more than N times (configurable, default 3) and block further identical calls. The blocked call SHALL return a message explaining the loop was detected.
+
+**Validates: Requirements 15.4**
+
+### Property 16: Correlation ID Propagation
+
+*For any* tool invocation, a unique correlation ID SHALL be generated and included in all log entries, audit records, and trace spans related to that invocation. The correlation ID SHALL be returned in the response headers or metadata.
+
+**Validates: Requirements 15.1**
+
+### Property 17: Input Schema Validation
+
+*For any* tool invocation, the input parameters SHALL be validated against the tool's defined JSON schema before execution. Invalid inputs SHALL be rejected with a clear error message indicating which parameter failed validation and why.
+
+**Validates: Requirements 16.3**
+
+### Property 18: Unknown Tool Rejection
+
+*For any* request to invoke a tool that is not registered in the MCP Server, the request SHALL be rejected with an error response. The rejection SHALL be logged with the attempted tool name for security monitoring.
+
+**Validates: Requirements 16.1, 16.4**
+
 ## Error Handling
 
 The system uses a consistent error handling strategy across all layers:

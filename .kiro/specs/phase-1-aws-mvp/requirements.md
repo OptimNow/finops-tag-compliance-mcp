@@ -208,3 +208,32 @@ For the complete technical vision, see [PHASE-1-SPECIFICATION.md](../../../PHASE
 3. THE MCP_Server SHALL include a docker-compose.yml for local development
 4. THE MCP_Server SHALL run on a t3.medium EC2 instance with 4GB RAM
 5. THE MCP_Server SHALL expose the MCP protocol on port 8080
+
+---
+
+### Requirement 15: Agent Observability and Guardrails
+
+**User Story:** As an operator, I want to track how AI agents consume my MCP tools and enforce usage limits, so that I can optimize cost, detect anomalies, and prevent runaway behavior.
+
+#### Acceptance Criteria
+
+1. THE MCP_Server SHALL include a correlation ID in every tool invocation for end-to-end tracing
+2. THE MCP_Server SHALL log tool-call counts and execution time per request
+3. THE MCP_Server SHALL enforce tool-call budgets (max calls per session) when configured via environment variable
+4. THE MCP_Server SHALL detect and block repeated identical tool calls (loop detection) after N occurrences (configurable, default 3)
+5. THE MCP_Server SHALL return a graceful degradation response when budgets are exceeded, explaining the limit was reached
+6. THE MCP_Server SHALL classify failure reasons in logs (tool error, timeout, policy violation, budget exceeded)
+
+---
+
+### Requirement 16: Security and Prompt Injection Resistance
+
+**User Story:** As a security administrator, I want the MCP server to resist prompt injection and tool misuse attempts, so that it cannot be tricked into unauthorized actions.
+
+#### Acceptance Criteria
+
+1. THE MCP_Server SHALL only respond to requests for its registered tools (check_tag_compliance, find_untagged_resources, etc.)
+2. THE MCP_Server SHALL NOT execute arbitrary code or access resources outside its defined scope
+3. THE MCP_Server SHALL validate all tool inputs against their defined schemas before execution
+4. THE MCP_Server SHALL log and reject requests that attempt to invoke non-existent or unauthorized tools
+5. THE MCP_Server SHALL NOT expose sensitive information (credentials, internal paths) in error messages
