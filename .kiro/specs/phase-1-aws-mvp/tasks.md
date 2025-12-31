@@ -519,6 +519,158 @@ Based on code assessment report (Quality Score: 7.5/10)
   - [x] 41.5 Fix type hint: `callable` → `Callable`
     - _File: mcp_server/mcp_handler.py:72_
 
+## Phase 2: Agent Observability and Security Enhancement
+
+### High Priority (GenAI/Agentic System Requirements)
+
+- [ ] 42. Correlation ID Generation and Propagation
+  - [ ] 42.1 Create correlation ID utility module `[Haiku]`
+    - Create `mcp_server/utils/correlation.py` with UUID4-based ID generation
+    - Add correlation ID to request context using FastAPI middleware
+    - _Requirements: 15.1_
+
+  - [ ] 42.2 Update audit logging to include correlation IDs `[Sonnet]`
+    - Modify `AuditLogEntry` model to include `correlation_id` field
+    - Update `AuditService.log_invocation()` to capture correlation ID from context
+    - Update all audit log queries to include correlation ID
+    - _Requirements: 15.1_
+
+  - [ ] 42.3 Add correlation ID to all log entries `[Sonnet]`
+    - Update logging configuration to include correlation ID in log format
+    - Modify all logger calls to include correlation ID from context
+    - Update CloudWatch logging to include correlation ID as structured field
+    - _Requirements: 15.1_
+
+  - [ ] 42.4 Write property tests for correlation ID propagation `[Opus]`
+    - **Property 16: Correlation ID Propagation**
+    - **Validates: Requirements 15.1**
+
+- [ ] 43. Tool-Call Budget Enforcement
+  - [ ] 43.1 Create budget tracking middleware `[Sonnet]`
+    - Create `mcp_server/middleware/budget_middleware.py`
+    - Track tool calls per session using Redis with TTL
+    - Add configuration for `MAX_TOOL_CALLS_PER_SESSION` (default: 100)
+    - _Requirements: 15.3_
+
+  - [ ] 43.2 Implement graceful budget exhaustion responses `[Sonnet]`
+    - Create structured response model for budget exhaustion
+    - Return helpful message with current usage and limit
+    - Log budget exhaustion events for monitoring
+    - _Requirements: 15.5_
+
+  - [ ] 43.3 Add budget status to health endpoint `[Haiku]`
+    - Include current session count and budget utilization in health response
+    - Add budget configuration to health endpoint
+    - _Requirements: 15.3_
+
+  - [ ] 43.4 Write property tests for budget enforcement `[Opus]`
+    - **Property 14: Tool Budget Enforcement**
+    - **Validates: Requirements 15.3, 15.5**
+
+- [ ] 44. Loop Detection for Repeated Tool Calls
+  - [ ] 44.1 Implement call signature tracking `[Sonnet]`
+    - Create `mcp_server/utils/loop_detection.py`
+    - Generate call signatures from tool name + parameters hash
+    - Track recent calls per session in Redis with sliding window
+    - _Requirements: 15.4_
+
+  - [ ] 44.2 Add loop detection middleware `[Sonnet]`
+    - Integrate loop detection into MCP handler
+    - Configure `MAX_IDENTICAL_CALLS` (default: 3)
+    - Return structured response when loop detected
+    - _Requirements: 15.4_
+
+  - [ ] 44.3 Add loop detection metrics and logging `[Haiku]`
+    - Log loop detection events with call signature and count
+    - Add loop detection stats to health endpoint
+    - Track loop detection frequency for monitoring
+    - _Requirements: 15.4_
+
+  - [ ] 44.4 Write property tests for loop detection `[Opus]`
+    - **Property 15: Loop Detection**
+    - **Validates: Requirements 15.4**
+
+- [ ] 45. Input Schema Validation Enhancement
+  - [ ] 45.1 Strengthen input validation in MCP handler `[Sonnet]`
+    - Add comprehensive JSON schema validation before tool execution
+    - Create detailed validation error responses with field-level feedback
+    - Update all tool schemas to be more restrictive
+    - _Requirements: 16.3_
+
+  - [ ] 45.2 Add validation bypass detection `[Sonnet]`
+    - Log attempts to bypass validation or inject malicious payloads
+    - Add input sanitization for string fields
+    - Implement parameter size limits
+    - _Requirements: 16.3_
+
+  - [ ] 45.3 Write property tests for input validation `[Opus]`
+    - **Property 17: Input Schema Validation**
+    - **Validates: Requirements 16.3**
+
+- [ ] 46. Unknown Tool Rejection and Security Logging
+  - [ ] 46.1 Enhance unknown tool handling `[Sonnet]`
+    - Update MCP handler to explicitly reject unknown tools
+    - Create security event logging for unauthorized tool attempts
+    - Add rate limiting for repeated unknown tool requests
+    - _Requirements: 16.4_
+
+  - [ ] 46.2 Implement security monitoring `[Sonnet]`
+    - Create `mcp_server/services/security_service.py`
+    - Log security events to separate security log stream
+    - Add security metrics to health endpoint
+    - _Requirements: 16.4_
+
+  - [ ] 46.3 Write property tests for unknown tool rejection `[Opus]`
+    - **Property 18: Unknown Tool Rejection**
+    - **Validates: Requirements 16.4**
+
+- [ ] 47. Agent Observability Dashboard Data
+  - [ ] 47.1 Create observability data models `[Haiku]`
+    - Create `mcp_server/models/observability.py`
+    - Add models for session metrics, tool usage stats, error rates
+    - Include budget utilization and loop detection stats
+    - _Requirements: 15.2_
+
+  - [ ] 47.2 Implement metrics collection service `[Sonnet]`
+    - Create `mcp_server/services/metrics_service.py`
+    - Aggregate tool usage, execution times, error rates
+    - Calculate session-level and global statistics
+    - _Requirements: 15.2_
+
+  - [ ] 47.3 Add metrics endpoint for observability `[Haiku]`
+    - Create `/metrics` endpoint returning Prometheus-compatible metrics
+    - Include tool call counts, execution times, error rates
+    - Add budget and loop detection metrics
+    - _Requirements: 15.2_
+
+- [ ] 48. Security Hardening
+  - [ ] 48.1 Implement request sanitization `[Sonnet]`
+    - Add input sanitization middleware
+    - Validate request headers and prevent header injection
+    - Implement request size limits
+    - _Requirements: 16.2, 16.5_
+
+  - [ ] 48.2 Enhance error message security `[Haiku]`
+    - Audit all error messages to remove sensitive information
+    - Create sanitized error response utility
+    - Never expose internal paths, credentials, or stack traces
+    - _Requirements: 16.5_
+
+  - [ ] 48.3 Add security configuration `[Haiku]`
+    - Add security-related environment variables
+    - Configure rate limiting, request size limits, timeout values
+    - Document security configuration options
+    - _Requirements: 16.1, 16.2_
+
+- [ ] 49. Checkpoint - Agent Observability and Security Complete
+  - Ensure all new property tests pass
+  - Verify correlation IDs appear in all logs and audit entries
+  - Test budget enforcement with various limits
+  - Confirm loop detection blocks repeated calls
+  - Validate input schema rejection works correctly
+  - Test unknown tool rejection and security logging
+  - Run security penetration tests against the enhanced server
+
 ## Notes
 
 - Tasks marked with `*` are optional test tasks that can be skipped for faster MVP delivery
