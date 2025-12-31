@@ -6,7 +6,6 @@ variables with sensible defaults.
 Requirements: 14.2
 """
 
-import os
 from typing import Optional
 from pydantic import Field, AliasChoices
 from pydantic_settings import BaseSettings, SettingsConfigDict

@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 from enum import Enum
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_serializer
 
 
 class AuditStatus(str, Enum):
@@ -26,4 +26,6 @@ class AuditLogEntry(BaseModel):
     class Config:
         """Pydantic config."""
 
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer('timestamp')
+    def serialize_timestamp(self, timestamp: datetime) -> str:
+        return timestamp.isoformat()

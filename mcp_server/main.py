@@ -146,7 +146,7 @@ async def lifespan(app: FastAPI):
     )
     logger.info("MCP handler initialized with 8 tools")
     
-    logger.info(f"MCP Server v{__version__} started successfully on port {settings.port}")
+    logger.info(f"MCP Server v{__version__} started successfully on port {app_settings.port}")
     
     yield
     
