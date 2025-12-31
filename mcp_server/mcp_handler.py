@@ -18,6 +18,7 @@ from .models import (
     ValidateResourceTagsResult,
     CostAttributionGapResult,
 )
+from .models.audit import AuditStatus
 from .tools import (
     check_tag_compliance,
     find_untagged_resources,
@@ -392,14 +393,6 @@ class MCPHandler:
         handler = self._tools[name]
         
         try:
-            # Log the invocation if audit service is available
-            if self.audit_service:
-                self.audit_service.log_invocation(
-                    tool_name=name,
-                    parameters=arguments,
-                    status="started",
-                )
-            
             # Invoke the tool handler
             result = await handler(arguments)
             
@@ -408,7 +401,7 @@ class MCPHandler:
                 self.audit_service.log_invocation(
                     tool_name=name,
                     parameters=arguments,
-                    status="success",
+                    status=AuditStatus.SUCCESS,
                 )
             
             return MCPToolResult(
@@ -424,7 +417,7 @@ class MCPHandler:
                 self.audit_service.log_invocation(
                     tool_name=name,
                     parameters=arguments,
-                    status="failure",
+                    status=AuditStatus.FAILURE,
                     error_message=str(e),
                 )
             

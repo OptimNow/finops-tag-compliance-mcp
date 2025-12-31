@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from . import __version__
 from .models import HealthStatus
+from .models.audit import AuditStatus
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
 from .services.audit_service import AuditService
@@ -196,7 +197,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         audit_service.log_invocation(
             tool_name="unknown",
             parameters={"path": str(request.url.path)},
-            status="failure",
+            status=AuditStatus.FAILURE,
             error_message=str(exc),
         )
     

@@ -1,5 +1,6 @@
 """Audit logging service for tracking tool invocations."""
 
+import json
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -85,7 +86,7 @@ class AuditService:
                 (
                     timestamp.isoformat(),
                     tool_name,
-                    str(parameters),  # Store as string for simplicity
+                    json.dumps(parameters),  # Store as JSON string for security
                     status.value,
                     error_message,
                     execution_time_ms,
@@ -151,7 +152,7 @@ class AuditService:
                         id=row[0],
                         timestamp=datetime.fromisoformat(row[1]),
                         tool_name=row[2],
-                        parameters=eval(row[3]),  # Convert string back to dict
+                        parameters=json.loads(row[3]),  # Convert JSON string back to dict
                         status=AuditStatus(row[4]),
                         error_message=row[5],
                         execution_time_ms=row[6],
