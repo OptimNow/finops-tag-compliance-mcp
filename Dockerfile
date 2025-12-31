@@ -32,6 +32,7 @@ ENV PATH=/root/.local/bin:$PATH \
 
 # Copy application code
 COPY mcp_server/ ./mcp_server/
+COPY policies/ ./policies/
 COPY pyproject.toml .
 
 # Health check

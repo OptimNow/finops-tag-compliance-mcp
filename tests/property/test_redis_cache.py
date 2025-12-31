@@ -2,7 +2,7 @@
 
 import pytest
 from hypothesis import given, strategies as st, settings
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, AsyncMock, patch
 import json
 from datetime import timedelta
 
@@ -55,22 +55,22 @@ class TestCacheBehaviorProperties:
         should return the same value (round-trip property).
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         # Store the value in a dict to simulate Redis behavior
         stored_data = {}
         
-        def mock_setex(key, ttl_delta, value):
+        async def mock_setex(key, ttl_delta, value):
             stored_data[key] = value
         
-        def mock_get(key):
+        async def mock_get(key):
             return stored_data.get(key)
         
-        mock_client.setex = MagicMock(side_effect=mock_setex)
-        mock_client.get = MagicMock(side_effect=mock_get)
+        mock_client.setex = AsyncMock(side_effect=mock_setex)
+        mock_client.get = AsyncMock(side_effect=mock_get)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Set the value
         set_result = await cache.set(key, value, ttl=ttl)
@@ -97,14 +97,14 @@ class TestCacheBehaviorProperties:
         the value (simulated by checking that expired entries are not retrieved).
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         # Simulate expired cache by returning None
-        mock_client.setex = MagicMock()
-        mock_client.get = MagicMock(return_value=None)
+        mock_client.setex = AsyncMock()
+        mock_client.get = AsyncMock(return_value=None)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Set the value with a short TTL
         set_result = await cache.set(key, value, ttl=1)
@@ -128,28 +128,28 @@ class TestCacheBehaviorProperties:
         For any cached value, after deletion, the cache should not return the value.
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         stored_data = {}
         
-        def mock_setex(key, ttl_delta, value):
+        async def mock_setex(key, ttl_delta, value):
             stored_data[key] = value
         
-        def mock_get(key):
+        async def mock_get(key):
             return stored_data.get(key)
         
-        def mock_delete(key):
+        async def mock_delete(key):
             if key in stored_data:
                 del stored_data[key]
                 return 1
             return 0
         
-        mock_client.setex = MagicMock(side_effect=mock_setex)
-        mock_client.get = MagicMock(side_effect=mock_get)
-        mock_client.delete = MagicMock(side_effect=mock_delete)
+        mock_client.setex = AsyncMock(side_effect=mock_setex)
+        mock_client.get = AsyncMock(side_effect=mock_get)
+        mock_client.delete = AsyncMock(side_effect=mock_delete)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Set the value
         await cache.set(key, value)
@@ -181,28 +181,28 @@ class TestCacheBehaviorProperties:
         and False if it's not.
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         stored_data = {}
         
-        def mock_setex(key, ttl_delta, value):
+        async def mock_setex(key, ttl_delta, value):
             stored_data[key] = value
         
-        def mock_exists(key):
+        async def mock_exists(key):
             return 1 if key in stored_data else 0
         
-        def mock_delete(key):
+        async def mock_delete(key):
             if key in stored_data:
                 del stored_data[key]
                 return 1
             return 0
         
-        mock_client.setex = MagicMock(side_effect=mock_setex)
-        mock_client.exists = MagicMock(side_effect=mock_exists)
-        mock_client.delete = MagicMock(side_effect=mock_delete)
+        mock_client.setex = AsyncMock(side_effect=mock_setex)
+        mock_client.exists = AsyncMock(side_effect=mock_exists)
+        mock_client.delete = AsyncMock(side_effect=mock_delete)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Before setting, key should not exist
         exists_before = await cache.exists(key)
@@ -233,21 +233,21 @@ class TestCacheBehaviorProperties:
         For any cache key, setting a new value should overwrite the previous value.
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         stored_data = {}
         
-        def mock_setex(key, ttl_delta, value):
+        async def mock_setex(key, ttl_delta, value):
             stored_data[key] = value
         
-        def mock_get(key):
+        async def mock_get(key):
             return stored_data.get(key)
         
-        mock_client.setex = MagicMock(side_effect=mock_setex)
-        mock_client.get = MagicMock(side_effect=mock_get)
+        mock_client.setex = AsyncMock(side_effect=mock_setex)
+        mock_client.get = AsyncMock(side_effect=mock_get)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Set first value
         await cache.set(key, value1)
@@ -275,28 +275,28 @@ class TestCacheBehaviorProperties:
         For any set of cache keys, operations on one key should not affect other keys.
         """
         mock_client = MagicMock()
-        mock_client.ping = MagicMock()
+        mock_client.ping = AsyncMock()
         
         stored_data = {}
         
-        def mock_setex(key, ttl_delta, value):
+        async def mock_setex(key, ttl_delta, value):
             stored_data[key] = value
         
-        def mock_get(key):
+        async def mock_get(key):
             return stored_data.get(key)
         
-        def mock_delete(key):
+        async def mock_delete(key):
             if key in stored_data:
                 del stored_data[key]
                 return 1
             return 0
         
-        mock_client.setex = MagicMock(side_effect=mock_setex)
-        mock_client.get = MagicMock(side_effect=mock_get)
-        mock_client.delete = MagicMock(side_effect=mock_delete)
+        mock_client.setex = AsyncMock(side_effect=mock_setex)
+        mock_client.get = AsyncMock(side_effect=mock_get)
+        mock_client.delete = AsyncMock(side_effect=mock_delete)
         mock_redis.return_value = mock_client
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # Set all keys
         for key in keys:
@@ -333,7 +333,7 @@ class TestCacheBehaviorProperties:
         
         mock_redis.side_effect = RedisConnectionError("Connection refused")
         
-        cache = RedisCache()
+        cache = await RedisCache.create()
         
         # All operations should return False/None without raising
         set_result = await cache.set(key, value)

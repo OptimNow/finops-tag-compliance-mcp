@@ -5,7 +5,7 @@ import logging
 from typing import Any, Optional
 from datetime import timedelta
 
-import redis
+import redis.asyncio as redis
 from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
 
 logger = logging.getLogger(__name__)
@@ -42,11 +42,27 @@ class RedisCache:
         self.default_ttl = default_ttl
         self._client: Optional[redis.Redis] = None
         self._connected = False
-        
-        # Try to connect on initialization
-        self._connect()
     
-    def _connect(self) -> None:
+    @classmethod
+    async def create(cls, redis_url: str = "redis://localhost:6379/0", default_ttl: int = 3600) -> "RedisCache":
+        """
+        Create and initialize a Redis cache instance.
+        
+        Args:
+            redis_url: Redis connection URL (e.g., "redis://localhost:6379/0")
+            default_ttl: Default time-to-live in seconds for cached items
+        
+        Returns:
+            Initialized RedisCache instance
+        
+        Raises:
+            CacheError: If Redis URL is invalid
+        """
+        cache = cls(redis_url, default_ttl)
+        await cache._connect()
+        return cache
+    
+    async def _connect(self) -> None:
         """
         Establish connection to Redis.
         
@@ -61,7 +77,7 @@ class RedisCache:
                 health_check_interval=30
             )
             # Test the connection
-            self._client.ping()
+            await self._client.ping()
             self._connected = True
             logger.info(f"Connected to Redis at {self.redis_url}")
         except (RedisConnectionError, RedisError) as e:
@@ -71,7 +87,7 @@ class RedisCache:
             self._connected = False
             logger.error(f"Unexpected error connecting to Redis: {str(e)}")
     
-    def is_connected(self) -> bool:
+    async def is_connected(self) -> bool:
         """
         Check if Redis connection is active.
         
@@ -82,7 +98,7 @@ class RedisCache:
             return False
         
         try:
-            self._client.ping()
+            await self._client.ping()
             return True
         except (RedisConnectionError, RedisError):
             self._connected = False
@@ -109,7 +125,7 @@ class RedisCache:
             return None
         
         try:
-            value = self._client.get(key)
+            value = await self._client.get(key)
             
             if value is None:
                 logger.debug(f"Cache miss: {key}")
@@ -124,7 +140,7 @@ class RedisCache:
                 logger.error(f"Failed to deserialize cache value for {key}: {str(e)}")
                 # Delete corrupted cache entry
                 try:
-                    self._client.delete(key)
+                    await self._client.delete(key)
                 except RedisError:
                     pass
                 return None
@@ -176,7 +192,7 @@ class RedisCache:
                 raise CacheError(f"Cannot serialize value for key {key}: {str(e)}")
             
             # Set with TTL
-            self._client.setex(
+            await self._client.setex(
                 key,
                 timedelta(seconds=ttl),
                 serialized
@@ -215,7 +231,7 @@ class RedisCache:
             return False
         
         try:
-            result = self._client.delete(key)
+            result = await self._client.delete(key)
             if result > 0:
                 logger.debug(f"Cache deleted: {key}")
                 return True
@@ -251,7 +267,7 @@ class RedisCache:
             return False
         
         try:
-            result = self._client.exists(key)
+            result = await self._client.exists(key)
             return result > 0
         
         except (RedisConnectionError, RedisError) as e:
@@ -274,7 +290,7 @@ class RedisCache:
             return False
         
         try:
-            self._client.flushdb()
+            await self._client.flushdb()
             logger.info("Cache cleared")
             return True
         
@@ -290,7 +306,7 @@ class RedisCache:
         """Close the Redis connection."""
         if self._client is not None:
             try:
-                self._client.close()
+                await self._client.close()
                 self._connected = False
                 logger.info("Redis connection closed")
             except Exception as e:

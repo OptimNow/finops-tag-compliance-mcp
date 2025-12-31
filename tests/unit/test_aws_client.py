@@ -4,6 +4,7 @@ import pytest
 from datetime import datetime, UTC
 from moto import mock_aws
 import boto3
+from unittest.mock import patch, AsyncMock
 
 from mcp_server.clients import AWSClient
 from mcp_server.clients.aws_client import AWSAPIError
@@ -528,3 +529,73 @@ async def test_resource_format_completeness():
         assert isinstance(resource["region"], str)
         assert isinstance(resource["tags"], dict)
         assert isinstance(resource["arn"], str)
+
+
+@pytest.mark.asyncio
+async def test_get_account_id_caching():
+    """Test that account ID is cached after first retrieval."""
+    client = AWSClient()
+    
+    # Mock STS response
+    mock_response = {"Account": "123456789012"}
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = mock_response
+        
+        # First call should fetch from STS
+        account_id1 = await client._get_account_id()
+        assert account_id1 == "123456789012"
+        assert mock_call.call_count == 1
+        
+        # Second call should use cached value
+        account_id2 = await client._get_account_id()
+        assert account_id2 == "123456789012"
+        assert mock_call.call_count == 1  # Should not call STS again
+
+
+@pytest.mark.asyncio
+async def test_get_account_id_error_handling():
+    """Test error handling when STS call fails."""
+    client = AWSClient()
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.side_effect = Exception("STS unavailable")
+        
+        with pytest.raises(AWSAPIError, match="Failed to get account ID"):
+            await client._get_account_id()
+
+
+@pytest.mark.asyncio
+async def test_ec2_arn_includes_account_id():
+    """Test that EC2 instance ARNs include the account ID."""
+    client = AWSClient()
+    
+    # Mock STS response for account ID
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_get_account:
+        mock_get_account.return_value = "123456789012"
+        
+        # Mock EC2 response
+        mock_response = {
+            "Reservations": [
+                {
+                    "Instances": [
+                        {
+                            "InstanceId": "i-1234567890abcdef0",
+                            "Tags": [{"Key": "Name", "Value": "test-instance"}],
+                            "LaunchTime": datetime.now()
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = mock_response
+            
+            result = await client.get_ec2_instances()
+            
+            assert len(result) == 1
+            assert result[0]["arn"] == "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+            
+            # Verify account ID was fetched
+            mock_get_account.assert_called_once()

@@ -440,22 +440,24 @@ async def test_calculate_attribution_gap_handles_fetch_errors(
 
 def test_extract_account_from_arn(cost_service):
     """Test ARN account extraction."""
+    from mcp_server.utils.resource_utils import extract_account_from_arn
+    
     # Valid ARN
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
-    account = cost_service._extract_account_from_arn(arn)
+    account = extract_account_from_arn(arn)
     assert account == "123456789012"
     
     # Empty ARN
-    account = cost_service._extract_account_from_arn("")
+    account = extract_account_from_arn("")
     assert account == "unknown"
     
     # Invalid ARN format
-    account = cost_service._extract_account_from_arn("invalid")
+    account = extract_account_from_arn("invalid")
     assert account == "unknown"
     
     # ARN with empty account field
     arn = "arn:aws:s3:::bucket-name"
-    account = cost_service._extract_account_from_arn(arn)
+    account = extract_account_from_arn(arn)
     assert account == "unknown"
 
 

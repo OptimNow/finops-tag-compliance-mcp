@@ -97,7 +97,7 @@ async def test_find_untagged_resources_completely_untagged(mock_aws_client, mock
             "region": "us-east-1",
             "tags": {},  # No tags
             "created_at": created_at,
-            "arn": "arn:aws:ec2:us-east-1::instance/i-12345"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
         }
     ])
     mock_aws_client.get_cost_data = AsyncMock(return_value={"i-12345": 100.0})
@@ -132,7 +132,7 @@ async def test_find_untagged_resources_partially_tagged(mock_aws_client, mock_po
             "region": "us-east-1",
             "tags": {"Environment": "production"},  # Has Environment but missing CostCenter
             "created_at": created_at,
-            "arn": "arn:aws:ec2:us-east-1::instance/i-67890"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-67890"
         }
     ])
     mock_aws_client.get_cost_data = AsyncMock(return_value={"i-67890": 50.0})
@@ -169,7 +169,7 @@ async def test_find_untagged_resources_fully_tagged(mock_aws_client, mock_policy
                 "Environment": "production"
             },
             "created_at": datetime.now(),
-            "arn": "arn:aws:ec2:us-east-1::instance/i-11111"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-11111"
         }
     ])
     mock_aws_client.get_cost_data = AsyncMock(return_value={"i-11111": 75.0})
@@ -195,7 +195,7 @@ async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_poli
             "region": "us-east-1",
             "tags": {},
             "created_at": datetime.now(),
-            "arn": "arn:aws:ec2:us-east-1::instance/i-low-cost"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-low-cost"
         },
         {
             "resource_id": "i-high-cost",
@@ -203,7 +203,7 @@ async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_poli
             "region": "us-east-1",
             "tags": {},
             "created_at": datetime.now(),
-            "arn": "arn:aws:ec2:us-east-1::instance/i-high-cost"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-high-cost"
         }
     ])
     mock_aws_client.get_cost_data = AsyncMock(return_value={
@@ -236,7 +236,7 @@ async def test_find_untagged_resources_multiple_types(mock_aws_client, mock_poli
             "region": "us-east-1",
             "tags": {},
             "created_at": datetime.now(),
-            "arn": "arn:aws:ec2:us-east-1::instance/i-12345"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
         }
     ])
     mock_aws_client.get_rds_instances = AsyncMock(return_value=[
@@ -276,7 +276,7 @@ async def test_find_untagged_resources_cost_data_unavailable(mock_logger, mock_a
             "region": "us-east-1",
             "tags": {},
             "created_at": datetime.now(),
-            "arn": "arn:aws:ec2:us-east-1::instance/i-12345"
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
         }
     ])
     # Simulate cost data fetch failure

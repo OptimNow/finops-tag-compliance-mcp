@@ -40,7 +40,6 @@ from .services import (
 )
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
-from .middleware.audit_middleware import audit_tool
 
 logger = logging.getLogger(__name__)
 

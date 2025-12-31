@@ -29,7 +29,6 @@ dependencies = [
     "pydantic-settings>=2.0.0",
     "boto3>=1.28.0",
     "redis>=5.0.0",
-    "hypothesis>=6.80.0",
     "python-dotenv>=1.0.0",
 ]
 
@@ -43,6 +42,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.5.0",
     "types-redis>=4.6.0",
+    "hypothesis>=6.80.0",
 ]
 
 [project.urls]

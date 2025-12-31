@@ -6,6 +6,7 @@ from typing import Optional
 
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
+from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn
 
 logger = logging.getLogger(__name__)
 
@@ -209,30 +210,9 @@ class CostService:
         elif group_by == "account":
             # Extract account from ARN
             arn = resource.get("arn", "")
-            return self._extract_account_from_arn(arn)
+            return extract_account_from_arn(arn)
         else:
             return "unknown"
-    
-    def _extract_account_from_arn(self, arn: str) -> str:
-        """
-        Extract AWS account ID from an ARN.
-        
-        ARN format: arn:aws:service:region:account-id:resource
-        
-        Args:
-            arn: AWS ARN string
-        
-        Returns:
-            Account ID or "unknown" if not found
-        """
-        if not arn:
-            return "unknown"
-        
-        parts = arn.split(":")
-        if len(parts) >= 5:
-            return parts[4] or "unknown"
-        
-        return "unknown"
     
     async def _fetch_resources_by_type(
         self,
@@ -249,23 +229,4 @@ class CostService:
         Returns:
             List of resource dictionaries with tags
         """
-        # Map resource types to AWS client methods
-        resource_fetchers = {
-            "ec2:instance": self.aws_client.get_ec2_instances,
-            "rds:db": self.aws_client.get_rds_instances,
-            "s3:bucket": self.aws_client.get_s3_buckets,
-            "lambda:function": self.aws_client.get_lambda_functions,
-            "ecs:service": self.aws_client.get_ecs_services,
-        }
-        
-        fetcher = resource_fetchers.get(resource_type)
-        if not fetcher:
-            logger.warning(f"Unknown resource type: {resource_type}")
-            return []
-        
-        try:
-            resources = await fetcher(filters)
-            return resources
-        except Exception as e:
-            logger.error(f"Failed to fetch {resource_type}: {str(e)}")
-            raise
+        return await fetch_resources_by_type(self.aws_client, resource_type, filters)

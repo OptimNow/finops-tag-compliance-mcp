@@ -667,19 +667,22 @@ class TestResourceFiltering:
     
     def test_extract_account_from_arn_valid(self, compliance_service):
         """Test extracting account ID from valid ARN."""
+        from mcp_server.utils.resource_utils import extract_account_from_arn
         arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
-        account = compliance_service._extract_account_from_arn(arn)
+        account = extract_account_from_arn(arn)
         assert account == "123456789012"
     
     def test_extract_account_from_arn_empty(self, compliance_service):
         """Test extracting account from empty ARN."""
-        account = compliance_service._extract_account_from_arn("")
-        assert account == ""
+        from mcp_server.utils.resource_utils import extract_account_from_arn
+        account = extract_account_from_arn("")
+        assert account == "unknown"  # Updated to match shared utility behavior
     
     def test_extract_account_from_arn_invalid(self, compliance_service):
         """Test extracting account from invalid ARN."""
-        account = compliance_service._extract_account_from_arn("not-an-arn")
-        assert account == ""
+        from mcp_server.utils.resource_utils import extract_account_from_arn
+        account = extract_account_from_arn("not-an-arn")
+        assert account == "unknown"  # Updated to match shared utility behavior
     
     def test_apply_resource_filters_empty_filter_values(self, compliance_service):
         """Test that empty filter values don't filter anything."""

@@ -8,7 +8,6 @@ Requirements: 14.2, 14.5
 """
 
 import logging
-import os
 from contextlib import asynccontextmanager
 from typing import Optional
 
@@ -18,6 +17,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from . import __version__
+from .config import settings
 from .models import HealthStatus
 from .models.audit import AuditStatus
 from .clients.aws_client import AWSClient
@@ -88,38 +88,37 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting FinOps Tag Compliance MCP Server")
     
+    # Get settings instance
+    app_settings = settings()
+    
     # Initialize Redis cache
-    redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     try:
-        redis_cache = RedisCache(redis_url=redis_url)
+        redis_cache = await RedisCache.create(redis_url=app_settings.redis_url)
         logger.info("Redis cache initialized")
     except Exception as e:
         logger.warning(f"Failed to initialize Redis cache: {e}")
         redis_cache = None
     
     # Initialize audit service
-    audit_db_path = os.getenv("AUDIT_DB_PATH", "audit_logs.db")
     try:
-        audit_service = AuditService(db_path=audit_db_path)
+        audit_service = AuditService(db_path=app_settings.audit_db_path)
         logger.info("Audit service initialized")
     except Exception as e:
         logger.error(f"Failed to initialize audit service: {e}")
         audit_service = None
     
     # Initialize AWS client
-    aws_region = os.getenv("AWS_REGION", "us-east-1")
     try:
-        aws_client = AWSClient(region=aws_region)
-        logger.info(f"AWS client initialized for region {aws_region}")
+        aws_client = AWSClient(region=app_settings.aws_region)
+        logger.info(f"AWS client initialized for region {app_settings.aws_region}")
     except Exception as e:
         logger.warning(f"Failed to initialize AWS client: {e}")
         aws_client = None
     
     # Initialize policy service
-    policy_path = os.getenv("POLICY_PATH", "policies/tagging_policy.json")
     try:
-        policy_service = PolicyService(policy_path=policy_path)
-        logger.info(f"Policy service initialized from {policy_path}")
+        policy_service = PolicyService(policy_path=app_settings.policy_path)
+        logger.info(f"Policy service initialized from {app_settings.policy_path}")
     except Exception as e:
         logger.warning(f"Failed to initialize policy service: {e}")
         policy_service = None
@@ -147,7 +146,7 @@ async def lifespan(app: FastAPI):
     )
     logger.info("MCP handler initialized with 8 tools")
     
-    logger.info(f"MCP Server v{__version__} started successfully on port 8080")
+    logger.info(f"MCP Server v{__version__} started successfully on port {settings.port}")
     
     yield
     
@@ -223,7 +222,7 @@ async def health_check() -> HealthStatus:
     # Check Redis connectivity
     redis_connected = False
     if redis_cache:
-        redis_connected = redis_cache.is_connected()
+        redis_connected = await redis_cache.is_connected()
     
     # Check SQLite connectivity
     sqlite_connected = False
@@ -329,23 +328,6 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
         content=result.content,
         is_error=result.is_error,
     )
-
-
-# SSE endpoint for MCP protocol (Server-Sent Events)
-@app.get("/mcp/sse")
-async def mcp_sse():
-    """
-    Server-Sent Events endpoint for MCP protocol.
-    
-    This endpoint provides real-time updates for long-running operations.
-    Currently returns a placeholder response.
-    
-    Requirements: 14.5
-    """
-    return {
-        "message": "SSE endpoint for MCP protocol",
-        "status": "available",
-    }
 
 
 # Tool-specific endpoints for direct HTTP access (optional)

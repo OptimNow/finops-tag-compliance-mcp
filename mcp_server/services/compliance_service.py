@@ -10,6 +10,7 @@ from ..clients.aws_client import AWSClient
 from ..models.compliance import ComplianceResult
 from ..models.violations import Violation
 from ..services.policy_service import PolicyService
+from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn
 
 logger = logging.getLogger(__name__)
 
@@ -301,32 +302,11 @@ class ComplianceService:
             
             filtered = [
                 r for r in filtered
-                if self._extract_account_from_arn(r.get("arn", "")) in account_filter
+                if extract_account_from_arn(r.get("arn", "")) in account_filter
             ]
             logger.info(f"Filtered to {len(filtered)} resources in accounts: {account_filter}")
         
         return filtered
-    
-    def _extract_account_from_arn(self, arn: str) -> str:
-        """
-        Extract AWS account ID from an ARN.
-        
-        ARN format: arn:aws:service:region:account-id:resource
-        
-        Args:
-            arn: AWS ARN string
-        
-        Returns:
-            Account ID or empty string if not found
-        """
-        if not arn:
-            return ""
-        
-        parts = arn.split(":")
-        if len(parts) >= 5:
-            return parts[4]
-        
-        return ""
     
     async def _fetch_resources_by_type(
         self,
@@ -343,26 +323,7 @@ class ComplianceService:
         Returns:
             List of resource dictionaries with tags
         """
-        # Map resource types to AWS client methods
-        resource_fetchers = {
-            "ec2:instance": self.aws_client.get_ec2_instances,
-            "rds:db": self.aws_client.get_rds_instances,
-            "s3:bucket": self.aws_client.get_s3_buckets,
-            "lambda:function": self.aws_client.get_lambda_functions,
-            "ecs:service": self.aws_client.get_ecs_services,
-        }
-        
-        fetcher = resource_fetchers.get(resource_type)
-        if not fetcher:
-            logger.warning(f"Unknown resource type: {resource_type}")
-            return []
-        
-        try:
-            resources = await fetcher(filters)
-            return resources
-        except Exception as e:
-            logger.error(f"Failed to fetch {resource_type}: {str(e)}")
-            raise
+        return await fetch_resources_by_type(self.aws_client, resource_type, filters)
     
     def _calculate_compliance_score(
         self,

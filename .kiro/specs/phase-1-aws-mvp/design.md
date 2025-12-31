@@ -17,7 +17,7 @@ The system follows a straightforward layered architecture:
 │                    MCP Clients                              │
 │            (Claude Desktop, ChatGPT, etc.)                  │
 └─────────────────────────┬───────────────────────────────────┘
-                          │ MCP Protocol (HTTP/SSE)
+                          │ MCP Protocol (HTTP)
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    MCP Server Layer                         │

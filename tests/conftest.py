@@ -161,22 +161,6 @@ def sample_resource_data():
 # Pytest Hooks for Test Reporting
 # =============================================================================
 
-def pytest_configure(config):
-    """Configure pytest with custom markers and settings."""
-    config.addinivalue_line(
-        "markers", "integration: marks tests as integration tests"
-    )
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow running"
-    )
-    config.addinivalue_line(
-        "markers", "unit: marks tests as unit tests"
-    )
-    config.addinivalue_line(
-        "markers", "property: marks tests as property-based tests"
-    )
-
-
 def pytest_collection_modifyitems(config, items):
     """Automatically mark tests based on their location."""
     for item in items:

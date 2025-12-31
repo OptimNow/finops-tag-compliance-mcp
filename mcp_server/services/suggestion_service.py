@@ -75,6 +75,13 @@ class SuggestionService:
         ]
     }
     
+    # Confidence score constants for pattern matching
+    CONFIDENCE_VPC_NAME = 0.85
+    CONFIDENCE_IAM_ROLE = 0.80
+    CONFIDENCE_RESOURCE_NAME = 0.75
+    CONFIDENCE_RESOURCE_ARN = 0.65
+    CONFIDENCE_DEFAULT = 0.50
+    
     def __init__(self, policy_service: PolicyService):
         """
         Initialize the SuggestionService.
@@ -394,19 +401,19 @@ class SuggestionService:
         """
         # Check each context source in order of reliability
         if context.get("vpc") and re.search(pattern, context["vpc"], re.IGNORECASE):
-            return 0.85, "VPC name"
+            return self.CONFIDENCE_VPC_NAME, "VPC name"
         
         if context.get("iam_role") and re.search(pattern, context["iam_role"], re.IGNORECASE):
-            return 0.80, "IAM role"
+            return self.CONFIDENCE_IAM_ROLE, "IAM role"
         
         if context.get("name") and re.search(pattern, context["name"], re.IGNORECASE):
-            return 0.75, "resource name"
+            return self.CONFIDENCE_RESOURCE_NAME, "resource name"
         
         if context.get("arn") and re.search(pattern, context["arn"], re.IGNORECASE):
-            return 0.65, "resource ARN"
+            return self.CONFIDENCE_RESOURCE_ARN, "resource ARN"
         
         # Default fallback
-        return 0.50, "resource context"
+        return self.CONFIDENCE_DEFAULT, "resource context"
     
     def _suggest_from_similar_resources(
         self,

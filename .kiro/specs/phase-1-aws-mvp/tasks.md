@@ -432,91 +432,91 @@ Based on code assessment report (Quality Score: 7.5/10)
 
 ### Critical Priority (Fix Before Deployment)
 
-- [ ] 31. Security: Replace eval() with json.loads()
-  - [ ] 31.1 Fix audit_service.py:154 - Replace `eval(row[3])` with `json.loads(row[3])`
+- [x] 31. Security: Replace eval() with json.loads()
+  - [x] 31.1 Fix audit_service.py:154 - Replace `eval(row[3])` with `json.loads(row[3])`
     - Store parameters as JSON string instead of str(dict)
     - Update `log_invocation()` to use `json.dumps()` when storing
     - Update `get_audit_logs()` to use `json.loads()` when retrieving
     - _Severity: CRITICAL - Security vulnerability_
 
-- [ ] 32. Fix AuditStatus Type Mismatch
-  - [ ] 32.1 Fix main.py:196-201 - Use AuditStatus enum instead of string
+- [x] 32. Fix AuditStatus Type Mismatch
+  - [x] 32.1 Fix main.py:196-201 - Use AuditStatus enum instead of string
     - Import AuditStatus from models.audit
     - Change `status="failure"` to `status=AuditStatus.FAILURE`
     - Change `status="success"` to `status=AuditStatus.SUCCESS`
-  - [ ] 32.2 Fix mcp_handler.py:397-412 - Use AuditStatus enum
+  - [x] 32.2 Fix mcp_handler.py:397-412 - Use AuditStatus enum
     - Same changes as main.py
     - _Severity: HIGH - Runtime errors_
 
 ### High Priority (Fix Before Production)
 
-- [ ] 33. Use Centralized Settings Configuration
-  - [ ] 33.1 Refactor main.py to use Settings class from config.py
+- [x] 33. Use Centralized Settings Configuration
+  - [x] 33.1 Refactor main.py to use Settings class from config.py
     - Replace `os.getenv("REDIS_URL", ...)` with `settings.redis_url`
     - Replace `os.getenv("AUDIT_DB_PATH", ...)` with `settings.audit_db_path`
     - Replace `os.getenv("AWS_REGION", ...)` with `settings.aws_region`
     - Replace `os.getenv("POLICY_PATH", ...)` with `settings.policy_path`
     - _Files: main.py:91, 100, 109, 118_
 
-- [ ] 34. Fix Redis Cache Async/Sync Mismatch
-  - [ ] 34.1 Update cache.py to use truly async Redis operations
+- [x] 34. Fix Redis Cache Async/Sync Mismatch
+  - [x] 34.1 Update cache.py to use truly async Redis operations
     - Option A: Use `redis.asyncio` instead of synchronous `redis`
     - Option B: Wrap sync calls with `asyncio.to_thread()`
     - Update all `self._client.get()`, `self._client.setex()` calls
     - _File: mcp_server/clients/cache.py_
 
 - [ ] 35. Fix Dockerfile - Copy policies directory
-  - [ ] 35.1 Add `COPY policies/ ./policies/` to Dockerfile
+  - [x] 35.1 Add `COPY policies/ ./policies/` to Dockerfile
     - Ensure tagging_policy.json is available in container
     - _File: Dockerfile:34-35_
 
-- [ ] 36. Fix EC2 ARN Format
-  - [ ] 36.1 Fix aws_client.py:188 - Include account ID in ARN
+- [x] 36. Fix EC2 ARN Format
+  - [x] 36.1 Fix aws_client.py:188 - Include account ID in ARN
     - Change `arn:aws:ec2:{region}::instance/{id}` to include account
     - Fetch account ID from STS or instance metadata
     - _File: mcp_server/clients/aws_client.py:188_
 
 ### Medium Priority (Code Quality)
 
-- [ ] 37. Move hypothesis to dev dependencies
-  - [ ] 37.1 Update pyproject.toml
+- [x] 37. Move hypothesis to dev dependencies
+  - [x] 37.1 Update pyproject.toml
     - Move `hypothesis>=6.80.0` from `dependencies` to `[project.optional-dependencies].dev`
     - _File: pyproject.toml:32_
 
-- [ ] 38. Extract Duplicated Code to Shared Utilities
-  - [ ] 38.1 Create shared utility for `_fetch_resources_by_type`
+- [x] 38. Extract Duplicated Code to Shared Utilities
+  - [x] 38.1 Create shared utility for `_fetch_resources_by_type`
     - Extract from compliance_service.py:331-365 and cost_service.py:237-271
     - Create `mcp_server/utils/resource_utils.py`
-  - [ ] 38.2 Create shared utility for `_extract_account_from_arn`
+  - [x] 38.2 Create shared utility for `_extract_account_from_arn`
     - Extract from both services to shared utility
 
-- [ ] 39. Fix/Remove SSE Endpoint Placeholder
-  - [ ] 39.1 Either implement actual SSE or remove placeholder
+- [x] 39. Fix/Remove SSE Endpoint Placeholder
+  - [x] 39.1 Either implement actual SSE or remove placeholder
     - Current endpoint at main.py:334-348 returns static JSON
     - _File: mcp_server/main.py:334-348_
 
-- [ ] 40. Update Pydantic Config to v2 Style
-  - [ ] 40.1 Replace deprecated `class Config` with `model_config`
+- [x] 40. Update Pydantic Config to v2 Style
+  - [x] 40.1 Replace deprecated `class Config` with `model_config`
     - Update config.py:98-122 to use Pydantic v2 patterns
     - Use `alias` on fields instead of `fields` mapping
     - _File: mcp_server/config.py:98-122_
 
 ### Low Priority (Cleanup)
 
-- [ ] 41. Code Cleanup
-  - [ ] 41.1 Define confidence score constants in suggestion_service.py
+- [x] 41. Code Cleanup
+  - [x] 41.1 Define confidence score constants in suggestion_service.py
     - Replace magic numbers (0.85, 0.80, 0.75, 0.65, 0.50) with named constants
     - _File: mcp_server/services/suggestion_service.py:394-409_
-  - [ ] 41.2 Remove unused import in mcp_handler.py
+  - [x] 41.2 Remove unused import in mcp_handler.py
     - Remove `from .middleware.audit_middleware import audit_tool`
     - _File: mcp_server/mcp_handler.py:43_
-  - [ ] 41.3 Remove duplicate pytest markers from conftest.py
+  - [x] 41.3 Remove duplicate pytest markers from conftest.py
     - Already defined in pyproject.toml:68-73
     - _File: tests/conftest.py:164-177_
-  - [ ] 41.4 Fix hardcoded port in log message
+  - [x] 41.4 Fix hardcoded port in log message
     - Use configuration value instead of hardcoded "8080"
     - _File: mcp_server/main.py:149_
-  - [ ] 41.5 Fix type hint: `callable` → `Callable`
+  - [x] 41.5 Fix type hint: `callable` → `Callable`
     - _File: mcp_server/mcp_handler.py:72_
 
 ## Notes

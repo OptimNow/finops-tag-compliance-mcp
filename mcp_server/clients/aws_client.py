@@ -2,7 +2,7 @@
 
 import asyncio
 import time
-from typing import Any
+from typing import Any, Callable
 from datetime import datetime, timedelta
 
 import boto3
@@ -46,8 +46,12 @@ class AWSClient:
         self.s3 = boto3.client('s3', config=config)
         self.lambda_client = boto3.client('lambda', config=config)
         self.ecs = boto3.client('ecs', config=config)
+        self.sts = boto3.client('sts', config=config)
         # Cost Explorer is always us-east-1
         self.ce = boto3.client('ce', region_name='us-east-1')
+        
+        # Cache account ID to avoid repeated STS calls
+        self._account_id: str | None = None
         
         # Rate limiting state
         self._last_call_time: dict[str, float] = {}
@@ -70,7 +74,7 @@ class AWSClient:
     async def _call_with_backoff(
         self,
         service_name: str,
-        func: callable,
+        func: Callable,
         *args,
         **kwargs
     ) -> Any:
@@ -122,6 +126,34 @@ class AWSClient:
         
         raise AWSAPIError(f"Max retries exceeded for {service_name}")
     
+    async def _get_account_id(self) -> str:
+        """
+        Get the AWS account ID using STS GetCallerIdentity.
+        
+        Returns:
+            AWS account ID
+        
+        Raises:
+            AWSAPIError: If unable to get account ID
+        """
+        if self._account_id is not None:
+            return self._account_id
+        
+        try:
+            response = await self._call_with_backoff(
+                "sts",
+                self.sts.get_caller_identity
+            )
+            self._account_id = response.get("Account", "")
+            if not self._account_id:
+                raise AWSAPIError("Account ID not found in STS response")
+            return self._account_id
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to get account ID: {str(e)}") from e
+    
     def _extract_tags(self, tag_list: list[dict[str, str]]) -> dict[str, str]:
         """
         Convert AWS tag list format to dictionary.
@@ -166,6 +198,9 @@ class AWSClient:
             return []
         
         try:
+            # Get account ID for ARN construction
+            account_id = await self._get_account_id()
+            
             response = await self._call_with_backoff(
                 "ec2",
                 self.ec2.describe_instances,
@@ -185,7 +220,7 @@ class AWSClient:
                         "region": self.region,
                         "tags": tags,
                         "created_at": launch_time,
-                        "arn": f"arn:aws:ec2:{self.region}::instance/{instance_id}"
+                        "arn": f"arn:aws:ec2:{self.region}:{account_id}:instance/{instance_id}"
                     })
             
             return resources
