@@ -8,23 +8,26 @@
 
 ## Quick Start
 
-### 1. Run the Server
+### Option A: Local Development (Docker)
 
 ```bash
-# Clone the repo
+# Clone and start locally
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
 cd finops-tag-compliance-mcp
-
-# Start with Docker
 docker-compose up -d
-
-# Verify it's running
-curl http://localhost:8080/health
 ```
 
-### 2. Configure Claude Desktop
+Server URL: `http://localhost:8080`
 
-Add to your Claude Desktop config file:
+### Option B: Remote Server (EC2)
+
+If someone has deployed the server to EC2 for you, get the server URL (e.g., `http://ec2-xx-xx-xx-xx.compute.amazonaws.com:8080`).
+
+### Configure Claude Desktop
+
+1. Download the bridge script: [mcp_bridge.py](scripts/mcp_bridge.py)
+2. Save it somewhere on your machine (e.g., `C:\tools\mcp_bridge.py`)
+3. Edit Claude Desktop config:
 
 **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
 **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
@@ -34,7 +37,7 @@ Add to your Claude Desktop config file:
   "mcpServers": {
     "finops-tag-compliance": {
       "command": "python",
-      "args": ["/path/to/repo/scripts/mcp_bridge.py"],
+      "args": ["C:\\tools\\mcp_bridge.py"],
       "env": {
         "MCP_SERVER_URL": "http://localhost:8080"
       }
@@ -43,10 +46,10 @@ Add to your Claude Desktop config file:
 }
 ```
 
-### 3. Restart Claude Desktop
+Replace `MCP_SERVER_URL` with your server's address (local or remote EC2).
 
-The FinOps tools will now be available. Try:
-> "Show me our tagging policy"
+4. Restart Claude Desktop
+5. Test with: "Show me our tagging policy"
 
 ---
 
