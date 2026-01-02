@@ -1,8 +1,52 @@
 # FinOps Tag Compliance MCP Server
 
-**Status**: Specification Phase
-**Type**: Remote MCP Server
+**Status**: Phase 1 MVP Complete  
+**Type**: Remote MCP Server  
 **Target Audience**: FinOps Practitioners, Solution Architects, DevOps Engineers
+
+---
+
+## Quick Start
+
+### 1. Run the Server
+
+```bash
+# Clone the repo
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+
+# Start with Docker
+docker-compose up -d
+
+# Verify it's running
+curl http://localhost:8080/health
+```
+
+### 2. Configure Claude Desktop
+
+Add to your Claude Desktop config file:
+
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
+**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "finops-tag-compliance": {
+      "command": "python",
+      "args": ["/path/to/repo/scripts/mcp_bridge.py"],
+      "env": {
+        "MCP_SERVER_URL": "http://localhost:8080"
+      }
+    }
+  }
+}
+```
+
+### 3. Restart Claude Desktop
+
+The FinOps tools will now be available. Try:
+> "Show me our tagging policy"
 
 ---
 
