@@ -322,7 +322,8 @@ class TestMCPToolInvocation:
         
         assert isinstance(result, MCPToolResult)
         assert result.is_error
-        assert "Error" in result.content[0]["text"]
+        # Check for error in response (case-insensitive)
+        assert "error" in result.content[0]["text"].lower()
 
 
 @pytest.mark.integration

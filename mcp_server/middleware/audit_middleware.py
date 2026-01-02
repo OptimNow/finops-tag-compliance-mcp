@@ -6,6 +6,7 @@ from typing import Any, Callable, TypeVar, ParamSpec
 
 from ..models.audit import AuditStatus
 from ..services.audit_service import AuditService
+from ..utils.correlation import get_correlation_id
 
 
 # Type variables for generic decorator
@@ -38,6 +39,9 @@ def audit_tool(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
+        
+        # Capture correlation ID from context
+        correlation_id = get_correlation_id() or None
 
         try:
             # Execute the tool
@@ -52,6 +56,7 @@ def audit_tool(tool_func: Callable[P, R]) -> Callable[P, R]:
                 parameters=parameters,
                 status=AuditStatus.SUCCESS,
                 execution_time_ms=execution_time_ms,
+                correlation_id=correlation_id,
             )
 
             return result
@@ -67,6 +72,7 @@ def audit_tool(tool_func: Callable[P, R]) -> Callable[P, R]:
                 status=AuditStatus.FAILURE,
                 error_message=str(e),
                 execution_time_ms=execution_time_ms,
+                correlation_id=correlation_id,
             )
 
             # Re-raise the exception
@@ -100,6 +106,9 @@ def audit_tool_sync(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
+        
+        # Capture correlation ID from context
+        correlation_id = get_correlation_id() or None
 
         try:
             # Execute the tool
@@ -114,6 +123,7 @@ def audit_tool_sync(tool_func: Callable[P, R]) -> Callable[P, R]:
                 parameters=parameters,
                 status=AuditStatus.SUCCESS,
                 execution_time_ms=execution_time_ms,
+                correlation_id=correlation_id,
             )
 
             return result
@@ -129,6 +139,7 @@ def audit_tool_sync(tool_func: Callable[P, R]) -> Callable[P, R]:
                 status=AuditStatus.FAILURE,
                 error_message=str(e),
                 execution_time_ms=execution_time_ms,
+                correlation_id=correlation_id,
             )
 
             # Re-raise the exception

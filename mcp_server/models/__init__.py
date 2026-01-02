@@ -22,7 +22,20 @@ from .history import (
     TrendDirection,
 )
 from .audit import AuditLogEntry, AuditStatus
-from .health import HealthStatus
+from .health import HealthStatus, BudgetHealthInfo
+from .budget import (
+    BudgetStatus,
+    BudgetExhaustedResponse,
+    BudgetConfiguration,
+)
+from .observability import (
+    ToolUsageStats,
+    ErrorRateMetrics,
+    BudgetUtilizationMetrics,
+    LoopDetectionMetrics,
+    SessionMetrics,
+    GlobalMetrics,
+)
 
 __all__ = [
     "ViolationType",
@@ -52,4 +65,14 @@ __all__ = [
     "AuditLogEntry",
     "AuditStatus",
     "HealthStatus",
+    "BudgetHealthInfo",
+    "BudgetStatus",
+    "BudgetExhaustedResponse",
+    "BudgetConfiguration",
+    "ToolUsageStats",
+    "ErrorRateMetrics",
+    "BudgetUtilizationMetrics",
+    "LoopDetectionMetrics",
+    "SessionMetrics",
+    "GlobalMetrics",
 ]

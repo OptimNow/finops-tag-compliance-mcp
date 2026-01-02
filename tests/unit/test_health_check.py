@@ -122,3 +122,60 @@ class TestRootEndpoint:
         data = response.json()
         
         assert data["health_check"] == "/health"
+
+
+class TestHealthCheckBudgetTracking:
+    """Tests for budget tracking info in health endpoint (Task 43.3)."""
+
+    def test_health_check_includes_budget_tracking(self, client):
+        """Test that health check includes budget_tracking field."""
+        response = client.get("/health")
+        data = response.json()
+        
+        assert "budget_tracking" in data
+        assert data["budget_tracking"] is not None
+
+    def test_budget_tracking_has_required_fields(self, client):
+        """Test that budget_tracking has all required fields."""
+        response = client.get("/health")
+        data = response.json()
+        
+        budget = data["budget_tracking"]
+        assert "enabled" in budget
+        assert "max_calls_per_session" in budget
+        assert "session_ttl_seconds" in budget
+        assert "active_sessions" in budget
+
+    def test_budget_tracking_enabled_is_boolean(self, client):
+        """Test that budget_tracking.enabled is a boolean."""
+        response = client.get("/health")
+        data = response.json()
+        
+        assert isinstance(data["budget_tracking"]["enabled"], bool)
+
+    def test_budget_tracking_max_calls_is_integer(self, client):
+        """Test that max_calls_per_session is a non-negative integer."""
+        response = client.get("/health")
+        data = response.json()
+        
+        max_calls = data["budget_tracking"]["max_calls_per_session"]
+        assert isinstance(max_calls, int)
+        assert max_calls >= 0
+
+    def test_budget_tracking_session_ttl_is_integer(self, client):
+        """Test that session_ttl_seconds is a non-negative integer."""
+        response = client.get("/health")
+        data = response.json()
+        
+        ttl = data["budget_tracking"]["session_ttl_seconds"]
+        assert isinstance(ttl, int)
+        assert ttl >= 0
+
+    def test_budget_tracking_active_sessions_is_integer(self, client):
+        """Test that active_sessions is a non-negative integer."""
+        response = client.get("/health")
+        data = response.json()
+        
+        active = data["budget_tracking"]["active_sessions"]
+        assert isinstance(active, int)
+        assert active >= 0

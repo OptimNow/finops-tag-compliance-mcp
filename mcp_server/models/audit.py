@@ -22,6 +22,7 @@ class AuditLogEntry(BaseModel):
     status: AuditStatus
     error_message: str | None = None
     execution_time_ms: float | None = None
+    correlation_id: str | None = None
 
     class Config:
         """Pydantic config."""

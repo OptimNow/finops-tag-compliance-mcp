@@ -3,7 +3,7 @@
 This module implements the Model Context Protocol (MCP) handler that exposes
 all 8 compliance tools to AI assistants like Claude.
 
-Requirements: 14.5
+Requirements: 14.5, 15.3, 15.4, 15.5, 16.4
 """
 
 import json
@@ -17,8 +17,10 @@ from .models import (
     UntaggedResourcesResult,
     ValidateResourceTagsResult,
     CostAttributionGapResult,
+    BudgetExhaustedResponse,
 )
 from .models.audit import AuditStatus
+from .models.loop_detection import LoopDetectedResponse
 from .tools import (
     check_tag_compliance,
     find_untagged_resources,
@@ -37,9 +39,22 @@ from .services import (
     PolicyService,
     ComplianceService,
     AuditService,
+    get_security_service,
 )
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
+from .middleware.budget_middleware import (
+    BudgetTracker,
+    BudgetExhaustedError,
+    get_budget_tracker,
+)
+from .utils.correlation import get_correlation_id
+from .utils.loop_detection import (
+    LoopDetector,
+    LoopDetectedError,
+    get_loop_detector,
+)
+from .utils.input_validation import InputValidator, ValidationError, SecurityViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -120,19 +135,48 @@ class MCPHandler:
                 "properties": {
                     "resource_types": {
                         "type": "array",
-                        "items": {"type": "string"},
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "ec2:instance",
+                                "rds:db",
+                                "s3:bucket",
+                                "lambda:function",
+                                "ecs:service",
+                            ],
+                            "minLength": 1,
+                            "maxLength": 50,
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "uniqueItems": True,
                         "description": (
                             "List of resource types to check. "
-                            "Valid types: ec2:instance, rds:db, s3:bucket, lambda:function, ecs:service"
+                            "Valid types: ec2:instance, rds:db, s3:bucket, lambda:function, ecs:service. "
+                            "Maximum 10 types per request."
                         ),
                     },
                     "filters": {
                         "type": "object",
                         "description": "Optional filters for region, account_id",
                         "properties": {
-                            "region": {"type": "string"},
-                            "account_id": {"type": "string"},
+                            "region": {
+                                "type": "string",
+                                "pattern": "^[a-z]{2}-[a-z]+-\\d{1}$",
+                                "minLength": 9,
+                                "maxLength": 15,
+                                "description": "AWS region code (e.g., us-east-1)",
+                            },
+                            "account_id": {
+                                "type": "string",
+                                "pattern": "^\\d{12}$",
+                                "minLength": 12,
+                                "maxLength": 12,
+                                "description": "12-digit AWS account ID",
+                            },
                         },
+                        "additionalProperties": False,
+                        "maxProperties": 2,
                     },
                     "severity": {
                         "type": "string",
@@ -142,6 +186,7 @@ class MCPHandler:
                     },
                 },
                 "required": ["resource_types"],
+                "additionalProperties": False,
             },
         )
         
@@ -158,20 +203,45 @@ class MCPHandler:
                 "properties": {
                     "resource_types": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of resource types to search",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "ec2:instance",
+                                "rds:db",
+                                "s3:bucket",
+                                "lambda:function",
+                                "ecs:service",
+                            ],
+                            "minLength": 1,
+                            "maxLength": 50,
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "uniqueItems": True,
+                        "description": "List of resource types to search. Maximum 10 types per request.",
                     },
                     "regions": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Optional list of AWS regions to search",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^[a-z]{2}-[a-z]+-\\d{1}$",
+                            "minLength": 9,
+                            "maxLength": 15,
+                        },
+                        "minItems": 1,
+                        "maxItems": 20,
+                        "uniqueItems": True,
+                        "description": "Optional list of AWS regions to search. Maximum 20 regions per request.",
                     },
                     "min_cost_threshold": {
                         "type": "number",
-                        "description": "Optional minimum monthly cost threshold in USD",
+                        "minimum": 0,
+                        "maximum": 1000000,
+                        "description": "Optional minimum monthly cost threshold in USD (0-1,000,000)",
                     },
                 },
                 "required": ["resource_types"],
+                "additionalProperties": False,
             },
         )
         
@@ -189,11 +259,20 @@ class MCPHandler:
                 "properties": {
                     "resource_arns": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of AWS resource ARNs to validate",
+                        "items": {
+                            "type": "string",
+                            "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*:\\d{12}:[a-z0-9\\-/:._]+$",
+                            "minLength": 20,
+                            "maxLength": 1024,
+                        },
+                        "minItems": 1,
+                        "maxItems": 100,
+                        "uniqueItems": True,
+                        "description": "List of AWS resource ARNs to validate. Maximum 100 ARNs per request.",
                     },
                 },
                 "required": ["resource_arns"],
+                "additionalProperties": False,
             },
         )
         
@@ -211,16 +290,44 @@ class MCPHandler:
                 "properties": {
                     "resource_types": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of resource types to analyze",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "ec2:instance",
+                                "rds:db",
+                                "s3:bucket",
+                                "lambda:function",
+                                "ecs:service",
+                            ],
+                            "minLength": 1,
+                            "maxLength": 50,
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "uniqueItems": True,
+                        "description": "List of resource types to analyze. Maximum 10 types per request.",
                     },
                     "time_period": {
                         "type": "object",
-                        "description": "Time period for cost analysis",
+                        "description": "Time period for cost analysis (max 365 days)",
                         "properties": {
-                            "Start": {"type": "string", "description": "Start date (YYYY-MM-DD)"},
-                            "End": {"type": "string", "description": "End date (YYYY-MM-DD)"},
+                            "Start": {
+                                "type": "string",
+                                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                                "minLength": 10,
+                                "maxLength": 10,
+                                "description": "Start date in YYYY-MM-DD format",
+                            },
+                            "End": {
+                                "type": "string",
+                                "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                                "minLength": 10,
+                                "maxLength": 10,
+                                "description": "End date in YYYY-MM-DD format (must be after Start)",
+                            },
                         },
+                        "required": ["Start", "End"],
+                        "additionalProperties": False,
                     },
                     "group_by": {
                         "type": "string",
@@ -230,9 +337,28 @@ class MCPHandler:
                     "filters": {
                         "type": "object",
                         "description": "Optional filters for region or account_id",
+                        "properties": {
+                            "region": {
+                                "type": "string",
+                                "pattern": "^[a-z]{2}-[a-z]+-\\d{1}$",
+                                "minLength": 9,
+                                "maxLength": 15,
+                                "description": "AWS region code",
+                            },
+                            "account_id": {
+                                "type": "string",
+                                "pattern": "^\\d{12}$",
+                                "minLength": 12,
+                                "maxLength": 12,
+                                "description": "12-digit AWS account ID",
+                            },
+                        },
+                        "additionalProperties": False,
+                        "maxProperties": 2,
                     },
                 },
                 "required": ["resource_types"],
+                "additionalProperties": False,
             },
         )
         
@@ -250,10 +376,14 @@ class MCPHandler:
                 "properties": {
                     "resource_arn": {
                         "type": "string",
+                        "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*:\\d{12}:[a-z0-9\\-/:._]+$",
+                        "minLength": 20,
+                        "maxLength": 1024,
                         "description": "AWS ARN of the resource to suggest tags for",
                     },
                 },
                 "required": ["resource_arn"],
+                "additionalProperties": False,
             },
         )
         
@@ -270,6 +400,7 @@ class MCPHandler:
                 "type": "object",
                 "properties": {},
                 "required": [],
+                "additionalProperties": False,
             },
         )
         
@@ -287,8 +418,22 @@ class MCPHandler:
                 "properties": {
                     "resource_types": {
                         "type": "array",
-                        "items": {"type": "string"},
-                        "description": "List of resource types to include in the report",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "ec2:instance",
+                                "rds:db",
+                                "s3:bucket",
+                                "lambda:function",
+                                "ecs:service",
+                            ],
+                            "minLength": 1,
+                            "maxLength": 50,
+                        },
+                        "minItems": 1,
+                        "maxItems": 10,
+                        "uniqueItems": True,
+                        "description": "List of resource types to include in the report. Maximum 10 types per request.",
                     },
                     "format": {
                         "type": "string",
@@ -303,6 +448,7 @@ class MCPHandler:
                     },
                 },
                 "required": ["resource_types"],
+                "additionalProperties": False,
             },
         )
         
@@ -333,6 +479,7 @@ class MCPHandler:
                     },
                 },
                 "required": [],
+                "additionalProperties": False,
             },
         )
         
@@ -369,6 +516,126 @@ class MCPHandler:
             for defn in self._tool_definitions.values()
         ]
     
+    def _validate_tool_inputs(self, tool_name: str, arguments: dict) -> None:
+        """
+        Validate tool inputs against their schemas with detailed field-level feedback.
+        
+        Args:
+            tool_name: Name of the tool being invoked
+            arguments: Tool arguments to validate
+        
+        Raises:
+            ValidationError: If validation fails with detailed field-level error
+        
+        Requirements: 16.3
+        """
+        try:
+            if tool_name == "check_tag_compliance":
+                InputValidator.validate_resource_types(
+                    arguments.get("resource_types"),
+                    required=True,
+                )
+                InputValidator.validate_filters(
+                    arguments.get("filters"),
+                    required=False,
+                )
+                InputValidator.validate_severity(
+                    arguments.get("severity", "all"),
+                    required=False,
+                )
+            
+            elif tool_name == "find_untagged_resources":
+                InputValidator.validate_resource_types(
+                    arguments.get("resource_types"),
+                    required=True,
+                )
+                InputValidator.validate_regions(
+                    arguments.get("regions"),
+                    required=False,
+                )
+                InputValidator.validate_min_cost_threshold(
+                    arguments.get("min_cost_threshold"),
+                    required=False,
+                )
+            
+            elif tool_name == "validate_resource_tags":
+                InputValidator.validate_resource_arns(
+                    arguments.get("resource_arns"),
+                    required=True,
+                )
+            
+            elif tool_name == "get_cost_attribution_gap":
+                InputValidator.validate_resource_types(
+                    arguments.get("resource_types"),
+                    required=True,
+                )
+                InputValidator.validate_time_period(
+                    arguments.get("time_period"),
+                    required=False,
+                )
+                InputValidator.validate_group_by(
+                    arguments.get("group_by"),
+                    required=False,
+                    valid_options=InputValidator.VALID_GROUP_BY_OPTIONS,
+                )
+                InputValidator.validate_filters(
+                    arguments.get("filters"),
+                    required=False,
+                )
+            
+            elif tool_name == "suggest_tags":
+                InputValidator.validate_string(
+                    arguments.get("resource_arn"),
+                    field_name="resource_arn",
+                    required=True,
+                    max_length=InputValidator.MAX_STRING_LENGTH,
+                    pattern=InputValidator.ARN_PATTERN,
+                )
+            
+            elif tool_name == "get_tagging_policy":
+                # No parameters to validate
+                pass
+            
+            elif tool_name == "generate_compliance_report":
+                InputValidator.validate_resource_types(
+                    arguments.get("resource_types"),
+                    required=True,
+                )
+                InputValidator.validate_format(
+                    arguments.get("format", "json"),
+                    required=False,
+                )
+                InputValidator.validate_boolean(
+                    arguments.get("include_recommendations", True),
+                    field_name="include_recommendations",
+                    required=False,
+                )
+            
+            elif tool_name == "get_violation_history":
+                InputValidator.validate_integer(
+                    arguments.get("days_back", 30),
+                    field_name="days_back",
+                    required=False,
+                    minimum=1,
+                    maximum=90,
+                )
+                InputValidator.validate_group_by(
+                    arguments.get("group_by", "day"),
+                    field_name="group_by",
+                    required=False,
+                    valid_options=InputValidator.VALID_HISTORY_GROUP_BY,
+                )
+            
+            logger.debug(f"Input validation passed for tool: {tool_name}")
+        
+        except ValidationError as e:
+            # Re-raise with tool context
+            logger.warning(
+                f"Input validation failed for tool '{tool_name}': "
+                f"field='{e.field}', message='{e.message}'"
+            )
+            raise
+    
     async def invoke_tool(self, name: str, arguments: dict) -> MCPToolResult:
         """
         Invoke an MCP tool by name with the given arguments.
@@ -382,12 +649,296 @@ class MCPHandler:
         
         Raises:
             ValueError: If the tool name is not recognized
+        
+        Requirements: 14.5, 15.3, 15.4, 15.5, 16.3, 16.4
         """
+        session_id = get_correlation_id()
+        security_service = get_security_service()
+        
+        # Check if tool is registered (Requirement 16.4)
         if name not in self._tools:
+            # Log unknown tool attempt for security monitoring
+            logger.warning(
+                f"Attempt to invoke unknown tool: {name}",
+                extra={
+                    "tool_name": name,
+                    "session_id": session_id,
+                    "correlation_id": session_id,
+                }
+            )
+            
+            # Log to security service
+            if security_service:
+                await security_service.log_unknown_tool_attempt(
+                    tool_name=name,
+                    session_id=session_id,
+                    parameters=arguments,
+                )
+                
+                # Check rate limit for unknown tool attempts (Requirement 16.4)
+                is_blocked, current_count, max_attempts = await security_service.check_unknown_tool_rate_limit(
+                    session_id=session_id,
+                    tool_name=name,
+                )
+                
+                if is_blocked:
+                    # Rate limit exceeded - block the request
+                    logger.error(
+                        f"Rate limit exceeded for unknown tool attempts: "
+                        f"session={session_id}, count={current_count}/{max_attempts}",
+                        extra={
+                            "session_id": session_id,
+                            "tool_name": name,
+                            "attempts": current_count,
+                            "max_attempts": max_attempts,
+                        }
+                    )
+                    
+                    # Log to audit service
+                    if self.audit_service:
+                        self.audit_service.log_invocation(
+                            tool_name=name,
+                            parameters={"_rate_limited": True},
+                            status=AuditStatus.FAILURE,
+                            error_message=f"Rate limit exceeded: {current_count}/{max_attempts} unknown tool attempts",
+                        )
+                    
+                    return MCPToolResult(
+                        content=[{
+                            "type": "text",
+                            "text": json.dumps({
+                                "error": "Rate limit exceeded",
+                                "message": "Too many attempts to invoke unknown tools. Please verify the tool name and try again later.",
+                                "details": {
+                                    "attempts": current_count,
+                                    "max_attempts": max_attempts,
+                                    "window_seconds": security_service.window_seconds,
+                                },
+                            }),
+                        }],
+                        is_error=True,
+                    )
+            
+            # Log to audit service
+            if self.audit_service:
+                self.audit_service.log_invocation(
+                    tool_name=name,
+                    parameters=arguments,
+                    status=AuditStatus.FAILURE,
+                    error_message=f"Unknown tool: {name}",
+                )
+            
+            # Return explicit rejection (Requirement 16.4)
             return MCPToolResult(
-                content=[{"type": "text", "text": f"Unknown tool: {name}"}],
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "error": "Unknown tool",
+                        "message": f"Tool '{name}' is not registered in this MCP server.",
+                        "details": "Please check the tool name and ensure it is one of the registered tools.",
+                        "registered_tools": list(self._tools.keys()),
+                    }),
+                }],
                 is_error=True,
             )
+        
+        # Check parameter size limits before validation (Requirement 16.3)
+        try:
+            InputValidator.check_parameter_size_limits(arguments, "arguments")
+        except SecurityViolationError as e:
+            # Log security violation
+            error_message = f"Security violation ({e.violation_type}): {e.message}"
+            logger.error(
+                f"Security violation detected for tool '{name}': {error_message}",
+                extra={
+                    "tool_name": name,
+                    "violation_type": e.violation_type,
+                    "correlation_id": session_id,
+                }
+            )
+            
+            # Log to security service (Requirement 16.4)
+            if security_service:
+                await security_service.log_validation_bypass_attempt(
+                    tool_name=name,
+                    violation_type=e.violation_type,
+                    session_id=session_id,
+                )
+            
+            if self.audit_service:
+                self.audit_service.log_invocation(
+                    tool_name=name,
+                    parameters={"_security_violation": e.violation_type},  # Don't log full params
+                    status=AuditStatus.FAILURE,
+                    error_message=error_message,
+                )
+            
+            return MCPToolResult(
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "error": "Security violation detected",
+                        "message": "Request rejected due to security policy violation",
+                        "details": "The request contains parameters that exceed security limits or contain suspicious patterns.",
+                    }),
+                }],
+                is_error=True,
+            )
+        
+        # Validate inputs before execution (Requirement 16.3)
+        try:
+            self._validate_tool_inputs(name, arguments)
+        except SecurityViolationError as e:
+            # Log security violation (injection attempt detected during validation)
+            error_message = f"Security violation ({e.violation_type}): {e.message}"
+            logger.error(
+                f"Security violation detected for tool '{name}': {error_message}",
+                extra={
+                    "tool_name": name,
+                    "violation_type": e.violation_type,
+                    "correlation_id": session_id,
+                }
+            )
+            
+            # Log to security service (Requirement 16.4)
+            if security_service:
+                await security_service.log_injection_attempt(
+                    tool_name=name,
+                    violation_type=e.violation_type,
+                    field_name="unknown",  # Field name not available in this context
+                    session_id=session_id,
+                )
+            
+            if self.audit_service:
+                self.audit_service.log_invocation(
+                    tool_name=name,
+                    parameters={"_security_violation": e.violation_type},  # Don't log full params
+                    status=AuditStatus.FAILURE,
+                    error_message=error_message,
+                )
+            
+            return MCPToolResult(
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "error": "Security violation detected",
+                        "message": "Request rejected due to security policy violation",
+                        "details": "The request contains potentially malicious content or injection attempts.",
+                    }),
+                }],
+                is_error=True,
+            )
+        except ValidationError as e:
+            # Return detailed validation error with field-level feedback
+            error_message = f"Validation error for '{e.field}': {e.message}"
+            logger.warning(f"Input validation failed for tool '{name}': {error_message}")
+            
+            if self.audit_service:
+                self.audit_service.log_invocation(
+                    tool_name=name,
+                    parameters=arguments,
+                    status=AuditStatus.FAILURE,
+                    error_message=error_message,
+                )
+            
+            return MCPToolResult(
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "error": "Input validation failed",
+                        "field": e.field,
+                        "message": e.message,
+                        "details": "Please check the input schema and ensure all parameters are valid.",
+                    }),
+                }],
+                is_error=True,
+            )
+        
+        # Check budget before executing tool (Requirement 15.3)
+        budget_tracker = get_budget_tracker()
+        session_id = get_correlation_id()
+        
+        if budget_tracker and session_id:
+            try:
+                success, current_count, max_calls = await budget_tracker.consume_budget(session_id)
+                logger.debug(
+                    f"Budget consumed for session {session_id}: "
+                    f"{current_count}/{max_calls} calls"
+                )
+            except BudgetExhaustedError as e:
+                # Return graceful degradation response (Requirement 15.5)
+                logger.warning(
+                    f"Budget exhausted for session {e.session_id}: "
+                    f"{e.current_count}/{e.max_calls} calls"
+                )
+                
+                # Log budget exhaustion event
+                if self.audit_service:
+                    self.audit_service.log_invocation(
+                        tool_name=name,
+                        parameters=arguments,
+                        status=AuditStatus.FAILURE,
+                        error_message=f"Budget exhausted: {e.current_count}/{e.max_calls}",
+                    )
+                
+                # Create graceful degradation response
+                response = BudgetExhaustedResponse.create(
+                    session_id=e.session_id,
+                    current_usage=e.current_count,
+                    limit=e.max_calls,
+                    retry_after_seconds=budget_tracker.session_ttl_seconds,
+                )
+                
+                return MCPToolResult(
+                    content=response.to_mcp_content(),
+                    is_error=False,  # Not an error, graceful degradation
+                )
+        
+        # Check for loops before executing tool (Requirement 15.4)
+        loop_detector = get_loop_detector()
+        
+        if loop_detector and session_id:
+            try:
+                loop_detected, call_count = await loop_detector.record_call(
+                    session_id=session_id,
+                    tool_name=name,
+                    parameters=arguments,
+                )
+                logger.debug(
+                    f"Loop check for session {session_id}: "
+                    f"Tool '{name}' count={call_count}/{loop_detector.max_identical_calls}"
+                )
+            except LoopDetectedError as e:
+                # Return structured response explaining the loop (Requirement 15.4)
+                logger.warning(
+                    f"Loop detected for session {session_id}: "
+                    f"Tool '{e.tool_name}' called {e.call_count} times "
+                    f"(max: {e.max_calls}), signature={e.call_signature}"
+                )
+                
+                # Log loop detection event with detailed information
+                if self.audit_service:
+                    self.audit_service.log_invocation(
+                        tool_name=name,
+                        parameters=arguments,
+                        status=AuditStatus.FAILURE,
+                        error_message=(
+                            f"Loop detected: {e.call_count}/{e.max_calls} identical calls, "
+                            f"signature={e.call_signature}"
+                        ),
+                    )
+                
+                # Create structured response
+                response = LoopDetectedResponse.create(
+                    tool_name=e.tool_name,
+                    call_count=e.call_count,
+                    max_calls=e.max_calls,
+                )
+                
+                return MCPToolResult(
+                    content=response.to_mcp_content(),
+                    is_error=False,  # Not an error, structured message
+                )
         
         handler = self._tools[name]
         

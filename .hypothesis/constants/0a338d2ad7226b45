@@ -1,0 +1,4 @@
+# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\services\security_service.py
+# hypothesis_version: 6.148.8
+
+[100, '/finops/mcp-server', 'AWS_REGION', 'CLOUDWATCH_ENABLED', 'CLOUDWATCH_LOG_GROUP', 'SECURITY_LOG_STREAM', 'attempts_in_window', 'critical', 'details', 'event_type', 'events_by_severity', 'events_by_type', 'false', 'field_name', 'has_parameters', 'high', 'injection_attempt', 'medium', 'message', 'parameter_count', 'rate_limit_config', 'rate_limit_exceeded', 'recent_events_count', 'redis_enabled', 'security', 'security:', 'security_event', 'session_id', 'severity', 'timestamp', 'tool_name', 'total_events', 'true', 'unknown_tool_attempt', 'us-east-1', 'violation_type', 'window_seconds']

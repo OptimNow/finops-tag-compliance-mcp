@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..models.audit import AuditLogEntry, AuditStatus
+from ..utils.correlation import get_correlation_id
 
 
 class AuditService:
@@ -36,7 +37,8 @@ class AuditService:
                     parameters TEXT NOT NULL,
                     status TEXT NOT NULL,
                     error_message TEXT,
-                    execution_time_ms REAL
+                    execution_time_ms REAL,
+                    correlation_id TEXT
                 )
                 """
             )
@@ -45,6 +47,13 @@ class AuditService:
                 """
                 CREATE INDEX IF NOT EXISTS idx_audit_timestamp 
                 ON audit_logs(timestamp)
+                """
+            )
+            # Create index on correlation_id for faster correlation-based queries
+            cursor.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_audit_correlation_id 
+                ON audit_logs(correlation_id)
                 """
             )
             conn.commit()
@@ -58,6 +67,7 @@ class AuditService:
         status: AuditStatus,
         error_message: Optional[str] = None,
         execution_time_ms: Optional[float] = None,
+        correlation_id: Optional[str] = None,
     ) -> AuditLogEntry:
         """
         Log a tool invocation to the audit database.
@@ -68,11 +78,16 @@ class AuditService:
             status: Success or failure status
             error_message: Error message if status is failure
             execution_time_ms: Execution time in milliseconds
+            correlation_id: Correlation ID for request tracing (auto-captured from context if not provided)
 
         Returns:
             AuditLogEntry with the logged data including generated ID
         """
         timestamp = datetime.now(timezone.utc)
+        
+        # Capture correlation ID from context if not explicitly provided
+        if correlation_id is None:
+            correlation_id = get_correlation_id() or None
 
         conn = sqlite3.connect(self.db_path)
         try:
@@ -80,8 +95,8 @@ class AuditService:
             cursor.execute(
                 """
                 INSERT INTO audit_logs 
-                (timestamp, tool_name, parameters, status, error_message, execution_time_ms)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (timestamp, tool_name, parameters, status, error_message, execution_time_ms, correlation_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     timestamp.isoformat(),
@@ -90,6 +105,7 @@ class AuditService:
                     status.value,
                     error_message,
                     execution_time_ms,
+                    correlation_id,
                 ),
             )
             conn.commit()
@@ -105,12 +121,14 @@ class AuditService:
             status=status,
             error_message=error_message,
             execution_time_ms=execution_time_ms,
+            correlation_id=correlation_id,
         )
 
     def get_logs(
         self,
         tool_name: Optional[str] = None,
         status: Optional[AuditStatus] = None,
+        correlation_id: Optional[str] = None,
         limit: int = 100,
     ) -> list[AuditLogEntry]:
         """
@@ -119,6 +137,7 @@ class AuditService:
         Args:
             tool_name: Filter by tool name
             status: Filter by status
+            correlation_id: Filter by correlation ID
             limit: Maximum number of logs to return
 
         Returns:
@@ -139,6 +158,10 @@ class AuditService:
                 query += " AND status = ?"
                 params.append(status.value)
 
+            if correlation_id:
+                query += " AND correlation_id = ?"
+                params.append(correlation_id)
+
             query += " ORDER BY timestamp DESC LIMIT ?"
             params.append(limit)
 
@@ -156,6 +179,7 @@ class AuditService:
                         status=AuditStatus(row[4]),
                         error_message=row[5],
                         execution_time_ms=row[6],
+                        correlation_id=row[7] if len(row) > 7 else None,
                     )
                 )
 

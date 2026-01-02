@@ -8,6 +8,7 @@ import pytest
 from mcp_server.middleware.audit_middleware import audit_tool, audit_tool_sync
 from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
+from mcp_server.utils.correlation import set_correlation_id
 
 
 @pytest.fixture
@@ -196,3 +197,109 @@ async def test_audit_preserves_function_metadata(setup_audit_db):
     # Check that metadata is preserved
     assert documented_tool.__name__ == "documented_tool"
     assert documented_tool.__doc__ == "This is a documented tool."
+
+
+@pytest.mark.asyncio
+async def test_audit_tool_captures_correlation_id_from_context(setup_audit_db):
+    """Test that audit_tool captures correlation ID from context."""
+    correlation_id = "test-correlation-123"
+    
+    @audit_tool
+    async def tool_with_correlation() -> str:
+        return "result"
+    
+    # Set correlation ID in context
+    set_correlation_id(correlation_id)
+    
+    try:
+        await tool_with_correlation()
+        
+        # Check audit log
+        audit_service = AuditService()
+        logs = audit_service.get_logs()
+        
+        assert len(logs) == 1
+        assert logs[0].correlation_id == correlation_id
+        assert logs[0].tool_name == "tool_with_correlation"
+    finally:
+        # Clean up context
+        set_correlation_id("")
+
+
+@pytest.mark.asyncio
+async def test_audit_tool_without_correlation_id(setup_audit_db):
+    """Test that audit_tool works when no correlation ID is set."""
+    
+    @audit_tool
+    async def tool_without_correlation() -> str:
+        return "result"
+    
+    # Ensure no correlation ID in context
+    set_correlation_id("")
+    
+    await tool_without_correlation()
+    
+    # Check audit log
+    audit_service = AuditService()
+    logs = audit_service.get_logs()
+    
+    assert len(logs) == 1
+    assert logs[0].correlation_id is None
+    assert logs[0].tool_name == "tool_without_correlation"
+
+
+def test_audit_tool_sync_captures_correlation_id(setup_audit_db):
+    """Test that audit_tool_sync captures correlation ID from context."""
+    correlation_id = "sync-correlation-456"
+    
+    @audit_tool_sync
+    def sync_tool_with_correlation(value: int) -> int:
+        return value * 2
+    
+    # Set correlation ID in context
+    set_correlation_id(correlation_id)
+    
+    try:
+        result = sync_tool_with_correlation(5)
+        
+        assert result == 10
+        
+        # Check audit log
+        audit_service = AuditService()
+        logs = audit_service.get_logs()
+        
+        assert len(logs) == 1
+        assert logs[0].correlation_id == correlation_id
+        assert logs[0].tool_name == "sync_tool_with_correlation"
+    finally:
+        # Clean up context
+        set_correlation_id("")
+
+
+@pytest.mark.asyncio
+async def test_audit_tool_correlation_id_on_failure(setup_audit_db):
+    """Test that correlation ID is captured even when tool fails."""
+    correlation_id = "failure-correlation-789"
+    
+    @audit_tool
+    async def failing_tool_with_correlation() -> str:
+        raise ValueError("Tool failed")
+    
+    # Set correlation ID in context
+    set_correlation_id(correlation_id)
+    
+    try:
+        with pytest.raises(ValueError, match="Tool failed"):
+            await failing_tool_with_correlation()
+        
+        # Check audit log
+        audit_service = AuditService()
+        logs = audit_service.get_logs()
+        
+        assert len(logs) == 1
+        assert logs[0].correlation_id == correlation_id
+        assert logs[0].status == AuditStatus.FAILURE
+        assert logs[0].error_message == "Tool failed"
+    finally:
+        # Clean up context
+        set_correlation_id("")
