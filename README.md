@@ -56,6 +56,28 @@ Replace `MCP_SERVER_URL` with your server's address (local or remote EC2).
 4. Restart Claude Desktop
 5. Test with: "Show me our tagging policy"
 
+### AWS Credentials Setup
+
+The server needs AWS credentials to scan your resources. How you provide them depends on where the server runs:
+
+**Local Development (Docker on your machine):**
+
+The `docker-compose.yml` mounts your local AWS credentials folder (`~/.aws`) into the container. This means:
+- You must have AWS CLI configured: `aws configure`
+- Your credentials are shared with the container (read-only)
+- No additional setup needed if `aws ec2 describe-instances` works on your machine
+
+**Remote Server (EC2):**
+
+When deployed to EC2, the server uses an **IAM Instance Profile** - no credentials to configure! The EC2 instance automatically gets permissions from AWS. This is the recommended production setup.
+
+**Troubleshooting "Unable to locate credentials":**
+
+If you see this error, the server can't authenticate with AWS:
+1. **Local**: Run `aws configure` and ensure `aws sts get-caller-identity` works
+2. **Local**: Restart Docker containers: `docker-compose down && docker-compose up -d`
+3. **EC2**: Verify the instance has an IAM role attached with the required permissions
+
 ---
 
 ## Overview

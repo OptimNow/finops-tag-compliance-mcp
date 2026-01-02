@@ -63,11 +63,38 @@ After updating the config, restart Claude Desktop to load the MCP server.
 In Claude Desktop, you should see the FinOps tools available. Test with:
 > "Show me our tagging policy"
 
-### 6. AWS Resources
+### 6. AWS Credentials
+
+The server needs AWS credentials to scan your resources. Setup depends on where the server runs:
+
+**Local Development (Docker on your machine):**
+```bash
+# 1. Configure AWS CLI (if not already done)
+aws configure
+
+# 2. Verify credentials work
+aws sts get-caller-identity
+aws ec2 describe-instances --region us-east-1
+
+# 3. Restart containers to pick up credentials
+docker-compose down && docker-compose up -d
+```
+
+The `docker-compose.yml` mounts your `~/.aws` folder into the container automatically.
+
+**Remote Server (EC2):**
+No credential setup needed - the EC2 instance uses an IAM Instance Profile.
+
+**Troubleshooting "Unable to locate credentials" or "0 resources found":**
+- Verify `aws ec2 describe-instances` works on your machine
+- Restart Docker containers after configuring AWS CLI
+- Check Docker logs: `docker logs finops-mcp-server --tail 20`
+
+### 7. AWS Resources
 
 Ensure you have:
-- [ ] AWS credentials configured (for real resource scanning)
-- [ ] Some tagged and untagged resources to test against
+- [ ] Some EC2 instances, RDS databases, S3 buckets, or Lambda functions to test against
+- [ ] Mix of tagged and untagged resources for realistic testing
 
 ---
 
