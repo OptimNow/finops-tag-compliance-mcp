@@ -465,7 +465,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Update all `self._client.get()`, `self._client.setex()` calls
     - _File: mcp_server/clients/cache.py_
 
-- [ ] 35. Fix Dockerfile - Copy policies directory
+- [x] 35. Fix Dockerfile - Copy policies directory
   - [x] 35.1 Add `COPY policies/ ./policies/` to Dockerfile
     - Ensure tagging_policy.json is available in container
     - _File: Dockerfile:34-35_
@@ -523,7 +523,7 @@ Based on code assessment report (Quality Score: 7.5/10)
 
 ### High Priority (GenAI/Agentic System Requirements)
 
-- [ ] 42. Correlation ID Generation and Propagation
+- [x] 42. Correlation ID Generation and Propagation
   - [x] 42.1 Create correlation ID utility module `[Haiku]`
     - Create `mcp_server/utils/correlation.py` with UUID4-based ID generation
     - Add correlation ID to request context using FastAPI middleware
@@ -590,7 +590,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - **Property 15: Loop Detection**
     - **Validates: Requirements 15.4**
 
-- [ ] 45. Input Schema Validation Enhancement
+- [x] 45. Input Schema Validation Enhancement
   - [x] 45.1 Strengthen input validation in MCP handler `[Sonnet]`
     - Add comprehensive JSON schema validation before tool execution
     - Create detailed validation error responses with field-level feedback
@@ -607,7 +607,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - **Property 17: Input Schema Validation**
     - **Validates: Requirements 16.3**
 
-- [ ] 46. Unknown Tool Rejection and Security Logging
+- [x] 46. Unknown Tool Rejection and Security Logging
   - [x] 46.1 Enhance unknown tool handling `[Sonnet]`
     - Update MCP handler to explicitly reject unknown tools
     - Create security event logging for unauthorized tool attempts
@@ -626,7 +626,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Created `tests/property/test_unknown_tool_rejection.py` with 9 property tests
     - Tests verify: unknown tools rejected with error, security logging, rate limiting, audit logging
 
-- [ ] 47. Agent Observability Dashboard Data
+- [x] 47. Agent Observability Dashboard Data
   - [x] 47.1 Create observability data models `[Haiku]`
     - Create `mcp_server/models/observability.py`
     - Add models for session metrics, tool usage stats, error rates
@@ -645,7 +645,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Add budget and loop detection metrics
     - _Requirements: 15.2_
 
-- [ ] 48. Security Hardening
+- [x] 48. Security Hardening
   - [x] 48.1 Implement request sanitization `[Sonnet]`
     - Add input sanitization middleware
     - Validate request headers and prevent header injection
@@ -664,7 +664,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Document security configuration options
     - _Requirements: 16.1, 16.2_
 
-- [-] 49. Checkpoint - Agent Observability and Security Complete
+- [x] 49. Checkpoint - Agent Observability and Security Complete
   - Ensure all new property tests pass
   - Verify correlation IDs appear in all logs and audit entries
   - Test budget enforcement with various limits
