@@ -22,7 +22,6 @@ from datetime import datetime
 
 # Configuration
 BASE_URL = "http://localhost:8080"
-MCP_ENDPOINT = f"{BASE_URL}/mcp"
 
 # Colors for terminal output
 GREEN = "\033[92m"
@@ -108,9 +107,15 @@ def test_root_endpoint():
         )
         
         print_result(
-            "Has 'tools' field",
-            "tools" in data,
-            f"Tool count: {len(data.get('tools', []))}"
+            "Has 'tools_count' field",
+            "tools_count" in data,
+            f"Tool count: {data.get('tools_count', 'MISSING')}"
+        )
+        
+        print_result(
+            "Has 'mcp_endpoints' field",
+            "mcp_endpoints" in data,
+            f"Endpoints: {list(data.get('mcp_endpoints', {}).keys())}"
         )
         
         return response.status_code == 200
@@ -125,16 +130,9 @@ def test_mcp_list_tools():
     print_header("Test 3: MCP Tools List")
     
     try:
-        payload = {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/list",
-            "params": {}
-        }
-        
-        response = requests.post(
-            MCP_ENDPOINT,
-            json=payload,
+        # Use REST endpoint (GET /mcp/tools)
+        response = requests.get(
+            f"{BASE_URL}/mcp/tools",
             headers={"Content-Type": "application/json"},
             timeout=10
         )
@@ -142,11 +140,12 @@ def test_mcp_list_tools():
         
         print_result(
             "HTTP 200 response",
-            response.status_code == 200
+            response.status_code == 200,
+            f"Got: {response.status_code}"
         )
         
         # Check for tools in response
-        tools = data.get("result", {}).get("tools", [])
+        tools = data.get("tools", [])
         tool_names = [t.get("name") for t in tools]
         
         expected_tools = [
@@ -184,18 +183,14 @@ def test_get_tagging_policy():
     print_header("Test 4: Get Tagging Policy Tool")
     
     try:
+        # Use REST endpoint (POST /mcp/tools/call)
         payload = {
-            "jsonrpc": "2.0",
-            "id": 2,
-            "method": "tools/call",
-            "params": {
-                "name": "get_tagging_policy",
-                "arguments": {}
-            }
+            "name": "get_tagging_policy",
+            "arguments": {}
         }
         
         response = requests.post(
-            MCP_ENDPOINT,
+            f"{BASE_URL}/mcp/tools/call",
             json=payload,
             headers={"Content-Type": "application/json"},
             timeout=10
@@ -204,12 +199,12 @@ def test_get_tagging_policy():
         
         print_result(
             "HTTP 200 response",
-            response.status_code == 200
+            response.status_code == 200,
+            f"Got: {response.status_code}"
         )
         
-        # Check for result
-        result = data.get("result", {})
-        content = result.get("content", [])
+        # Check for content in response
+        content = data.get("content", [])
         
         print_result(
             "Has content",
@@ -219,19 +214,22 @@ def test_get_tagging_policy():
         
         if content:
             text = content[0].get("text", "")
-            policy_data = json.loads(text) if text else {}
-            
-            print_result(
-                "Has required_tags",
-                "required_tags" in policy_data,
-                f"Count: {len(policy_data.get('required_tags', []))}"
-            )
-            
-            print_result(
-                "Has version",
-                "version" in policy_data,
-                f"Version: {policy_data.get('version', 'MISSING')}"
-            )
+            try:
+                policy_data = json.loads(text) if text else {}
+                
+                print_result(
+                    "Has required_tags",
+                    "required_tags" in policy_data,
+                    f"Count: {len(policy_data.get('required_tags', []))}"
+                )
+                
+                print_result(
+                    "Has version",
+                    "version" in policy_data,
+                    f"Version: {policy_data.get('version', 'MISSING')}"
+                )
+            except json.JSONDecodeError:
+                print_result("Valid JSON response", False, "Could not parse response as JSON")
         
         return response.status_code == 200 and len(content) > 0
         
@@ -245,20 +243,16 @@ def test_check_compliance_mock():
     print_header("Test 5: Check Tag Compliance Tool")
     
     try:
+        # Use REST endpoint (POST /mcp/tools/call)
         payload = {
-            "jsonrpc": "2.0",
-            "id": 3,
-            "method": "tools/call",
-            "params": {
-                "name": "check_tag_compliance",
-                "arguments": {
-                    "resource_types": ["ec2:instance"]
-                }
+            "name": "check_tag_compliance",
+            "arguments": {
+                "resource_types": ["ec2:instance"]
             }
         }
         
         response = requests.post(
-            MCP_ENDPOINT,
+            f"{BASE_URL}/mcp/tools/call",
             json=payload,
             headers={"Content-Type": "application/json"},
             timeout=30
@@ -267,14 +261,18 @@ def test_check_compliance_mock():
         
         print_result(
             "HTTP 200 response",
-            response.status_code == 200
+            response.status_code == 200,
+            f"Got: {response.status_code}"
         )
         
-        # Check for result or error
-        if "error" in data:
-            error = data["error"]
-            # AWS errors are expected if no credentials
-            if "AWS" in str(error) or "credentials" in str(error).lower():
+        # Check for content or error
+        content = data.get("content", [])
+        is_error = data.get("is_error", False)
+        
+        if is_error and content:
+            # Check if it's an expected AWS credentials error
+            text = content[0].get("text", "") if content else ""
+            if "AWS" in text or "credentials" in text.lower() or "NoCredentialsError" in text:
                 print_result(
                     "Tool executed (AWS credentials needed)",
                     True,
@@ -282,15 +280,13 @@ def test_check_compliance_mock():
                 )
                 return True
             else:
-                print_result("Tool execution", False, str(error))
+                print_result("Tool execution", False, text[:100] if text else "Unknown error")
                 return False
-        
-        result = data.get("result", {})
-        content = result.get("content", [])
         
         print_result(
             "Has content",
-            len(content) > 0
+            len(content) > 0,
+            f"Content items: {len(content)}"
         )
         
         return response.status_code == 200
