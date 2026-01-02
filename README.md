@@ -25,6 +25,11 @@ If someone has deployed the server to EC2 for you, get the server URL (e.g., `ht
 
 ### Configure Claude Desktop
 
+**Prerequisites:** Python 3.11+ with `requests` library installed:
+```bash
+pip install requests
+```
+
 1. Download the bridge script: [mcp_bridge.py](scripts/mcp_bridge.py)
 2. Save it somewhere on your machine (e.g., `C:\tools\mcp_bridge.py`)
 3. Edit Claude Desktop config:

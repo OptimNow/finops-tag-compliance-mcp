@@ -12,7 +12,14 @@
 
 Complete these steps before starting UAT:
 
-### 1. Start the MCP Server
+### 1. Install Python Dependencies
+
+The bridge script requires the `requests` library:
+```bash
+pip install requests
+```
+
+### 2. Start the MCP Server
 
 ```bash
 # Start Docker containers
@@ -24,7 +31,7 @@ python scripts/local_test.py
 
 Health endpoint should return `{"status": "healthy"}` at http://localhost:8080/health
 
-### 2. Configure Claude Desktop
+### 3. Configure Claude Desktop
 
 Add the MCP server to Claude Desktop's config file:
 
@@ -47,16 +54,16 @@ Add the MCP server to Claude Desktop's config file:
 
 Replace `C:\\path\\to\\repo` with your actual repository path.
 
-### 3. Restart Claude Desktop
+### 4. Restart Claude Desktop
 
 After updating the config, restart Claude Desktop to load the MCP server.
 
-### 4. Verify Connection
+### 5. Verify Connection
 
 In Claude Desktop, you should see the FinOps tools available. Test with:
 > "Show me our tagging policy"
 
-### 5. AWS Resources
+### 6. AWS Resources
 
 Ensure you have:
 - [ ] AWS credentials configured (for real resource scanning)
