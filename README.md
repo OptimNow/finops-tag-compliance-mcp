@@ -111,9 +111,12 @@ The FinOps Tag Compliance MCP Server is a multi-cloud tag governance solution th
 
 ## Documentation
 
-- [Full Specification](./SPECIFICATION.md) - Complete technical specification with 15 tools, 5 resources, and detailed use cases
-- Implementation guide (coming soon)
-- API reference (coming soon)
+- [Full Specification](./docs/SPECIFICATION.md) - Complete technical specification with 15 tools, 5 resources, and detailed use cases
+- [Deployment Guide](./docs/DEPLOYMENT.md) - How to deploy to AWS EC2 or other cloud platforms
+- [UAT Protocol](./docs/UAT_PROTOCOL.md) - User acceptance testing procedures
+- [Roadmap](./docs/ROADMAP.md) - Development phases and timeline
+- [Testing Quick Start](./docs/TESTING_QUICK_START.md) - How to run tests
+- Additional documentation in the [docs/](./docs/) folder
 
 ---
 

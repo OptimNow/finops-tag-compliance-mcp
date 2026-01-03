@@ -4,7 +4,7 @@
 
 This plan breaks down the Phase 1 MVP into discrete, incremental tasks. Each task builds on the previous ones, ensuring we always have working code that can be tested. The implementation uses Python 3.11 with FastAPI for the MCP server, boto3 for AWS integration, and Hypothesis for property-based testing.
 
-For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.md](../../../PHASE-1-SPECIFICATION.md).
+For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.md](../../../docs/PHASE-1-SPECIFICATION.md).
 
 ## Tasks
 
@@ -414,7 +414,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
 
 - [ ] 30. User Acceptance Testing (UAT)
   - [ ] 30.1 Execute UAT protocol
-    - Follow test scenarios in UAT_PROTOCOL.md
+    - Follow test scenarios in docs/UAT_PROTOCOL.md
     - Test all 8 MCP tools through Claude Desktop
     - Validate business value for each feature
     - Document results in UAT checklist

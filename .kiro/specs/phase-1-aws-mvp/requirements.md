@@ -8,7 +8,7 @@ This document captures the requirements for Phase 1 of the FinOps Tag Compliance
 
 Phase 1 keeps things simple: AWS only, 8 essential tools, deployed on a single EC2 instance. We prove the concept works, gather feedback, then scale.
 
-For the complete technical vision, see [PHASE-1-SPECIFICATION.md](../../../PHASE-1-SPECIFICATION.md).
+For the complete technical vision, see [PHASE-1-SPECIFICATION.md](../../../docs/PHASE-1-SPECIFICATION.md).
 
 ## Glossary
 

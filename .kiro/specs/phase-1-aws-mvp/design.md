@@ -6,7 +6,7 @@ This design document describes how we'll build the Phase 1 MVP of the FinOps Tag
 
 The server exposes 8 MCP tools that transform raw AWS tag data into actionable compliance intelligence. Users interact through AI assistants like Claude, asking natural language questions like "How compliant are my EC2 instances?" and getting back structured, insightful responses.
 
-For the complete infrastructure specifications, deployment guides, and code examples, see [PHASE-1-SPECIFICATION.md](../../../PHASE-1-SPECIFICATION.md).
+For the complete infrastructure specifications, deployment guides, and code examples, see [PHASE-1-SPECIFICATION.md](../../../docs/PHASE-1-SPECIFICATION.md).
 
 ## Architecture
 
@@ -243,7 +243,7 @@ Not every tag makes sense for every resource. S3 buckets might need "DataClassif
 
 #### Sample Starter Policy
 
-A complete example is provided in [PHASE-1-SPECIFICATION.md](../../../PHASE-1-SPECIFICATION.md#tagging-policy-schema). Here's a minimal version to get started:
+A complete example is provided in [PHASE-1-SPECIFICATION.md](../../../docs/PHASE-1-SPECIFICATION.md#tagging-policy-schema). Here's a minimal version to get started:
 
 ```json
 {
