@@ -71,6 +71,7 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 - Step-up authorization for write operations
 - Improved caching and performance
 - OAuth 2.0 + PKCE authentication
+- **Agent Safety Enhancements** - Intent disambiguation, approval workflows, cost thresholds
 
 ✅ **Production Infrastructure**
 - ECS Fargate deployment (2+ tasks)
@@ -86,6 +87,10 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 - Scheduled compliance audits
 - Enhanced audit logging
 - Rate limiting and quotas
+- **Intent commit pattern** - Agents describe what they'll do before executing
+- **Clarification loops** - Resolve ambiguous requests before execution
+- **Dry run mode** - Preview operations without executing
+- **Cost/risk thresholds** - Require approval for expensive operations
 
 ### Success Metrics
 

@@ -18,6 +18,7 @@ Phase 2 transforms the Phase 1 MVP into a production-grade service with high ava
 - ✅ OAuth 2.0 + PKCE authentication (replaces simple API keys)
 - ✅ Step-up authorization for write operations
 - ✅ 7 additional tools (15 total) including bulk tagging
+- ✅ **Agent Safety Enhancements** - Intent disambiguation, approval workflows, cost thresholds
 - ✅ Auto-scaling based on load
 - ✅ Comprehensive monitoring and alerting
 - ✅ Infrastructure as Code (Terraform)
@@ -87,6 +88,103 @@ Phase 2 transforms the Phase 1 MVP into a production-grade service with high ava
 | **VPC** | 3 subnets across 3 AZs | High availability |
 | **Secrets Manager** | 3-5 secrets | OAuth keys, database credentials |
 | **CloudWatch** | Logs + Metrics + Alarms | Observability |
+
+---
+
+## Agent Safety Enhancements
+
+Phase 2 adds critical safety features to prevent "intent failure" - where agents execute based on underspecified requests, potentially wasting resources or misleading users.
+
+### Key Safety Features
+
+**1. Intent Disambiguation**
+- Detects ambiguous requests (missing region, resource type, time period)
+- Triggers clarification loops before execution
+- Generates "intent commits" describing what will be executed
+- Requires user confirmation for high-stakes operations
+
+**2. Cost & Risk Thresholds**
+- Enforces configurable limits (e.g., max 500 resources without approval)
+- Estimates API costs before execution
+- Requires explicit approval for expensive operations
+- Supports progressive disclosure (sample first, expand if needed)
+
+**3. Intent Belief Logging**
+- Logs what the agent believed the user wanted
+- Captures assumptions made and alternatives considered
+- Enables debugging of "why did it do that?" issues
+- Tracks whether outcomes matched stated intent
+
+**4. Dry Run Mode**
+- Preview operations without executing
+- Shows estimated resource count, API calls, cost, and time
+- Validates requests before committing
+- Doesn't count against tool call budgets
+
+**5. Regret Prediction**
+- Identifies potentially regrettable scenarios
+- Warns about common mistakes (wrong region, missing resources)
+- Learns from user corrections to improve predictions
+- Configurable per organization
+
+### Example: Intent Disambiguation Flow
+
+```
+User: "Check my compliance"
+
+MCP Server: {
+  "clarification_needed": true,
+  "ambiguities": [
+    {
+      "parameter": "resource_types",
+      "question": "Which resource types should I check?",
+      "options": [
+        {"value": ["ec2:instance"], "estimated_resources": 42, "estimated_time": "2s"},
+        {"value": ["ec2:instance", "rds:db"], "estimated_resources": 67, "estimated_time": "3s"},
+        {"value": "all", "estimated_resources": 450, "estimated_time": "15s", "requires_approval": true}
+      ]
+    },
+    {
+      "parameter": "region",
+      "question": "Which region(s)?",
+      "options": [
+        {"value": "us-east-1", "estimated_resources": 42},
+        {"value": ["us-east-1", "us-west-2"], "estimated_resources": 89},
+        {"value": "all", "estimated_resources": 450, "requires_approval": true}
+      ]
+    }
+  ]
+}
+
+User clarifies: "EC2 instances in us-east-1"
+
+MCP Server: {
+  "intent_commit": {
+    "operation": "check_tag_compliance",
+    "parameters": {
+      "resource_types": ["ec2:instance"],
+      "region": "us-east-1"
+    },
+    "estimated_scope": {
+      "resources": 42,
+      "api_calls": 3,
+      "estimated_cost": "$0.002",
+      "estimated_time": "2s"
+    },
+    "potential_regrets": [
+      "This will only check EC2 instances. RDS databases and S3 buckets will not be included."
+    ]
+  },
+  "approval_required": false,
+  "proceed": "Confirm to execute"
+}
+
+User: "Confirm"
+
+MCP Server: Executes compliance check
+```
+
+For complete requirements and design, see [Agent Safety Enhancements Spec](../.kiro/specs/agent-safety-enhancements/requirements.md).
 
 ---
 
