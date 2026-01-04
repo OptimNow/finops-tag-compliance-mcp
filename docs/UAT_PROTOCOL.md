@@ -63,9 +63,76 @@ After updating the config, restart Claude Desktop to load the MCP server.
 In Claude Desktop, you should see the FinOps tools available. Test with:
 > "Show me our tagging policy"
 
-### 6. AWS Credentials
+### 6. AWS Credentials and IAM Permissions
 
-The server needs AWS credentials to scan your resources. Setup depends on where the server runs:
+The server needs AWS credentials with specific IAM permissions to scan your resources.
+
+#### Required IAM Permissions
+
+The MCP server requires **read-only** access to AWS resources. Create an IAM policy with these permissions:
+
+**Option A: Use AWS Managed Policy (Quick Start)**
+```bash
+# Attach ReadOnlyAccess managed policy (broad permissions)
+aws iam attach-user-policy \
+  --user-name mcp-test-user \
+  --policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess
+```
+
+**Option B: Create Custom Policy (Recommended - Least Privilege)**
+
+Create a file `finops-mcp-uat-policy.json`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "TagComplianceReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeTags",
+        "ec2:DescribeVolumes",
+        "ec2:DescribeRegions",
+        "rds:DescribeDBInstances",
+        "rds:ListTagsForResource",
+        "s3:ListAllMyBuckets",
+        "s3:GetBucketTagging",
+        "s3:GetBucketLocation",
+        "lambda:ListFunctions",
+        "lambda:ListTags",
+        "ecs:ListClusters",
+        "ecs:ListServices",
+        "ecs:DescribeServices",
+        "ecs:ListTagsForResource",
+        "ce:GetCostAndUsage",
+        "ce:GetTags",
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+Apply the policy:
+
+```bash
+# Create the IAM policy
+aws iam create-policy \
+  --policy-name FinOpsMCPUATPolicy \
+  --policy-document file://finops-mcp-uat-policy.json
+
+# Attach to your IAM user
+aws iam attach-user-policy \
+  --user-name YOUR_IAM_USERNAME \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FinOpsMCPUATPolicy
+```
+
+#### Credential Setup by Environment
 
 **Local Development (Docker on your machine):**
 ```bash
@@ -83,12 +150,43 @@ docker-compose down && docker-compose up -d
 The `docker-compose.yml` mounts your `~/.aws` folder into the container automatically.
 
 **Remote Server (EC2):**
-No credential setup needed - the EC2 instance uses an IAM Instance Profile.
+No credential setup needed - the EC2 instance uses an IAM Instance Profile with the policy above attached to the role.
 
-**Troubleshooting "Unable to locate credentials" or "0 resources found":**
-- Verify `aws ec2 describe-instances` works on your machine
+#### Troubleshooting Permission Issues
+
+**"Unable to locate credentials" error:**
+- Verify `aws sts get-caller-identity` works on your machine
 - Restart Docker containers after configuring AWS CLI
 - Check Docker logs: `docker logs finops-mcp-server --tail 20`
+
+**"0 resources found" or "Access Denied" errors:**
+- Verify IAM permissions: `aws ec2 describe-instances --region us-east-1`
+- Check if you have resources in the region you're testing
+- Ensure Cost Explorer is enabled: `aws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-02 --granularity MONTHLY --metrics BlendedCost`
+- Review CloudTrail logs for specific permission denials
+
+**Testing IAM Permissions:**
+```bash
+# Test EC2 access
+aws ec2 describe-instances --region us-east-1 --max-results 5
+
+# Test RDS access
+aws rds describe-db-instances --region us-east-1 --max-results 5
+
+# Test S3 access
+aws s3api list-buckets
+
+# Test Lambda access
+aws lambda list-functions --region us-east-1 --max-items 5
+
+# Test Cost Explorer access
+aws ce get-cost-and-usage \
+  --time-period Start=2024-01-01,End=2024-01-02 \
+  --granularity MONTHLY \
+  --metrics BlendedCost
+```
+
+If any of these commands fail, you're missing required permissions.
 
 ### 7. AWS Resources
 

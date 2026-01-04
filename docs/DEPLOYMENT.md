@@ -5,6 +5,7 @@ This guide covers deploying the MCP server to AWS EC2 for Phase 1.
 ## Prerequisites
 
 - AWS CLI configured with appropriate credentials
+- IAM permissions configured (see [IAM Permissions Guide](IAM_PERMISSIONS.md))
 - An existing VPC and subnet
 - An EC2 key pair for SSH access
 - Docker installed locally (for building images)
@@ -107,6 +108,10 @@ curl http://$INSTANCE_IP:8080/health
 ## Option 2: Manual Deployment
 
 ### Step 1: Create IAM Role
+
+The MCP server requires read-only access to AWS resources. See the [IAM Permissions Guide](IAM_PERMISSIONS.md) for detailed setup instructions.
+
+**Quick Setup**:
 
 Create an IAM role with the following policy:
 

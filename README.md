@@ -58,12 +58,15 @@ Replace `MCP_SERVER_URL` with your server's address (local or remote EC2).
 
 ### AWS Credentials Setup
 
-The server needs AWS credentials to scan your resources. How you provide them depends on where the server runs:
+The server needs AWS credentials with specific IAM permissions to scan your resources. See the [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) for detailed setup instructions.
+
+**Quick Overview**:
 
 **Local Development (Docker on your machine):**
 
 The `docker-compose.yml` mounts your local AWS credentials folder (`~/.aws`) into the container. This means:
 - You must have AWS CLI configured: `aws configure`
+- Your IAM user needs read-only permissions (see [IAM guide](./docs/IAM_PERMISSIONS.md))
 - Your credentials are shared with the container (read-only)
 - No additional setup needed if `aws ec2 describe-instances` works on your machine
 
@@ -71,12 +74,13 @@ The `docker-compose.yml` mounts your local AWS credentials folder (`~/.aws`) int
 
 When deployed to EC2, the server uses an **IAM Instance Profile** - no credentials to configure! The EC2 instance automatically gets permissions from AWS. This is the recommended production setup.
 
-**Troubleshooting "Unable to locate credentials":**
+**Troubleshooting "Unable to locate credentials" or "Access Denied":**
 
-If you see this error, the server can't authenticate with AWS:
+If you see these errors, the server can't authenticate with AWS or lacks permissions:
 1. **Local**: Run `aws configure` and ensure `aws sts get-caller-identity` works
-2. **Local**: Restart Docker containers: `docker-compose down && docker-compose up -d`
-3. **EC2**: Verify the instance has an IAM role attached with the required permissions
+2. **Local**: Verify IAM permissions with the test script in the [IAM guide](./docs/IAM_PERMISSIONS.md)
+3. **Local**: Restart Docker containers: `docker-compose down && docker-compose up -d`
+4. **EC2**: Verify the instance has an IAM role attached with the required permissions
 
 ---
 
