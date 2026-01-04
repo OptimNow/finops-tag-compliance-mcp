@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python add_copyright_headers.py:*)",
+      "Bash(del:*)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nAdd intellectual property protection for OptimNow\n\n- Replace Apache 2.0 with proprietary evaluation license\n- Add copyright headers to all Python source files (55 files)\n- Create comprehensive NDA template for France-based company\n- Update license to require NDA for evaluation access\n- Restrict commercial use, copying, and redistribution\n- Governed by French law with Paris jurisdiction\n\n🤖 Generated with [Claude Code](https://claude.com/claude-code)\n\nCo-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git push:*)"
+    ]
+  }
+}

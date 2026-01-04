@@ -123,8 +123,9 @@ class InputValidator:
     ]
     
     # ARN pattern validation (more permissive to handle various resource types)
+    # Note: S3 bucket ARNs have empty region/account fields: arn:aws:s3:::bucket-name
     ARN_PATTERN = re.compile(
-        r'^arn:aws:[a-z0-9\-]+:[a-z0-9\-]*:\d{12}:[a-z0-9\-/:._]+$'
+        r'^arn:aws:[a-z0-9\-]+:[a-z0-9\-]*:(\d{12}|):[a-z0-9\-/:._]+$'
     )
     
     # Date pattern validation (YYYY-MM-DD)
