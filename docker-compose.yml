@@ -50,7 +50,8 @@ services:
       - POLICY_FILE_PATH=${POLICY_FILE_PATH:-/app/policies/tagging_policy.json}
       
       # Database configuration
-      - DATABASE_PATH=${DATABASE_PATH:-/app/data/compliance.db}
+      - AUDIT_DB_PATH=${AUDIT_DB_PATH:-/app/data/audit_logs.db}
+      - HISTORY_DB_PATH=${HISTORY_DB_PATH:-/app/data/compliance_history.db}
       
       # Application configuration
       - ENVIRONMENT=${ENVIRONMENT:-development}

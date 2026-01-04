@@ -640,3 +640,170 @@ class TestCheckTagCompliancePerformance:
         
         # Performance requirement: complete within 5 seconds
         assert execution_time < 5.0, f"Execution took {execution_time:.2f}s, expected < 5s"
+
+
+@pytest.mark.integration
+class TestCheckTagComplianceHistoryStorage:
+    """Test automatic history storage for compliance scans."""
+    
+    @pytest.mark.asyncio
+    async def test_compliance_check_stores_history_automatically(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that compliance checks automatically store results in history database."""
+        from mcp_server.services.history_service import HistoryService
+        from mcp_server.tools.get_violation_history import get_violation_history
+        
+        # Create an in-memory history service for testing
+        history_service = HistoryService(db_path=":memory:")
+        
+        # Setup mock resources
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            },
+            {
+                "resource_id": "i-456",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 150.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-456"
+            }
+        ]
+        mock_aws_client.get_ec2_instances.return_value = mock_resources
+        
+        # Setup one violation
+        violation = Violation(
+            resource_id="i-456",
+            resource_type="ec2:instance",
+            region="us-east-1",
+            violation_type=ViolationType.MISSING_REQUIRED_TAG,
+            tag_name="CostCenter",
+            severity=Severity.ERROR,
+            cost_impact_monthly=150.0
+        )
+        
+        mock_policy_service.validate_resource_tags.side_effect = [
+            [],  # First resource is compliant
+            [violation]  # Second resource has violation
+        ]
+        
+        # Run compliance check with history service
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance"],
+            history_service=history_service
+        )
+        
+        # Verify compliance result
+        assert result.total_resources == 2
+        assert result.compliant_resources == 1
+        assert result.compliance_score == 0.5
+        assert len(result.violations) == 1
+        
+        # Verify that the result was stored in history
+        history_result = await get_violation_history(
+            days_back=1,
+            group_by="day",
+            db_path=":memory:"  # Use same in-memory database
+        )
+        
+        # Should have one history entry
+        assert len(history_result.history_result.history) == 1
+        
+        # Verify stored data matches compliance result
+        stored_entry = history_result.history_result.history[0]
+        assert stored_entry.compliance_score == result.compliance_score
+        assert stored_entry.total_resources == result.total_resources
+        assert stored_entry.compliant_resources == result.compliant_resources
+        assert stored_entry.violation_count == len(result.violations)
+        
+        # Verify timestamp is recent (within last minute)
+        from datetime import datetime, timedelta
+        now = datetime.utcnow()
+        time_diff = abs((stored_entry.timestamp - now).total_seconds())
+        assert time_diff < 60, f"Stored timestamp {stored_entry.timestamp} is not recent"
+        
+        # Clean up
+        history_service.close()
+    
+    @pytest.mark.asyncio
+    async def test_compliance_check_handles_history_storage_errors_gracefully(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that compliance checks continue working even if history storage fails."""
+        from mcp_server.services.history_service import HistoryService
+        from unittest.mock import AsyncMock
+        
+        # Create a mock history service that raises an exception
+        history_service = MagicMock(spec=HistoryService)
+        history_service.store_scan_result = AsyncMock(side_effect=Exception("Database error"))
+        
+        # Setup mock resources
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            }
+        ]
+        mock_aws_client.get_ec2_instances.return_value = mock_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        # Run compliance check with failing history service
+        # This should NOT raise an exception
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance"],
+            history_service=history_service
+        )
+        
+        # Verify compliance check still worked
+        assert result.total_resources == 1
+        assert result.compliant_resources == 1
+        assert result.compliance_score == 1.0
+        assert len(result.violations) == 0
+        
+        # Verify that store_scan_result was called (but failed)
+        history_service.store_scan_result.assert_called_once_with(result)
+    
+    @pytest.mark.asyncio
+    async def test_compliance_check_works_without_history_service(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that compliance checks work normally when no history service is provided."""
+        # Setup mock resources
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            }
+        ]
+        mock_aws_client.get_ec2_instances.return_value = mock_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        # Run compliance check without history service (None)
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance"],
+            history_service=None
+        )
+        
+        # Verify compliance check worked normally
+        assert result.total_resources == 1
+        assert result.compliant_resources == 1
+        assert result.compliance_score == 1.0
+        assert len(result.violations) == 0

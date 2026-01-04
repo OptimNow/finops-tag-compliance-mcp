@@ -2,7 +2,11 @@
 # Licensed under the Proprietary Software License.
 # See LICENSE file in the project root for full license information.
 
-﻿"""Loop detection utility for preventing repeated tool calls.
+"""Loop detection utility for preventing repeated tool calls.
+
+This module provides utilities for detecting when the same tool is called
+with identical parameters multiple times within a session, which may indicate
+an agent loop or runaway behavior.
 
 Requirements: 15.4
 """
@@ -184,7 +188,10 @@ class LoopDetector:
                 await self._increment_stats_redis(session_id)
             else:
                 self._increment_stats_local(session_id)
-            logger.warning(f"Loop detected for session {session_id}: Tool '{tool_name}' called {current_count} times")
+            logger.warning(
+                f"Loop detected for session {session_id}: Tool '{tool_name}' called {current_count} times",
+                extra={"event_type": "loop_detected", "session_id": session_id, "tool_name": tool_name}
+            )
             raise LoopDetectedError(
                 tool_name=tool_name, call_signature=call_signature,
                 call_count=current_count, max_calls=self._max_identical_calls, session_id=session_id

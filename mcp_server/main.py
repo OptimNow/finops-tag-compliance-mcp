@@ -30,6 +30,7 @@ from .clients.cache import RedisCache
 from .services.audit_service import AuditService
 from .services.policy_service import PolicyService
 from .services.compliance_service import ComplianceService
+from .services.history_service import HistoryService
 from .services.security_service import SecurityService, set_security_service, configure_security_logging
 from .mcp_handler import MCPHandler, MCPToolResult
 from .utils.cloudwatch_logger import configure_cloudwatch_logging, CorrelationIDFilter
@@ -71,6 +72,7 @@ configure_cloudwatch_logging()
 # Global instances
 redis_cache: Optional[RedisCache] = None
 audit_service: Optional[AuditService] = None
+history_service: Optional[HistoryService] = None
 aws_client: Optional[AWSClient] = None
 policy_service: Optional[PolicyService] = None
 compliance_service: Optional[ComplianceService] = None
@@ -104,6 +106,7 @@ async def lifespan(app: FastAPI):
     Initializes all services on startup:
     - Redis cache for caching compliance data
     - Audit service for logging tool invocations
+    - History service for storing compliance scan results
     - AWS client for AWS API calls
     - Policy service for tagging policy management
     - Compliance service for compliance checking
@@ -113,7 +116,7 @@ async def lifespan(app: FastAPI):
     
     Requirements: 14.2
     """
-    global redis_cache, audit_service, aws_client, policy_service
+    global redis_cache, audit_service, history_service, aws_client, policy_service
     global compliance_service, security_service, mcp_handler
     
     # Startup
@@ -137,6 +140,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize audit service: {e}")
         audit_service = None
+    
+    # Initialize history service
+    try:
+        history_service = HistoryService(db_path=app_settings.history_db_path)
+        logger.info(f"History service initialized with database: {app_settings.history_db_path}")
+    except Exception as e:
+        logger.warning(f"Failed to initialize history service: {e}")
+        history_service = None
     
     # Initialize AWS client
     try:
@@ -241,6 +252,7 @@ async def lifespan(app: FastAPI):
         compliance_service=compliance_service,
         redis_cache=redis_cache,
         audit_service=audit_service,
+        history_service=history_service,
     )
     logger.info("MCP handler initialized with 8 tools")
     

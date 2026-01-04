@@ -9,6 +9,7 @@ from typing import Optional
 
 from ..models.compliance import ComplianceResult
 from ..services.compliance_service import ComplianceService
+from ..services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)
 
@@ -17,14 +18,16 @@ async def check_tag_compliance(
     compliance_service: ComplianceService,
     resource_types: list[str],
     filters: Optional[dict] = None,
-    severity: str = "all"
+    severity: str = "all",
+    history_service: Optional[HistoryService] = None
 ) -> ComplianceResult:
     """
     Check tag compliance for AWS resources.
     
     This tool scans specified AWS resource types and validates them against
     the organization's tagging policy. It returns a compliance score along
-    with detailed violation information.
+    with detailed violation information. Results are automatically stored
+    in the compliance history database for trend tracking.
     
     Args:
         compliance_service: ComplianceService instance for performing checks
@@ -38,6 +41,7 @@ async def check_tag_compliance(
                  - "all" (default): Return all violations
                  - "errors_only": Return only error-level violations
                  - "warnings_only": Return only warning-level violations
+        history_service: Optional HistoryService for storing scan results
     
     Returns:
         ComplianceResult containing:
@@ -51,7 +55,7 @@ async def check_tag_compliance(
     Raises:
         ValueError: If resource_types is empty or contains invalid types
         
-    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5
+    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 8.1
     
     Example:
         >>> result = await check_tag_compliance(
@@ -106,5 +110,20 @@ async def check_tag_compliance(
         f"Compliance check complete: score={result.compliance_score:.2%}, "
         f"total={result.total_resources}, violations={len(result.violations)}"
     )
+    
+    # Store the result in history database (if history service is provided)
+    if history_service:
+        try:
+            await history_service.store_scan_result(result)
+            logger.debug(
+                f"Stored compliance result in history database: "
+                f"score={result.compliance_score:.2%}, timestamp={result.scan_timestamp}"
+            )
+        except Exception as e:
+            # Log the error but don't fail the compliance check
+            logger.warning(
+                f"Failed to store compliance result in history database: {e}. "
+                f"Compliance check succeeded but history tracking may be incomplete."
+            )
     
     return result

@@ -317,7 +317,7 @@ Phase 1 delivers a minimum viable product (MVP) focused exclusively on AWS tag c
 
 ### 8. get_violation_history
 
-**Purpose**: Track compliance trends over time
+**Purpose**: Track compliance trends over time with automatic history storage
 
 **Parameters**:
 ```json
@@ -346,6 +346,8 @@ Phase 1 delivers a minimum viable product (MVP) focused exclusively on AWS tag c
   "improvement_rate": 0.03
 }
 ```
+
+**Note**: History data is automatically populated every time `check_tag_compliance` is run. The system stores compliance scores, resource counts, and violation counts in a SQLite database for trend analysis.
 
 ---
 
@@ -566,8 +568,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY mcp_server/ ./mcp_server/
 COPY policies/ ./policies/
 
-# Create directory for SQLite database
+# Create directory for SQLite databases
 RUN mkdir -p /app/data
+
+# Set default database paths to use persistent volume
+ENV HISTORY_DB_PATH=/app/data/compliance_history.db
+ENV AUDIT_DB_PATH=/app/data/audit_logs.db
 
 # Expose MCP server port
 EXPOSE 8080
@@ -616,10 +622,11 @@ services:
     environment:
       - AWS_REGION=us-east-1
       - REDIS_URL=redis://redis:6379
-      - DATABASE_PATH=/app/data/audit.db
+      - HISTORY_DB_PATH=/app/data/compliance_history.db
+      - AUDIT_DB_PATH=/app/data/audit_logs.db
       - LOG_LEVEL=INFO
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data  # Persist databases and logs
       - ./policies:/app/policies
     depends_on:
       - redis

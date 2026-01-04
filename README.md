@@ -88,6 +88,27 @@ If you see these errors, the server can't authenticate with AWS or lacks permiss
 
 The FinOps Tag Compliance MCP Server is a multi-cloud tag governance solution that goes beyond basic tag reading to provide intelligent schema validation, cost attribution analysis, and automated bulk tagging workflows across AWS, Azure, and GCP.
 
+### Automatic Compliance History Tracking
+
+Every compliance scan is automatically stored in a local SQLite database for trend analysis:
+
+- **Database Location**: `./data/compliance_history.db` (when using Docker volumes)
+- **Automatic Storage**: Results from `check_tag_compliance` are saved automatically
+- **History Analysis**: Use `get_violation_history` to view trends over time
+- **Persistent Data**: Mount `./data` volume to preserve history between container restarts
+
+**Docker Volume Setup** (recommended):
+```yaml
+# In docker-compose.yml
+volumes:
+  - ./data:/app/data
+```
+
+Set environment variable:
+```bash
+HISTORY_DB_PATH=./data/compliance_history.db
+```
+
 ### Key Differentiation from Official Cloud MCPs
 
 | Capability | Official AWS/Azure/GCP MCP | FinOps Tag Compliance MCP |

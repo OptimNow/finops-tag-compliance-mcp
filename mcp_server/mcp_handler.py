@@ -43,6 +43,7 @@ from .services import (
     PolicyService,
     ComplianceService,
     AuditService,
+    HistoryService,
     get_security_service,
 )
 from .clients.aws_client import AWSClient
@@ -100,6 +101,7 @@ class MCPHandler:
         compliance_service: Optional[ComplianceService] = None,
         redis_cache: Optional[RedisCache] = None,
         audit_service: Optional[AuditService] = None,
+        history_service: Optional["HistoryService"] = None,
     ):
         """
         Initialize the MCP handler with required services.
@@ -110,12 +112,14 @@ class MCPHandler:
             compliance_service: ComplianceService for compliance checks
             redis_cache: RedisCache for caching
             audit_service: AuditService for audit logging
+            history_service: HistoryService for storing compliance history
         """
         self.aws_client = aws_client
         self.policy_service = policy_service
         self.compliance_service = compliance_service
         self.redis_cache = redis_cache
         self.audit_service = audit_service
+        self.history_service = history_service
         
         # Register all tools
         self._tools: dict[str, Callable] = {}
@@ -992,6 +996,7 @@ class MCPHandler:
             resource_types=arguments["resource_types"],
             filters=arguments.get("filters"),
             severity=arguments.get("severity", "all"),
+            history_service=self.history_service,
         )
         
         return {
@@ -1158,6 +1163,7 @@ class MCPHandler:
             resource_types=arguments["resource_types"],
             filters=arguments.get("filters"),
             severity="all",
+            history_service=self.history_service,
         )
         
         # Then generate the report
