@@ -82,6 +82,43 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 
 **Status**: ✅ Completed (January 2025)
 
+### Phase 1.7: Expanded Resource Coverage (Week 9-10)
+
+**Goal**: Support all AWS taggable resource types, not just the initial 5
+
+**Current Limitation**: Only 5 resource types supported (EC2, RDS, S3, Lambda, ECS)
+
+**Deliverables**:
+- Use AWS Resource Groups Tagging API for universal resource discovery
+- Support 50+ AWS resource types (all taggable resources)
+- Add resource type filter with "all" option
+- Update policy generator to include expanded resource types
+- Performance optimization for large-scale scans
+
+**Key Resource Types Added**:
+- **Compute**: EC2 volumes, snapshots, AMIs, Auto Scaling groups
+- **Storage**: EBS volumes, EFS file systems, Glacier vaults
+- **Database**: DynamoDB tables, ElastiCache clusters, DocumentDB
+- **Networking**: VPCs, subnets, security groups, load balancers, CloudFront distributions
+- **Application**: SQS queues, SNS topics, Step Functions, EventBridge rules
+- **Analytics**: Kinesis streams, Glue databases, Athena workgroups
+- **Security**: Secrets Manager secrets, KMS keys, IAM roles (where applicable)
+- **And 30+ more AWS services**
+
+**Technical Approach**:
+- Migrate from service-specific APIs to `resourcegroupstaggingapi:GetResources`
+- Single API call returns all taggable resources across all services
+- Backward compatible with existing resource type filters
+- Caching strategy for large resource sets
+
+**Success Metrics**:
+- Support 50+ AWS resource types
+- "Check all resources" completes in <30 seconds for typical accounts
+- No performance degradation for existing 5 resource types
+- Users can discover untagged resources they didn't know existed
+
+**Status**: 📋 Planned
+
 ---
 
 ## Phase 2: Production Scale - ECS Fargate (Months 3-4)
@@ -551,13 +588,14 @@ See [PHASE-4-SPECIFICATION.md](./PHASE-4-SPECIFICATION.md)
 |-------|----------|--------------|--------------|
 | **Phase 1** | 6 weeks | AWS-only MCP on EC2 | End of Week 6 |
 | **Phase 1.5** | 2 weeks | AWS policy converter | End of Week 8 (Month 2) |
-| **Phase 2.1** | 2 weeks | AWS policy import tool | End of Week 10 |
-| **Phase 2.2** | 2 weeks | Automatic policy detection | End of Week 12 |
+| **Phase 1.7** | 2 weeks | All AWS resource types | End of Week 10 |
+| **Phase 2.1** | 2 weeks | AWS policy import tool | End of Week 12 |
+| **Phase 2.2** | 2 weeks | Automatic policy detection | End of Week 14 |
 | **Phase 2** | 8 weeks total | Production ECS deployment | End of Month 4 |
 | **Phase 3** | 8 weeks | Multi-cloud support | End of Month 6 |
 | **Phase 4** | 8 weeks | Automation integration | End of Month 8 |
 
-**Total**: 32 weeks (8 months) from kickoff to full automation-integrated deployment
+**Total**: 36 weeks (9 months) from kickoff to full automation-integrated deployment
 
 ---
 
