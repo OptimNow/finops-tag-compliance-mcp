@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Optional
 
 from ..models.untagged import UntaggedResourcesResult, UntaggedResource
+from ..models.policy import TagPolicy
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
 
@@ -250,12 +251,12 @@ async def _get_cost_estimates(
         return {rid: 0.0 for rid in resource_ids}
 
 
-def _get_required_tags_for_resource(policy: dict, resource_type: str) -> list[str]:
+def _get_required_tags_for_resource(policy: TagPolicy, resource_type: str) -> list[str]:
     """
     Get list of required tag names that apply to a resource type.
     
     Args:
-        policy: Tagging policy dictionary
+        policy: Tagging policy (TagPolicy model)
         resource_type: Type of resource (e.g., "ec2:instance")
     
     Returns:
@@ -263,12 +264,12 @@ def _get_required_tags_for_resource(policy: dict, resource_type: str) -> list[st
     """
     required_tags = []
     
-    for tag in policy.get("required_tags", []):
-        applies_to = tag.get("applies_to", [])
+    for tag in policy.required_tags:
+        applies_to = tag.applies_to
         
         # If applies_to is empty or contains this resource type
         if not applies_to or resource_type in applies_to:
-            required_tags.append(tag["name"])
+            required_tags.append(tag.name)
     
     return required_tags
 
