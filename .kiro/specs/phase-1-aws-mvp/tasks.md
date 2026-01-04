@@ -749,10 +749,42 @@ Based on code assessment report (Quality Score: 7.5/10)
     - _Requirements: 16.3_
     - _Severity: MEDIUM - Improves tool reliability across all AWS services_
 
-- [ ] 53. Checkpoint - Bug Fixes Complete
+- [ ] 53. Implement Automatic History Storage for Compliance Scans
+  - [ ] 53.1 Add history storage to check_tag_compliance tool `[Sonnet]`
+    - Initialize HistoryService in the tool or pass it as a parameter
+    - Call `history_service.store_scan_result()` after each compliance check
+    - Handle storage errors gracefully (log but don't fail the compliance check)
+    - Add configuration for history database path
+    - _Files: mcp_server/tools/check_tag_compliance.py_
+    - _Requirements: 8.1_
+    - _Severity: HIGH - History tracking completely non-functional without this_
+
+  - [ ] 53.2 Update main.py to initialize HistoryService `[Haiku]`
+    - Add HistoryService initialization in startup
+    - Pass history_service to check_tag_compliance tool
+    - Add HISTORY_DB_PATH to configuration
+    - Ensure database is created on startup
+    - _Files: mcp_server/main.py, mcp_server/config.py_
+
+  - [ ] 53.3 Add integration test for automatic history storage `[Haiku]`
+    - Test that compliance checks automatically store results
+    - Verify stored data matches compliance result
+    - Test that get_violation_history returns stored data
+    - _Files: tests/integration/test_check_tag_compliance.py_
+    - _Requirements: 8.1, 8.2_
+
+  - [ ] 53.4 Update documentation for history tracking `[Haiku]`
+    - Document that history is automatically stored
+    - Explain database location and configuration
+    - Add troubleshooting for history database issues
+    - _Files: docs/PHASE-1-SPECIFICATION.md, README.md_
+
+- [ ] 54. Checkpoint - Bug Fixes Complete
   - Test suggest_tags with S3 bucket ARNs
   - Verify OpenSearch domains appear in find_untagged_resources results
   - Validate ARN patterns work for all AWS service types
+  - Verify compliance scans automatically store history
+  - Test get_violation_history returns actual data
   - Run full regression test suite
   - Rebuild Docker container and verify fixes
 
