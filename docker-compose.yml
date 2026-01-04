@@ -47,7 +47,7 @@ services:
       - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
       
       # Policy configuration
-      - POLICY_FILE_PATH=${POLICY_FILE_PATH:-/app/policies/tagging-policy.json}
+      - POLICY_FILE_PATH=${POLICY_FILE_PATH:-/app/policies/tagging_policy.json}
       
       # Database configuration
       - DATABASE_PATH=${DATABASE_PATH:-/app/data/compliance.db}
