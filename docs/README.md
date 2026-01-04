@@ -12,6 +12,7 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 
 ### Deployment & Operations
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - How to deploy to AWS EC2 or other cloud platforms
+- **[TAGGING_POLICY_GUIDE.md](./TAGGING_POLICY_GUIDE.md)** - Complete guide to configuring tagging policies
 - **[SECURITY_CONFIGURATION.md](./SECURITY_CONFIGURATION.md)** - Security setup and best practices
 - **[CLOUDWATCH_LOGGING.md](./CLOUDWATCH_LOGGING.md)** - CloudWatch logging configuration
 - **[AUDIT_LOGGING.md](./AUDIT_LOGGING.md)** - Audit logging implementation
@@ -35,6 +36,8 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 **Getting Started?** Start with the main [README.md](../README.md) in the root folder.
 
 **Deploying?** See [DEPLOYMENT.md](./DEPLOYMENT.md)
+
+**Configuring tagging policies?** See [TAGGING_POLICY_GUIDE.md](./TAGGING_POLICY_GUIDE.md)
 
 **Testing?** See [TESTING_QUICK_START.md](./TESTING_QUICK_START.md)
 
