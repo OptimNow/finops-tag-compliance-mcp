@@ -201,6 +201,11 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 7. `generate_compliance_report` - Executive reports
 8. `get_violation_history` - Trend tracking
 
+**Phase 1 Bug Fixes & Enhancements**:
+- ✅ Fix S3 bucket ARN support in `suggest_tags` tool (Phase 1 limitation)
+- ✅ Add OpenSearch/Elasticsearch domain support to `find_untagged_resources`
+- ✅ Improve ARN validation to handle all AWS resource types correctly
+
 ### New Tools in Phase 2 (7)
 
 #### 9. bulk_tag_resources (Write Operation - Step-Up Auth Required)
