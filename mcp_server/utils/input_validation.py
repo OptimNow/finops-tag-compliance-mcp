@@ -1,3 +1,7 @@
+# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
+# Licensed under the Proprietary Software License.
+# See LICENSE file in the project root for full license information.
+
 """Input validation utilities for MCP tools.
 
 This module provides comprehensive JSON schema validation with detailed

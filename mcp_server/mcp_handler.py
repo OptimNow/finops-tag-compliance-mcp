@@ -1,3 +1,7 @@
+# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
+# Licensed under the Proprietary Software License.
+# See LICENSE file in the project root for full license information.
+
 """MCP Protocol Handler for FinOps Tag Compliance Server.
 
 This module implements the Model Context Protocol (MCP) handler that exposes

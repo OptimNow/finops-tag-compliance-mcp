@@ -1,39 +1,61 @@
-Apache License
-Version 2.0, January 2004
-http://www.apache.org/licenses/
+PROPRIETARY SOFTWARE LICENSE
 
-TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
+Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
 
-1. Definitions.
+NOTICE: This software and associated documentation files (the "Software") are the
+proprietary and confidential information of OptimNow ("Owner"). The Software is
+protected by copyright law and international treaties.
 
-"License" shall mean the terms and conditions for use, reproduction, and distribution as defined by Sections 1 through 9 of this document.
+EVALUATION LICENSE
 
-"Licensor" shall mean the copyright owner or entity authorized by the copyright owner that is granting the License.
+Permission is hereby granted to authorized parties who have executed a Non-Disclosure
+Agreement with the Owner to use the Software solely for evaluation and testing purposes,
+subject to the following conditions:
 
-"Legal Entity" shall mean the union of the acting entity and all other entities that control, are controlled by, or are under common control with that entity. For the purposes of this definition, "control" means (i) the power, direct or indirect, to cause the direction or management of such entity, whether by contract or otherwise, or (ii) ownership of fifty percent (50%) or more of the outstanding shares, or (iii) beneficial ownership of such entity.
+1. PERMITTED USE
+   The Software may only be used for internal evaluation and testing purposes. Any other
+   use requires prior written authorization from the Owner.
 
-"You" (or "Your") shall mean an individual or Legal Entity exercising permissions granted by this License.
+2. RESTRICTIONS
+   You may NOT, without prior written authorization from the Owner:
+   - Use the Software for commercial purposes
+   - Modify, adapt, alter, translate, or create derivative works from the Software
+   - Distribute, sublicense, lease, rent, loan, or otherwise transfer the Software
+   - Remove or alter any proprietary notices or labels on the Software
+   - Reverse engineer, decompile, or disassemble the Software
+   - Use the Software to develop competing products or services
+   - Share access to the Software with any third party
 
-"Source" form shall mean the preferred form for making modifications, including but not limited to software source code, documentation source, and configuration files.
+3. OWNERSHIP
+   The Owner retains all right, title, and interest in and to the Software, including
+   all intellectual property rights. No ownership rights are transferred under this license.
 
-"Object" form shall mean any form resulting from mechanical transformation or translation of a Source form, including but not limited to compiled object code, generated documentation, and conversions to other media types.
+4. CONFIDENTIALITY
+   The Software contains proprietary and confidential information. You agree to maintain
+   the confidentiality of the Software and not disclose it to any third party.
 
-"Work" shall mean the work of authorship, whether in Source or Object form, made available under the License, as indicated by a copyright notice that is included in or attached to the work.
+5. NO WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,
+   INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A
+   PARTICULAR PURPOSE AND NONINFRINGEMENT.
 
-"Derivative Works" shall mean any work, whether in Source or Object form, that is based on (or derived from) the Work and for which the editorial revisions, annotations, elaborations, or other modifications represent, as a whole, an original work of authorship. For the purposes of this License, Derivative Works shall not include works that remain separable from, or merely link (or bind by name) to the interfaces of, the Work and Derivative Works thereof.
+6. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE OWNER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+   WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+   CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-"Contribution" shall mean any work of authorship, including the original version of the Work and any modifications or additions to that Work or Derivative Works thereof, that is intentionally submitted to Licensor for inclusion in the Work by the copyright owner or by an individual or Legal Entity authorized to submit on behalf of the copyright owner.
+7. TERMINATION
+   This license is effective until terminated. Your rights under this license will
+   terminate automatically without notice if you fail to comply with any term hereof.
+   Upon termination, you must destroy all copies of the Software.
 
-Copyright 2025 Jean Latiere
+8. GOVERNING LAW
+   This license shall be governed by and construed in accordance with the laws of France.
 
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
+For licensing inquiries or to obtain commercial usage rights, please contact:
+OptimNow
+Jean Latiere
+jean@optimnow.io
 
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+UNAUTHORIZED USE, REPRODUCTION, OR DISTRIBUTION IS STRICTLY PROHIBITED AND MAY RESULT
+IN SEVERE CIVIL AND CRIMINAL PENALTIES.

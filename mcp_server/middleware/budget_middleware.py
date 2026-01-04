@@ -1,3 +1,7 @@
+# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
+# Licensed under the Proprietary Software License.
+# See LICENSE file in the project root for full license information.
+
 """Budget tracking middleware for MCP tool calls.
 
 This module provides middleware for tracking and enforcing tool-call budgets
