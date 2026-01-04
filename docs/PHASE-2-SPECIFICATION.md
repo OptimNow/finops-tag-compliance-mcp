@@ -416,6 +416,129 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 
 ---
 
+## AWS Organizations Tag Policy Integration
+
+Phase 2 adds seamless integration with AWS Organizations tag policies, making it easy for organizations to import their existing policies and keep them in sync.
+
+### Problem Statement
+
+Most AWS organizations already have tag policies defined in AWS Organizations. Requiring users to manually recreate these policies in our custom format creates friction and blocks adoption. Phase 2 solves this with three integration approaches:
+
+1. **Manual Converter Script** (Phase 1 - Already Implemented)
+2. **MCP Tool for Import** (Phase 2.1 - New Tool)
+3. **Automatic Detection** (Phase 2.2 - Startup Behavior)
+
+### Tool 16: import_aws_tag_policy
+
+**Purpose**: Fetch and convert AWS Organizations tag policy to MCP format
+
+**Parameters**:
+```json
+{
+  "policy_id": "p-xxxxxxxx",
+  "save_to_file": true,
+  "output_path": "policies/tagging_policy.json"
+}
+```
+
+**Returns**:
+```json
+{
+  "status": "success",
+  "policy": {
+    "version": "1.0",
+    "required_tags": [...],
+    "optional_tags": [...]
+  },
+  "saved_to": "policies/tagging_policy.json",
+  "summary": {
+    "required_tags_count": 5,
+    "optional_tags_count": 2,
+    "enforced_services": ["ec2", "rds", "s3"]
+  }
+}
+```
+
+**Implementation**:
+- Calls `organizations:DescribePolicy` API
+- Parses AWS tag policy JSON format
+- Converts to MCP server format
+- Optionally saves to file
+- Returns converted policy
+
+**Error Handling**:
+- If no policy_id provided: Lists available policies
+- If policy not found: Returns error with available policies
+- If insufficient permissions: Returns IAM policy needed
+
+### Automatic Policy Detection (Startup)
+
+On MCP server startup, if `policies/tagging_policy.json` doesn't exist:
+
+1. **Check for AWS Organizations tag policy**
+   - Call `organizations:ListPolicies` with filter `TAG_POLICY`
+   - If multiple policies found: Use the one attached to the account's OU
+   - If one policy found: Use it automatically
+
+2. **Convert and save**
+   - Convert AWS policy to MCP format
+   - Save to `policies/tagging_policy.json`
+   - Log conversion details
+
+3. **Fall back to default**
+   - If no AWS policy found: Create minimal default policy
+   - Default policy includes: CostCenter, Owner, Environment
+
+4. **Log and notify**
+   - Log which policy source was used
+   - Include in `/health` endpoint response
+
+**Configuration**:
+```yaml
+# config.yaml
+policy:
+  auto_import_aws_policy: true  # Enable automatic import
+  aws_policy_id: null  # Specific policy ID, or null for auto-detect
+  fallback_to_default: true  # Create default if no AWS policy found
+```
+
+### Conversion Logic
+
+**AWS Format → MCP Format Mapping**:
+
+| AWS Field | MCP Field | Notes |
+|-----------|-----------|-------|
+| `tags.{key}.tag_key.@@assign` | `required_tags[].name` | Tag key with proper capitalization |
+| `tags.{key}.tag_value.@@assign` | `required_tags[].allowed_values` | Array of allowed values |
+| `tags.{key}.enforced_for.@@assign` | `required_tags[].applies_to` | Resource types |
+| `tags.{key}` (no enforced_for) | `optional_tags[]` | Non-enforced tags become optional |
+
+**Special Cases**:
+- `ALL_SUPPORTED` wildcard → Expanded to known resource types for that service
+- Wildcards in values (e.g., `"300*"`) → Removed (not supported in Phase 2)
+- `@@operators` → Ignored (inheritance not applicable)
+
+### Benefits
+
+1. **Zero friction onboarding**: Organizations can start using the MCP server immediately
+2. **Single source of truth**: AWS Organizations remains the authoritative policy
+3. **Automatic sync**: Server can periodically re-import to stay in sync
+4. **Audit trail**: Conversion logged for compliance
+
+### Phase 2.1 vs Phase 2.2
+
+**Phase 2.1 (MCP Tool)**:
+- User-initiated import via Claude Desktop
+- "Import my AWS tag policy"
+- Gives user control over when/how to import
+
+**Phase 2.2 (Automatic)**:
+- Zero-touch setup
+- Server handles it automatically
+- Best for production deployments
+
+---
+
 ## Authentication & Authorization
 
 ### OAuth 2.0 + PKCE Implementation

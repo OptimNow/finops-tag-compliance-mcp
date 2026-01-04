@@ -106,10 +106,17 @@ The MCP server requires a tagging policy to determine what "compliant" means for
 - [ ] Restart Docker containers: `docker-compose restart`
 - [ ] Test: "Show me our tagging policy" in Claude Desktop
 
+**If you have an existing AWS Organizations tag policy:**
+```bash
+# Convert it to our format
+python scripts/convert_aws_policy.py path/to/aws_policy.json
+```
+
 **For detailed information on tagging policies, see:** [Tagging Policy Configuration Guide](TAGGING_POLICY_GUIDE.md)
 
 The guide covers:
 - What tagging policies are and why they matter
+- **Converting from AWS Organizations tag policies** (recommended if you already have one)
 - Policy file format and field definitions
 - Common tagging patterns (CostCenter, Owner, Environment, etc.)
 - How to customize the policy for your organization

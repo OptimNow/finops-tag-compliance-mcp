@@ -39,11 +39,20 @@ Each phase delivers working software that provides value. We learn from real usa
 - SQLite for audit logs
 - IAM role-based authentication (no credentials in code)
 
+✅ **AWS Organizations Tag Policy Integration (Phase 1.5)**
+- Manual converter script (`scripts/convert_aws_policy.py`)
+- Converts AWS Organizations tag policies to MCP format
+- Example AWS policy for testing
+- Documentation for conversion process
+- Zero-friction onboarding for existing AWS customers
+
 ✅ **Documentation**
 - API documentation for 8 tools
 - Deployment guide for EC2
 - Sample tagging policy JSON
 - User guide for MCP client setup
+- Tagging policy configuration guide
+- AWS policy conversion guide
 
 ### Success Metrics
 
@@ -56,6 +65,23 @@ Each phase delivers working software that provides value. We learn from real usa
 
 See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 
+### Phase 1.5: AWS Organizations Integration (Week 7-8)
+
+**Goal**: Remove adoption friction for organizations with existing AWS tag policies
+
+**Deliverables**:
+- ✅ Manual converter script (`scripts/convert_aws_policy.py`)
+- ✅ Example AWS Organizations tag policy
+- ✅ Documentation in Tagging Policy Guide
+- ✅ UAT protocol updated with conversion instructions
+
+**Success Metrics**:
+- Converter script successfully converts 3+ real AWS policies
+- Documentation enables self-service conversion
+- Zero manual policy recreation required for AWS customers
+
+**Status**: ✅ Completed (January 2025)
+
 ---
 
 ## Phase 2: Production Scale - ECS Fargate (Months 3-4)
@@ -67,11 +93,12 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 ### Deliverables
 
 ✅ **Enhanced MCP Server**
-- 15 total tools (add bulk tagging, ML suggestions, scheduling)
+- 16 total tools (add bulk tagging, ML suggestions, scheduling, AWS policy import)
 - Step-up authorization for write operations
 - Improved caching and performance
 - OAuth 2.0 + PKCE authentication
 - **Agent Safety Enhancements** - Intent disambiguation, approval workflows, cost thresholds
+- **AWS Organizations Integration** - Tool 16: `import_aws_tag_policy` for runtime import
 
 ✅ **Production Infrastructure**
 - ECS Fargate deployment (2+ tasks)
@@ -92,6 +119,22 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 - **Dry run mode** - Preview operations without executing
 - **Cost/risk thresholds** - Require approval for expensive operations
 
+✅ **AWS Organizations Tag Policy Integration (Phase 2.1)**
+- **Tool 16: `import_aws_tag_policy`** - Fetch and convert AWS policies at runtime
+- User-initiated import via Claude Desktop ("Import my AWS tag policy")
+- Lists available policies if policy_id not provided
+- Automatic conversion and file saving
+- IAM permission guidance for insufficient access
+
+✅ **Automatic Policy Detection (Phase 2.2)**
+- Zero-touch policy setup on server startup
+- Automatically detects AWS Organizations tag policies
+- Converts and saves to `policies/tagging_policy.json`
+- Falls back to default policy if no AWS policy found
+- Configurable via `config.yaml`
+- Periodic re-import to stay in sync with AWS
+- Policy source logged in `/health` endpoint
+
 ### Success Metrics
 
 - 99.9% uptime SLA
@@ -103,6 +146,39 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 ### Detailed Spec
 
 See [PHASE-2-SPECIFICATION.md](./PHASE-2-SPECIFICATION.md)
+
+### Phase 2.1: AWS Policy Import Tool (Week 1-2)
+
+**Goal**: Enable runtime import of AWS Organizations tag policies via MCP tool
+
+**Deliverables**:
+- Tool 16: `import_aws_tag_policy` - Fetch and convert AWS policies
+- IAM permissions for `organizations:DescribePolicy` and `organizations:ListPolicies`
+- Error handling for missing permissions and invalid policy IDs
+- Integration with existing converter logic
+
+**Success Metrics**:
+- Users can import AWS policies via Claude Desktop
+- "Import my AWS tag policy" command works end-to-end
+- Proper error messages guide users through permission issues
+
+### Phase 2.2: Automatic Policy Detection (Week 3-4)
+
+**Goal**: Zero-touch policy setup for production deployments
+
+**Deliverables**:
+- Startup logic to detect AWS Organizations tag policies
+- Automatic conversion and file saving
+- Fallback to default policy if no AWS policy found
+- Configuration options in `config.yaml`
+- Policy source reporting in `/health` endpoint
+- Periodic re-import for policy sync
+
+**Success Metrics**:
+- New deployments work without manual policy configuration
+- Server automatically finds and uses AWS policies
+- Policy changes in AWS Organizations sync to MCP server
+- Health endpoint shows policy source and last sync time
 
 ---
 
@@ -473,8 +549,11 @@ See [PHASE-4-SPECIFICATION.md](./PHASE-4-SPECIFICATION.md)
 
 | Phase | Duration | Key Milestone | Go-Live Date |
 |-------|----------|--------------|--------------|
-| **Phase 1** | 8 weeks | AWS-only MCP on EC2 | End of Month 2 |
-| **Phase 2** | 8 weeks | Production ECS deployment | End of Month 4 |
+| **Phase 1** | 6 weeks | AWS-only MCP on EC2 | End of Week 6 |
+| **Phase 1.5** | 2 weeks | AWS policy converter | End of Week 8 (Month 2) |
+| **Phase 2.1** | 2 weeks | AWS policy import tool | End of Week 10 |
+| **Phase 2.2** | 2 weeks | Automatic policy detection | End of Week 12 |
+| **Phase 2** | 8 weeks total | Production ECS deployment | End of Month 4 |
 | **Phase 3** | 8 weeks | Multi-cloud support | End of Month 6 |
 | **Phase 4** | 8 weeks | Automation integration | End of Month 8 |
 

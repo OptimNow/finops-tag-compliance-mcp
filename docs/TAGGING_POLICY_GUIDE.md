@@ -47,6 +47,100 @@ The `:ro` means read-only - the container can read the policy but not modify it.
 
 ---
 
+## Converting from AWS Organizations Tag Policies
+
+**If your organization already uses AWS Organizations tag policies**, you can convert them to our format using the provided converter script.
+
+### Quick Conversion
+
+```bash
+# Convert AWS policy to our format
+python scripts/convert_aws_policy.py path/to/aws_policy.json
+
+# Output will be saved to policies/tagging_policy.json
+```
+
+### How to Get Your AWS Tag Policy
+
+**Option 1: AWS Console**
+1. Go to AWS Organizations console
+2. Navigate to Policies → Tag policies
+3. Select your tag policy
+4. Copy the JSON from the policy editor
+5. Save to a file (e.g., `aws_tag_policy.json`)
+
+**Option 2: AWS CLI**
+```bash
+# List tag policies
+aws organizations list-policies --filter TAG_POLICY
+
+# Get specific policy content
+aws organizations describe-policy --policy-id p-xxxxxxxx > aws_tag_policy.json
+```
+
+### Conversion Example
+
+**Input (AWS Organizations format):**
+```json
+{
+  "tags": {
+    "costcenter": {
+      "tag_key": {
+        "@@assign": "CostCenter"
+      },
+      "tag_value": {
+        "@@assign": ["Engineering", "Marketing"]
+      },
+      "enforced_for": {
+        "@@assign": ["ec2:instance", "rds:db"]
+      }
+    }
+  }
+}
+```
+
+**Output (MCP Server format):**
+```json
+{
+  "version": "1.0",
+  "last_updated": "2025-01-04T12:00:00Z",
+  "required_tags": [
+    {
+      "name": "CostCenter",
+      "description": "Converted from AWS Organizations tag policy - costcenter",
+      "allowed_values": ["Engineering", "Marketing"],
+      "validation_regex": null,
+      "applies_to": ["ec2:instance", "rds:db"]
+    }
+  ],
+  "optional_tags": [],
+  "tag_naming_rules": {
+    "case_sensitivity": false,
+    "allow_special_characters": false,
+    "max_key_length": 128,
+    "max_value_length": 256
+  }
+}
+```
+
+### Conversion Notes
+
+- **Enforced tags** → Required tags in our format
+- **Non-enforced tags** → Optional tags in our format
+- **ALL_SUPPORTED** wildcard → Expanded to common resource types
+- **Wildcards in values** (e.g., `"300*"`) → Removed (not supported yet)
+- **Descriptions** → Auto-generated (you can edit them after conversion)
+
+### After Conversion
+
+1. Review the converted policy at `policies/tagging_policy.json`
+2. Edit descriptions to be more meaningful
+3. Add `validation_regex` if needed (e.g., email format for Owner tag)
+4. Restart Docker containers: `docker-compose restart`
+5. Verify: "Show me our tagging policy" in Claude Desktop
+
+---
+
 ## Policy File Format
 
 The policy file follows this JSON schema:
