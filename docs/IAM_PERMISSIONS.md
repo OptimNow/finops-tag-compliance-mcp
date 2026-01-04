@@ -46,7 +46,9 @@ For production or security-conscious environments, use a custom policy with only
 
 ### Policy Document
 
-Create a file `finops-mcp-policy.json`:
+**Ready-to-use policy file**: [`policies/iam/MCP_Tagging_Policy.json`](../policies/iam/MCP_Tagging_Policy.json)
+
+This is the complete, production-ready IAM policy for the MCP server. You can use it directly or create your own `finops-mcp-policy.json`:
 
 ```json
 {
@@ -100,16 +102,16 @@ Create a file `finops-mcp-policy.json`:
 **For IAM User (Local Development)**:
 
 ```bash
-# Create the policy
+# 1. Create the IAM policy using the provided file
 aws iam create-policy \
-  --policy-name FinOpsTagCompliancePolicy \
-  --policy-document file://finops-mcp-policy.json \
-  --description "Read-only access for FinOps Tag Compliance MCP Server"
+  --policy-name MCP_Tagging_Policy \
+  --policy-document file://policies/iam/MCP_Tagging_Policy.json \
+  --description "Complete permissions for FinOps Tag Compliance MCP Server"
 
-# Attach to your IAM user
+# 2. Attach to your IAM user
 aws iam attach-user-policy \
   --user-name YOUR_USERNAME \
-  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FinOpsTagCompliancePolicy
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/MCP_Tagging_Policy
 ```
 
 **For IAM Role (EC2 Instance Profile)**:
@@ -139,12 +141,12 @@ aws iam create-role \
 
 # Create and attach the policy
 aws iam create-policy \
-  --policy-name FinOpsTagCompliancePolicy \
-  --policy-document file://finops-mcp-policy.json
+  --policy-name MCP_Tagging_Policy \
+  --policy-document file://policies/iam/MCP_Tagging_Policy.json
 
 aws iam attach-role-policy \
   --role-name FinOpsTagComplianceRole \
-  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FinOpsTagCompliancePolicy
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/MCP_Tagging_Policy
 
 # Create instance profile
 aws iam create-instance-profile \

@@ -69,7 +69,28 @@ The server needs AWS credentials with specific IAM permissions to scan your reso
 
 #### Required IAM Permissions
 
-The MCP server requires **read-only** access to AWS resources. Create an IAM policy with these permissions:
+The MCP server requires **read-only** access to AWS resources. 
+
+**Recommended: Use the Complete Policy File**
+
+We provide a ready-to-use IAM policy with all required permissions:
+
+```bash
+# Create the IAM policy
+aws iam create-policy \
+  --policy-name MCP_Tagging_Policy \
+  --policy-document file://policies/iam/MCP_Tagging_Policy.json \
+  --description "Complete permissions for FinOps Tag Compliance MCP Server"
+
+# Attach to your IAM user
+aws iam attach-user-policy \
+  --user-name YOUR_IAM_USERNAME \
+  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/MCP_Tagging_Policy
+```
+
+See [`policies/iam/README.md`](../policies/iam/README.md) for detailed instructions.
+
+**Alternative Options:**
 
 **Option A: Use AWS Managed Policy (Quick Start)**
 ```bash

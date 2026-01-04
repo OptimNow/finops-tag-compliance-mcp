@@ -63,11 +63,30 @@ Your IAM user (`mcp-bedrock-user`) is missing required permissions to:
 
 ### Solution
 
-You need to add the missing permissions to your IAM user. See the [IAM Permissions Guide](IAM_PERMISSIONS.md) for complete instructions.
+You need to add the missing permissions to your IAM user. 
 
-**Quick Fix - Add Missing Permissions**:
+**Recommended: Use the Complete Policy File**
 
-Create a file `additional-permissions.json`:
+We provide a ready-to-use IAM policy file with all required permissions:
+
+```bash
+# Create the policy using the provided file
+aws iam create-policy \
+  --policy-name MCP_Tagging_Policy \
+  --policy-document file://policies/iam/MCP_Tagging_Policy.json \
+  --description "Complete permissions for FinOps Tag Compliance MCP Server"
+
+# Attach to your IAM user
+aws iam attach-user-policy \
+  --user-name mcp-bedrock-user \
+  --policy-arn arn:aws:iam::382598791951:policy/MCP_Tagging_Policy
+```
+
+See [`policies/iam/README.md`](../policies/iam/README.md) for detailed instructions.
+
+**Alternative: Add Missing Permissions Incrementally**
+
+If you prefer to add only the missing permissions to your existing policy, create a file `additional-permissions.json`:
 
 ```json
 {
