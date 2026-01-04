@@ -172,7 +172,7 @@ def _is_valid_arn(arn: str) -> bool:
     if not arn or not isinstance(arn, str):
         return False
     
-    # Basic ARN pattern
+    # Basic ARN pattern - supports S3 buckets with empty account field
     arn_pattern = r'^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]*:.+'
     return bool(re.match(arn_pattern, arn))
 
