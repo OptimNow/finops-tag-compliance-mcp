@@ -108,6 +108,7 @@ class AWSClient:
         self.lambda_client = boto3.client('lambda', region_name=region)
         self.ecs = boto3.client('ecs', region_name=region)
         self.ce = boto3.client('ce', region_name='us-east-1')
+        self.tagging = boto3.client('resourcegroupstaggingapi', region_name=region)
     
     async def get_ec2_instances(self, filters: dict) -> list[Resource]:
         """Fetch EC2 instances with tags"""
@@ -117,6 +118,91 @@ class AWSClient:
         """Fetch cost data from Cost Explorer"""
         pass
 ```
+
+### Resource Groups Tagging API Integration
+
+The Resource Groups Tagging API provides a unified way to discover and manage tags across 50+ AWS resource types. This is the preferred method for resource discovery as it:
+
+1. **Reduces API calls** - One API instead of 6+ individual service APIs
+2. **Supports more resource types** - ElastiCache, DynamoDB, SNS, SQS, CloudWatch, etc.
+3. **Provides consistent response format** - All resources return ARN + tags
+4. **Handles pagination** - Built-in support for large accounts
+
+```python
+async def get_all_tagged_resources(
+    self,
+    resource_types: list[str] | None = None,
+    tag_filters: list[dict] | None = None
+) -> list[dict[str, Any]]:
+    """
+    Fetch all taggable resources using Resource Groups Tagging API.
+    
+    Args:
+        resource_types: Optional list of resource type filters (e.g., ["ec2:instance", "rds:db"])
+                       If None or ["all"], fetches all resource types
+        tag_filters: Optional tag filters to narrow results
+    
+    Returns:
+        List of resources with ARN, tags, and resource type
+    """
+    resources = []
+    pagination_token = ""
+    
+    while True:
+        params = {
+            "ResourcesPerPage": 100  # Max allowed
+        }
+        
+        if resource_types and "all" not in resource_types:
+            params["ResourceTypeFilters"] = resource_types
+        
+        if tag_filters:
+            params["TagFilters"] = tag_filters
+        
+        if pagination_token:
+            params["PaginationToken"] = pagination_token
+        
+        response = await self._call_with_backoff(
+            "tagging",
+            self.tagging.get_resources,
+            **params
+        )
+        
+        for resource in response.get("ResourceTagMappingList", []):
+            arn = resource.get("ResourceARN", "")
+            tags = {t["Key"]: t["Value"] for t in resource.get("Tags", [])}
+            resource_type = self._extract_resource_type_from_arn(arn)
+            
+            resources.append({
+                "resource_id": self._extract_resource_id_from_arn(arn),
+                "resource_type": resource_type,
+                "region": self._extract_region_from_arn(arn),
+                "tags": tags,
+                "arn": arn
+            })
+        
+        pagination_token = response.get("PaginationToken", "")
+        if not pagination_token:
+            break
+    
+    return resources
+```
+
+**Supported Resource Types** (via Resource Groups Tagging API):
+
+| Category | Resource Types |
+|----------|---------------|
+| Compute | ec2:instance, lambda:function, ecs:service, ecs:cluster, ecs:task-definition |
+| Database | rds:db, dynamodb:table, elasticache:cluster, redshift:cluster |
+| Storage | s3:bucket, efs:file-system, fsx:file-system |
+| Networking | ec2:vpc, ec2:subnet, ec2:security-group, elasticloadbalancing:loadbalancer |
+| Analytics | opensearch:domain, kinesis:stream, firehose:deliverystream |
+| Messaging | sns:topic, sqs:queue |
+| Monitoring | logs:log-group, cloudwatch:alarm |
+| Security | kms:key, secretsmanager:secret |
+| And 40+ more... | See AWS documentation for full list |
+
+**Fallback Strategy**: If the Resource Groups Tagging API returns incomplete data or is unavailable, the system falls back to individual service APIs (EC2, RDS, S3, Lambda, ECS, OpenSearch) for those specific resource types.
 
 ## Data Models
 
@@ -397,6 +483,12 @@ class ViolationSummary(BaseModel):
 *For any* request to invoke a tool that is not registered in the MCP Server, the request SHALL be rejected with an error response. The rejection SHALL be logged with the attempted tool name for security monitoring.
 
 **Validates: Requirements 16.1, 16.4**
+
+### Property 19: Resource Groups Tagging API Coverage
+
+*For any* compliance check with `resource_types: ["all"]`, the MCP Server SHALL use the Resource Groups Tagging API to discover resources across all taggable AWS resource types. The response SHALL include resources from 50+ AWS services, not just the 6 originally supported types (EC2, RDS, S3, Lambda, ECS, OpenSearch).
+
+**Validates: Requirements 17.1, 17.2, 17.3**
 
 ## Error Handling
 

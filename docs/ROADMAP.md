@@ -84,9 +84,16 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 
 ### Expanded Resource Coverage (Included in Phase 1)
 
-**Note**: Originally planned as Phase 1.7, this capability was merged into Phase 1 and is now complete.
+**Note**: Originally planned as Phase 1.7, this capability is being implemented as part of Phase 1 completion.
 
-**Deliverables** (✅ Complete):
+**Status**: 🔄 In Progress
+
+**Current State**:
+- ✅ IAM permissions for `tag:GetResources` are in place
+- ❌ Code still uses individual service APIs (EC2, RDS, S3, Lambda, ECS, OpenSearch)
+- ❌ Resource Groups Tagging API not yet integrated
+
+**Deliverables** (Pending):
 - AWS Resource Groups Tagging API for universal resource discovery
 - 50+ AWS resource types supported
 - Resource type filter with "all" option

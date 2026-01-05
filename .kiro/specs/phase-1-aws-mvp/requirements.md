@@ -237,3 +237,19 @@ For the complete technical vision, see [PHASE-1-SPECIFICATION.md](../../../docs/
 3. THE MCP_Server SHALL validate all tool inputs against their defined schemas before execution
 4. THE MCP_Server SHALL log and reject requests that attempt to invoke non-existent or unauthorized tools
 5. THE MCP_Server SHALL NOT expose sensitive information (credentials, internal paths) in error messages
+
+---
+
+### Requirement 17: Expanded Resource Coverage via Resource Groups Tagging API
+
+**User Story:** As a FinOps practitioner, I want to check tag compliance across ALL AWS resource types (not just EC2, RDS, S3, Lambda, ECS), so that I can get a complete picture of my organization's tagging posture.
+
+#### Acceptance Criteria
+
+1. THE MCP_Server SHALL use the AWS Resource Groups Tagging API (`tag:GetResources`) as the primary method for resource discovery
+2. THE MCP_Server SHALL support 50+ AWS resource types through a single unified API
+3. WHEN a user specifies `resource_types: ["all"]`, THE MCP_Server SHALL scan all taggable resources in the account
+4. THE MCP_Server SHALL support filtering by specific resource types using AWS resource type strings (e.g., `ec2:instance`, `rds:db`, `elasticache:cluster`)
+5. THE MCP_Server SHALL handle pagination for accounts with large numbers of resources (1000+ resources)
+6. THE MCP_Server SHALL fall back to individual service APIs only when Resource Groups Tagging API is unavailable or returns incomplete data
+7. THE MCP_Server SHALL include the resource ARN, tags, and resource type for each discovered resource

@@ -805,23 +805,50 @@ Based on code assessment report (Quality Score: 7.5/10)
 
 ## Documentation and Naming Standardization
 
-- [ ] 55. Standardize Naming to "tagging-mcp-server"
+- [ ] 55. Standardize Naming to "tagging-mcp-server" (Post-UAT)
+  - **Prerequisite**: Complete UAT first, then do this rename before Phase 2
+  - **Scope**: Rename all `finops-mcp-server` references to `tagging-mcp-server` across codebase and AWS
+  
   - [ ] 55.1 Update CloudFormation template naming `[Haiku]`
     - Rename all resources from `finops-mcp-server` to `tagging-mcp-server`
     - Update IAM role name, security group name, CloudWatch log group
     - Update stack name references in documentation
     - _Files: infrastructure/cloudformation.yaml_
 
-  - [ ] 55.2 Update deployment documentation `[Haiku]`
-    - Update `docs/DEPLOYMENT.md` with new naming convention
-    - Update all example commands with `tagging-mcp-server` stack name
-    - Update Claude Desktop config examples
-    - _Files: docs/DEPLOYMENT.md_
-
-  - [ ] 55.3 Update docker-compose and environment files `[Haiku]`
+  - [ ] 55.2 Update all code and config files `[Haiku]`
     - Update container names in docker-compose.yml
     - Update any hardcoded references in .env.example
-    - _Files: docker-compose.yml, .env.example_
+    - Update Phase 2 spec references
+    - _Files: docker-compose.yml, .env.example, docs/PHASE-2-SPECIFICATION.md_
+
+  - [ ] 55.3 Update all documentation `[Haiku]`
+    - Update `docs/DEPLOYMENT.md` with new naming convention
+    - Update `docs/PHASE-1-SPECIFICATION.md` references
+    - Update `docs/IAM_PERMISSIONS.md` references
+    - Update `docs/UAT_PROTOCOL.md` references
+    - Update `docs/DEVELOPMENT_JOURNAL.md` references
+    - Update `TOMORROW_MORNING_PLAN.md` references
+    - Update all example commands with `tagging-mcp-server` stack name
+    - _Files: ~13 files with finops-mcp-server references_
+
+  - [ ] 55.4 Redeploy locally and verify `[Manual]`
+    - Run `docker-compose down` to stop old containers
+    - Run `docker-compose up -d --build` with new naming
+    - Verify health endpoint: `curl http://localhost:8080/health`
+    - Test all 8 MCP tools via Claude Desktop
+
+  - [ ] 55.5 Redeploy to AWS with new naming `[Manual]`
+    - Delete old CloudFormation stack: `aws cloudformation delete-stack --stack-name tagging-mcp-server`
+    - Wait for deletion to complete
+    - Deploy new stack with updated template
+    - SSH to EC2 and rebuild Docker container
+    - Verify health endpoint: `curl http://<elastic-ip>:8080/health`
+
+  - [ ] 55.6 Final UAT round with new naming `[Manual]`
+    - Run through UAT protocol with Claude Desktop
+    - Verify all 8 tools work correctly
+    - Document any issues found
+    - _Reference: docs/UAT_PROTOCOL.md_
 
 - [x] 56. Create User Manual and Update Deployment Guide `[Sonnet]`
   - Created `docs/USER_MANUAL.md` for FinOps practitioners
@@ -836,6 +863,99 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Documented how to connect Claude Desktop to local server
   - Updated main README.md with links to both guides
   - _Files: docs/USER_MANUAL.md, docs/DEPLOYMENT.md, README.md_
+
+## Phase 1.7: Expanded Resource Coverage (Resource Groups Tagging API)
+
+**Goal**: Extend tag compliance checking from 6 resource types to 50+ using AWS Resource Groups Tagging API
+
+**Background**: The current implementation uses individual service APIs (EC2, RDS, S3, Lambda, ECS, OpenSearch) which limits coverage. The Resource Groups Tagging API provides a unified way to discover and manage tags across all taggable AWS resources.
+
+- [ ] 57. Implement Resource Groups Tagging API Client
+  - [ ] 57.1 Add Resource Groups Tagging API client to AWSClient `[Sonnet]`
+    - Add `resourcegroupstaggingapi` boto3 client initialization
+    - Implement `get_all_tagged_resources()` method using `tag:GetResources`
+    - Handle pagination for large accounts (1000+ resources)
+    - Extract resource type, region, and resource ID from ARN
+    - _Files: mcp_server/clients/aws_client.py_
+    - _Requirements: 17.1, 17.5_
+
+  - [ ] 57.2 Add IAM permissions for Resource Groups Tagging API `[Haiku]`
+    - Add `tag:GetResources` permission to IAM policy
+    - Add `tag:GetTagKeys` and `tag:GetTagValues` for future use
+    - Update `policies/iam/MCP_Tagging_Policy.json`
+    - Update `docs/IAM_PERMISSIONS.md` with new permissions
+    - _Files: policies/iam/MCP_Tagging_Policy.json, docs/IAM_PERMISSIONS.md_
+    - _Requirements: 17.1_
+
+  - [ ] 57.3 Write unit tests for Resource Groups Tagging API client `[Haiku]`
+    - Test `get_all_tagged_resources()` with mocked responses
+    - Test pagination handling with multiple pages
+    - Test resource type filtering
+    - Test ARN parsing for various resource types
+    - _Files: tests/unit/test_aws_client.py_
+    - _Requirements: 17.1, 17.5_
+
+- [ ] 58. Integrate Resource Groups Tagging API into Compliance Service
+  - [ ] 58.1 Update ComplianceService to use Resource Groups Tagging API `[Sonnet]`
+    - Modify `_fetch_resources_by_type()` to use `get_all_tagged_resources()` when `resource_types` includes "all"
+    - Keep individual service API calls as fallback for specific resource types
+    - Add configuration flag to prefer Resource Groups Tagging API
+    - _Files: mcp_server/services/compliance_service.py_
+    - _Requirements: 17.2, 17.3, 17.6_
+
+  - [ ] 58.2 Update find_untagged_resources tool `[Sonnet]`
+    - Support `resource_types: ["all"]` to scan all taggable resources
+    - Use Resource Groups Tagging API for comprehensive discovery
+    - Maintain backward compatibility with specific resource type filters
+    - _Files: mcp_server/tools/find_untagged_resources.py_
+    - _Requirements: 17.3, 17.4_
+
+  - [ ] 58.3 Update check_tag_compliance tool `[Sonnet]`
+    - Support `resource_types: ["all"]` parameter
+    - Use Resource Groups Tagging API for comprehensive compliance checks
+    - Handle large result sets efficiently
+    - _Files: mcp_server/tools/check_tag_compliance.py_
+    - _Requirements: 17.3, 17.7_
+
+  - [ ] 58.4 Write integration tests for expanded resource coverage `[Opus]`
+    - Test compliance check with `resource_types: ["all"]`
+    - Test that 50+ resource types are discovered
+    - Test performance with large accounts
+    - **Property 19: Resource Groups Tagging API Coverage**
+    - _Files: tests/integration/test_check_tag_compliance.py, tests/property/test_compliance_service.py_
+    - _Requirements: 17.2, 17.3_
+
+- [ ] 59. Phase 1.7 Checkpoint - Expanded Resource Coverage Complete
+  - [ ] 59.1 Verify Resource Groups Tagging API integration `[Manual]`
+    - Test `check_tag_compliance` with `resource_types: ["all"]`
+    - Verify resources from 10+ different AWS services are discovered
+    - Confirm pagination works for accounts with 1000+ resources
+    - _Requirements: 17.1, 17.2, 17.5_
+
+  - [ ] 59.2 Update documentation `[Haiku]`
+    - Update `docs/PHASE-1-SPECIFICATION.md` with expanded resource coverage
+    - Update `docs/USER_MANUAL.md` with new `resource_types: ["all"]` option
+    - Update `docs/ROADMAP.md` to mark Phase 1.7 as truly complete
+    - _Files: docs/PHASE-1-SPECIFICATION.md, docs/USER_MANUAL.md, docs/ROADMAP.md_
+
+  - [ ] 59.3 Redeploy and verify `[Manual]`
+    - Rebuild Docker container with new code
+    - Deploy to EC2 instance
+    - Run quick smoke test with expanded resource coverage
+    - Verify all 8 MCP tools respond correctly
+
+  - [ ] 59.4 Full UAT with Expanded Resource Coverage `[Manual]`
+    - Update `docs/UAT_PROTOCOL.md` with new test scenarios:
+      - Test `check_tag_compliance` with `resource_types: ["all"]`
+      - Test `find_untagged_resources` with `resource_types: ["all"]`
+      - Verify resources from DynamoDB, ElastiCache, SNS, SQS, CloudWatch appear
+      - Test performance with large result sets
+      - Test filtering by specific new resource types (e.g., `dynamodb:table`)
+    - Execute full UAT protocol through Claude Desktop
+    - Document results for all 8 tools with expanded coverage
+    - Sign off on Phase 1.7 completion
+    - _Files: docs/UAT_PROTOCOL.md_
+    - _Requirements: 17.1, 17.2, 17.3, All user stories (1-8)_
 
 ## Notes
 
