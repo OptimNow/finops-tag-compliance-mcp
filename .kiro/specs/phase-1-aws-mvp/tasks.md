@@ -367,7 +367,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
   - Verify all 8 tools respond correctly
   - Run load test with 1000 resources
 
-- [ ] 26.1 Docker Build Verification `[Haiku]`
+- [x] 26.1 Docker Build Verification `[Haiku]`
   - Start Docker Desktop on local machine
   - Run `docker build -t finops-tag-compliance-mcp:test .`
   - Verify image builds successfully
@@ -677,8 +677,8 @@ Based on code assessment report (Quality Score: 7.5/10)
 
 ### High Priority (Fix Before Phase 1 Completion)
 
-- [ ] 50. Fix S3 Bucket ARN Support in suggest_tags Tool
-  - [ ] 50.1 Update ARN validation pattern to support S3 bucket ARNs `[Sonnet]`
+- [x] 50. Fix S3 Bucket ARN Support in suggest_tags Tool
+  - [x] 50.1 Update ARN validation pattern to support S3 bucket ARNs `[Sonnet]`
     - S3 bucket ARNs have format: `arn:aws:s3:::bucket-name` (empty region and account fields)
     - Current pattern requires account ID: `\d{12}` which rejects S3 ARNs
     - Update `InputValidator.ARN_PATTERN` in `mcp_server/utils/input_validation.py`
@@ -686,46 +686,46 @@ Based on code assessment report (Quality Score: 7.5/10)
     - _Files: mcp_server/utils/input_validation.py_
     - _Severity: HIGH - Tool unusable for S3 resources_
 
-  - [ ] 50.2 Verify ARN validation in all tools `[Haiku]`
+  - [x] 50.2 Verify ARN validation in all tools `[Haiku]`
     - Check `suggest_tags.py` and `validate_resource_tags.py` for additional validation
     - Ensure MCP handler doesn't have duplicate ARN validation
     - Test with S3 bucket ARN: `arn:aws:s3:::zombiescan-cur-zs551762956371`
     - _Files: mcp_server/tools/suggest_tags.py, mcp_server/tools/validate_resource_tags.py, mcp_server/mcp_handler.py_
 
-  - [ ] 50.3 Add comprehensive ARN validation tests `[Haiku]`
+  - [x] 50.3 Add comprehensive ARN validation tests `[Haiku]`
     - Add test cases for S3 bucket ARNs (no account ID)
     - Add test cases for IAM ARNs (no region)
     - Add test cases for global service ARNs
     - Update `tests/unit/test_input_validation.py`
     - _Requirements: 16.3_
 
-- [ ] 51. Add OpenSearch/Elasticsearch Support to find_untagged_resources
-  - [ ] 51.1 Implement OpenSearch domain fetching in AWSClient `[Sonnet]`
+- [x] 51. Add OpenSearch/Elasticsearch Support to find_untagged_resources
+  - [x] 51.1 Implement OpenSearch domain fetching in AWSClient `[Sonnet]`
     - Add `get_opensearch_domains()` method to `mcp_server/clients/aws_client.py`
     - Use boto3 OpenSearch client to list domains and get tags
     - Extract domain ARN, name, tags, and creation date
     - _Files: mcp_server/clients/aws_client.py_
 
-  - [ ] 51.2 Add OpenSearch to resource type enum and compliance service `[Sonnet]`
+  - [x] 51.2 Add OpenSearch to resource type enum and compliance service `[Sonnet]`
     - Add "opensearch" to supported resource types
     - Update `ComplianceService._fetch_resources_by_type()` to handle OpenSearch
     - Update `find_untagged_resources` tool to include OpenSearch in scans
     - _Files: mcp_server/services/compliance_service.py, mcp_server/tools/find_untagged_resources.py_
 
-  - [ ] 51.3 Add OpenSearch IAM permissions to policy `[Haiku]`
+  - [x] 51.3 Add OpenSearch IAM permissions to policy `[Haiku]`
     - Add `es:ListDomainNames`, `es:DescribeDomain`, `es:ListTags` to IAM policy
     - Update `policies/iam/MCP_Tagging_Policy.json`
     - Update `docs/IAM_PERMISSIONS.md` with OpenSearch permissions
     - _Files: policies/iam/MCP_Tagging_Policy.json, docs/IAM_PERMISSIONS.md_
 
-  - [ ] 51.4 Add tests for OpenSearch support `[Haiku]`
+  - [x] 51.4 Add tests for OpenSearch support `[Haiku]`
     - Add unit tests with moto mocks for OpenSearch domain fetching
     - Add integration test for OpenSearch in compliance checks
     - _Files: tests/unit/test_aws_client.py, tests/integration/test_check_tag_compliance.py_
     - _Severity: MEDIUM - Missing $84.80/month in cost analysis_
 
-- [ ] 52. Improve ARN Validation for All AWS Resource Types
-  - [ ] 52.1 Create comprehensive ARN validation utility `[Sonnet]`
+- [x] 52. Improve ARN Validation for All AWS Resource Types
+  - [x] 52.1 Create comprehensive ARN validation utility `[Sonnet]`
     - Research ARN formats for all AWS services (EC2, RDS, S3, Lambda, ECS, OpenSearch, IAM, etc.)
     - Create flexible ARN pattern that handles:
       - Services with no region (IAM, S3, CloudFront)
@@ -735,13 +735,13 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Update `InputValidator.ARN_PATTERN` with comprehensive regex
     - _Files: mcp_server/utils/input_validation.py_
 
-  - [ ] 52.2 Add ARN format documentation `[Haiku]`
+  - [x] 52.2 Add ARN format documentation `[Haiku]`
     - Document supported ARN formats in code comments
     - Add examples for each AWS service type
     - Create reference table in `docs/IAM_PERMISSIONS.md`
     - _Files: mcp_server/utils/input_validation.py, docs/IAM_PERMISSIONS.md_
 
-  - [ ] 52.3 Expand ARN validation test coverage `[Opus]`
+  - [x] 52.3 Expand ARN validation test coverage `[Opus]`
     - Add test cases for all supported AWS service ARN formats
     - Test edge cases: global services, cross-region resources, cross-account ARNs
     - Add property test for ARN format validation
@@ -779,7 +779,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - Add troubleshooting for history database issues
     - _Files: docs/PHASE-1-SPECIFICATION.md, README.md_
 
-- [ ] 54. Checkpoint - Bug Fixes Complete
+- [x] 54. Checkpoint - Bug Fixes Complete
   - Test suggest_tags with S3 bucket ARNs
   - Verify OpenSearch domains appear in find_untagged_resources results
   - Validate ARN patterns work for all AWS service types
