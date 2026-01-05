@@ -125,6 +125,8 @@ See **[ROADMAP.md](./ROADMAP.md)** for the complete implementation timeline.
 | Violation Tracking | ❌ No | ✅ Historical trend analysis |
 | Agent Safety | ❌ No | ✅ Loop detection, budgets |
 
+See **[DIFFERENTIATION-FROM-AWS-NATIVE.md](./DIFFERENTIATION-FROM-AWS-NATIVE.md)** for a detailed comparison.
+
 ---
 
 ## Quick Start
