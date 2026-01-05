@@ -5,11 +5,10 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 ## Core Documentation
 
 ### Specifications
-- **[SPECIFICATION.md](./SPECIFICATION.md)** - Complete technical specification with all 15 tools, 50+ resources, and detailed use cases
-- **[PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)** - Phase 1 (AWS MVP) detailed specification
-- **[PHASE-1.7-SPECIFICATION.md](./PHASE-1.7-SPECIFICATION.md)** - Phase 1.7 (Expanded Resource Coverage) specification
-- **[PHASE-2-SPECIFICATION.md](./PHASE-2-SPECIFICATION.md)** - Phase 2 (Azure + GCP) specification
-- **[PHASE-3-SPECIFICATION.md](./PHASE-3-SPECIFICATION.md)** - Phase 3 (Bulk tagging workflows) specification
+- **[SPECIFICATION.md](./SPECIFICATION.md)** - Overview and architecture for all phases
+- **[PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)** - Phase 1 (AWS MVP) - Complete with 8 tools, 50+ resource types
+- **[PHASE-2-SPECIFICATION.md](./PHASE-2-SPECIFICATION.md)** - Phase 2 (Production ECS + OAuth) specification
+- **[PHASE-3-SPECIFICATION.md](./PHASE-3-SPECIFICATION.md)** - Phase 3 (Multi-cloud Azure + GCP) specification
 
 ### Deployment & Operations
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - How to deploy to AWS EC2 or other cloud platforms
