@@ -33,13 +33,13 @@ While these are powerful tools, the **FinOps Tag Compliance MCP Server** is **co
 **Purpose**: Detect resources that don't comply with tagging rules and optionally auto-remediate.
 
 **How it works**:
-```
+
 1. Define AWS Config rule (e.g., "required-tags" managed rule)
 2. AWS Config evaluates all resources in scope
 3. Non-compliant resources flagged in AWS Config dashboard
 4. Optional: Trigger auto-remediation (e.g., Lambda to add missing tags)
 5. View compliance status in AWS Config console
-```
+
 
 **Example Rule**:
 ```json
@@ -95,13 +95,13 @@ While these are powerful tools, the **FinOps Tag Compliance MCP Server** is **co
 **Purpose**: Enforce tag key/value standards at resource creation time across all AWS accounts in an organization.
 
 **How it works**:
-```
+
 1. Create tag policy in AWS Organizations management account
 2. Attach policy to OUs or accounts
 3. When users create resources, AWS validates tags against policy
 4. If tags don't comply, resource creation fails (preventive control)
 5. Generate compliance reports showing tag key/value usage
-```
+
 
 **Example Tag Policy**:
 ```json
@@ -247,7 +247,7 @@ This is a **game-changer for FinOps teams**.
 **Example Workflow**:
 
 **AWS Config Way** (5-10 minutes):
-```
+
 1. Log into AWS console
 2. Navigate to AWS Config → Rules
 3. Click on "required-tags" rule
@@ -257,7 +257,7 @@ This is a **game-changer for FinOps teams**.
 7. Open in Excel
 8. Pivot table to summarize
 9. Share screenshot in Slack
-```
+
 
 **FinOps MCP Way** (30 seconds):
 ```
