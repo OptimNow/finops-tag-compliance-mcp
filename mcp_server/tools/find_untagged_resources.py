@@ -35,7 +35,7 @@ async def find_untagged_resources(
         policy_service: PolicyService for determining required tags
         resource_types: List of resource types to search (e.g., ["ec2:instance", "rds:db"])
                        Supported types: ec2:instance, rds:db, s3:bucket,
-                       lambda:function, ecs:service
+                       lambda:function, ecs:service, opensearch:domain
         regions: Optional list of AWS regions to search. If None, searches current region.
         min_cost_threshold: Optional minimum monthly cost threshold in USD.
                            Only return resources with estimated cost >= this value.
@@ -73,7 +73,8 @@ async def find_untagged_resources(
         "rds:db",
         "s3:bucket",
         "lambda:function",
-        "ecs:service"
+        "ecs:service",
+        "opensearch:domain"
     }
     
     invalid_types = [rt for rt in resource_types if rt not in valid_types]
@@ -210,6 +211,7 @@ async def _fetch_resources_by_type(
         "s3:bucket": aws_client.get_s3_buckets,
         "lambda:function": aws_client.get_lambda_functions,
         "ecs:service": aws_client.get_ecs_services,
+        "opensearch:domain": aws_client.get_opensearch_domains,
     }
     
     fetcher = resource_fetchers.get(resource_type)

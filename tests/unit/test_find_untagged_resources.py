@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from mcp_server.tools.find_untagged_resources import find_untagged_resources
 from mcp_server.clients.aws_client import AWSClient
 from mcp_server.services.policy_service import PolicyService
+from mcp_server.models.policy import TagPolicy, RequiredTag
 
 
 @pytest.fixture
@@ -21,21 +22,22 @@ def mock_aws_client():
 def mock_policy_service():
     """Create a mock policy service."""
     service = MagicMock(spec=PolicyService)
-    service.get_policy.return_value = {
-        "version": "1.0",
-        "required_tags": [
-            {
-                "name": "CostCenter",
-                "description": "Cost center",
-                "applies_to": ["ec2:instance", "rds:db"]
-            },
-            {
-                "name": "Environment",
-                "description": "Environment",
-                "applies_to": ["ec2:instance"]
-            }
+    # Return a proper TagPolicy object instead of a dict
+    service.get_policy.return_value = TagPolicy(
+        version="1.0",
+        required_tags=[
+            RequiredTag(
+                name="CostCenter",
+                description="Cost center",
+                applies_to=["ec2:instance", "rds:db"]
+            ),
+            RequiredTag(
+                name="Environment",
+                description="Environment",
+                applies_to=["ec2:instance"]
+            )
         ]
-    }
+    )
     return service
 
 

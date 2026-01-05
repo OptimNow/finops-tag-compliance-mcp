@@ -53,6 +53,17 @@
       "Resource": "*"
     },
     {
+      "Sid": "OpenSearchTaggingReadAccess",
+      "Effect": "Allow",
+      "Action": [
+        "es:ListDomainNames",
+        "es:DescribeDomain",
+        "es:DescribeDomains",
+        "es:ListTags"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "CostExplorerReadAccess",
       "Effect": "Allow",
       "Action": [

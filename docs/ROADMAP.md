@@ -136,6 +136,7 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 - OAuth 2.0 + PKCE authentication
 - **Agent Safety Enhancements** - Intent disambiguation, approval workflows, cost thresholds
 - **AWS Organizations Integration** - Tool 16: `import_aws_tag_policy` for runtime import
+- **Automated Daily Compliance Snapshots** - Server-side scheduled scans for consistent trend tracking
 
 ✅ **Production Infrastructure**
 - ECS Fargate deployment (2+ tasks)
@@ -149,6 +150,7 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 ✅ **Enterprise Features**
 - Approval workflows for bulk tagging
 - Scheduled compliance audits
+- **Automated daily compliance snapshots** - Server runs a full compliance scan daily at a configurable time, storing results in history database for accurate trend tracking (independent of user ad-hoc queries)
 - Enhanced audit logging
 - Rate limiting and quotas
 - **Intent commit pattern** - Agents describe what they'll do before executing
@@ -216,6 +218,47 @@ See [PHASE-2-SPECIFICATION.md](./PHASE-2-SPECIFICATION.md)
 - Server automatically finds and uses AWS policies
 - Policy changes in AWS Organizations sync to MCP server
 - Health endpoint shows policy source and last sync time
+
+### Phase 2.3: Automated Daily Compliance Snapshots (Week 5-6)
+
+**Goal**: Provide consistent, reliable compliance trend data independent of user queries
+
+**Problem Statement**:
+Ad-hoc compliance checks (e.g., "check EC2 only" or "check us-east-1") pollute the history database with partial scans. Averaging these partial scans produces meaningless trend data. Users need a consistent daily baseline for accurate trend tracking.
+
+**Solution**:
+- Server-side scheduled job runs a full compliance scan daily
+- Scans ALL resource types across ALL regions
+- Results stored with `store_snapshot=True` flag
+- User ad-hoc queries default to `store_snapshot=False` (don't affect history)
+- Users can explicitly request `store_snapshot=True` for custom snapshots
+
+**Deliverables**:
+- Background scheduler (APScheduler or similar) for daily compliance scans
+- Configurable scan time (default: 02:00 UTC)
+- Full resource type coverage in scheduled scans
+- Separate "scheduled" vs "ad-hoc" flag in history records
+- Health endpoint shows last scheduled scan time and next scheduled run
+- CloudWatch metrics for scheduled scan success/failure
+
+**Configuration**:
+```yaml
+# config.yaml
+scheduled_compliance:
+  enabled: true
+  schedule: "0 2 * * *"  # Cron format: 2:00 AM UTC daily
+  resource_types: "all"  # Or specific list
+  regions: "all"         # Or specific list
+  store_snapshot: true   # Always store scheduled scans
+  notify_on_failure: true
+  notification_email: "finops-team@company.com"
+```
+
+**Success Metrics**:
+- Daily compliance snapshots stored consistently
+- Trend analysis shows accurate week-over-week and month-over-month changes
+- No pollution from ad-hoc partial scans
+- Users can distinguish scheduled vs ad-hoc scans in history
 
 ---
 

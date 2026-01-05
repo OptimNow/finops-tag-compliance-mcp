@@ -565,6 +565,192 @@ async def test_get_account_id_error_handling():
             await client._get_account_id()
 
 
+# =============================================================================
+# OpenSearch Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_get_opensearch_domains_empty():
+    """Test fetching OpenSearch domains when none exist."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_account:
+        mock_account.return_value = "123456789012"
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.return_value = {"DomainNames": []}
+            
+            domains = await client.get_opensearch_domains()
+            assert domains == []
+
+
+@pytest.mark.asyncio
+async def test_get_opensearch_domains_with_tags():
+    """Test fetching OpenSearch domains with tags."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_account:
+        mock_account.return_value = "123456789012"
+        
+        # Mock the sequence of calls: list_domain_names, describe_domain, list_tags
+        call_count = [0]
+        
+        async def mock_call_side_effect(service_name, func, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:  # list_domain_names
+                return {"DomainNames": [{"DomainName": "test-domain"}]}
+            elif call_count[0] == 2:  # describe_domain
+                return {
+                    "DomainStatus": {
+                        "DomainName": "test-domain",
+                        "ARN": "arn:aws:es:us-east-1:123456789012:domain/test-domain",
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+                    }
+                }
+            elif call_count[0] == 3:  # list_tags
+                return {
+                    "TagList": [
+                        {"Key": "Environment", "Value": "production"},
+                        {"Key": "Owner", "Value": "data-team"}
+                    ]
+                }
+            return {}
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.side_effect = mock_call_side_effect
+            
+            resources = await client.get_opensearch_domains()
+            
+            assert len(resources) == 1
+            assert resources[0]["resource_type"] == "opensearch:domain"
+            assert resources[0]["resource_id"] == "test-domain"
+            assert resources[0]["region"] == "us-east-1"
+            assert resources[0]["tags"]["Environment"] == "production"
+            assert resources[0]["tags"]["Owner"] == "data-team"
+            assert resources[0]["arn"] == "arn:aws:es:us-east-1:123456789012:domain/test-domain"
+
+
+@pytest.mark.asyncio
+async def test_get_opensearch_domains_without_tags():
+    """Test fetching OpenSearch domains without tags."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_account:
+        mock_account.return_value = "123456789012"
+        
+        call_count = [0]
+        
+        async def mock_call_side_effect(service_name, func, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:  # list_domain_names
+                return {"DomainNames": [{"DomainName": "test-domain"}]}
+            elif call_count[0] == 2:  # describe_domain
+                return {
+                    "DomainStatus": {
+                        "DomainName": "test-domain",
+                        "ARN": "arn:aws:es:us-east-1:123456789012:domain/test-domain",
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+                    }
+                }
+            elif call_count[0] == 3:  # list_tags - raise error to simulate no tags
+                raise AWSAPIError("No tags found")
+            return {}
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.side_effect = mock_call_side_effect
+            
+            resources = await client.get_opensearch_domains()
+            
+            assert len(resources) == 1
+            assert resources[0]["tags"] == {}
+
+
+@pytest.mark.asyncio
+async def test_get_opensearch_domains_multiple():
+    """Test fetching multiple OpenSearch domains."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_account:
+        mock_account.return_value = "123456789012"
+        
+        call_count = [0]
+        
+        async def mock_call_side_effect(service_name, func, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:  # list_domain_names
+                return {
+                    "DomainNames": [
+                        {"DomainName": "domain-1"},
+                        {"DomainName": "domain-2"},
+                        {"DomainName": "domain-3"}
+                    ]
+                }
+            elif call_count[0] in [2, 4, 6]:  # describe_domain calls
+                domain_idx = (call_count[0] - 2) // 2
+                domain_name = f"domain-{domain_idx + 1}"
+                return {
+                    "DomainStatus": {
+                        "DomainName": domain_name,
+                        "ARN": f"arn:aws:es:us-east-1:123456789012:domain/{domain_name}",
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+                    }
+                }
+            elif call_count[0] in [3, 5, 7]:  # list_tags calls
+                return {"TagList": []}
+            return {}
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.side_effect = mock_call_side_effect
+            
+            resources = await client.get_opensearch_domains()
+            
+            assert len(resources) == 3
+            assert all(r["resource_type"] == "opensearch:domain" for r in resources)
+
+
+@pytest.mark.asyncio
+async def test_get_opensearch_domains_describe_error():
+    """Test handling of describe_domain errors for individual domains."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_get_account_id', new_callable=AsyncMock) as mock_account:
+        mock_account.return_value = "123456789012"
+        
+        call_count = [0]
+        
+        async def mock_call_side_effect(service_name, func, *args, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:  # list_domain_names
+                return {
+                    "DomainNames": [
+                        {"DomainName": "good-domain"},
+                        {"DomainName": "bad-domain"}
+                    ]
+                }
+            elif call_count[0] == 2:  # describe_domain for good-domain
+                return {
+                    "DomainStatus": {
+                        "DomainName": "good-domain",
+                        "ARN": "arn:aws:es:us-east-1:123456789012:domain/good-domain",
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC)
+                    }
+                }
+            elif call_count[0] == 3:  # list_tags for good-domain
+                return {"TagList": []}
+            elif call_count[0] == 4:  # describe_domain for bad-domain - error
+                raise AWSAPIError("Domain not accessible")
+            return {}
+        
+        with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+            mock_call.side_effect = mock_call_side_effect
+            
+            # Should return only the good domain, not fail entirely
+            resources = await client.get_opensearch_domains()
+            
+            assert len(resources) == 1
+            assert resources[0]["resource_id"] == "good-domain"
+
+
 @pytest.mark.asyncio
 async def test_ec2_arn_includes_account_id():
     """Test that EC2 instance ARNs include the account ID."""

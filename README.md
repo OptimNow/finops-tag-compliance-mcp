@@ -136,12 +136,19 @@ HISTORY_DB_PATH=./data/compliance_history.db
 
 ## Documentation
 
-- [Full Specification](./docs/SPECIFICATION.md) - Complete technical specification with 15 tools, 5 resources, and detailed use cases
-- [Deployment Guide](./docs/DEPLOYMENT.md) - How to deploy to AWS EC2 or other cloud platforms
+### Getting Started
+- [User Manual](./docs/USER_MANUAL.md) - **Start here** - Practical guide for FinOps practitioners
+- [Deployment Guide](./docs/DEPLOYMENT.md) - Local and AWS deployment instructions
+
+### Reference
+- [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) - How to configure your tagging policy
+- [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) - Required AWS permissions
+- [Full Specification](./docs/SPECIFICATION.md) - Complete technical specification
+
+### Development
+- [Testing Quick Start](./docs/TESTING_QUICK_START.md) - How to run tests
 - [UAT Protocol](./docs/UAT_PROTOCOL.md) - User acceptance testing procedures
 - [Roadmap](./docs/ROADMAP.md) - Development phases and timeline
-- [Testing Quick Start](./docs/TESTING_QUICK_START.md) - How to run tests
-- Additional documentation in the [docs/](./docs/) folder
 
 ---
 

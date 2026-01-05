@@ -51,6 +51,7 @@ class AWSClient:
         self.lambda_client = boto3.client('lambda', config=config)
         self.ecs = boto3.client('ecs', config=config)
         self.sts = boto3.client('sts', config=config)
+        self.opensearch = boto3.client('opensearch', config=config)
         # Cost Explorer is always us-east-1
         self.ce = boto3.client('ce', region_name='us-east-1')
         
@@ -447,6 +448,82 @@ class AWSClient:
             raise
         except Exception as e:
             raise AWSAPIError(f"Failed to fetch ECS services: {str(e)}") from e
+    
+    async def get_opensearch_domains(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """
+        Fetch OpenSearch domains with their tags.
+        
+        Args:
+            filters: Optional filters for the query
+        
+        Returns:
+            List of OpenSearch domain resources with tags
+        """
+        filters = filters or {}
+        
+        try:
+            # Get account ID for ARN construction
+            account_id = await self._get_account_id()
+            
+            # List all domain names
+            list_response = await self._call_with_backoff(
+                "opensearch",
+                self.opensearch.list_domain_names
+            )
+            
+            resources = []
+            for domain_info in list_response.get("DomainNames", []):
+                domain_name = domain_info.get("DomainName")
+                
+                if not domain_name:
+                    continue
+                
+                # Get domain details
+                try:
+                    describe_response = await self._call_with_backoff(
+                        "opensearch",
+                        self.opensearch.describe_domain,
+                        DomainName=domain_name
+                    )
+                    
+                    domain_status = describe_response.get("DomainStatus", {})
+                    domain_arn = domain_status.get("ARN", f"arn:aws:es:{self.region}:{account_id}:domain/{domain_name}")
+                    created_at = domain_status.get("Created")
+                    
+                    # Fetch tags for this domain
+                    try:
+                        tags_response = await self._call_with_backoff(
+                            "opensearch",
+                            self.opensearch.list_tags,
+                            ARN=domain_arn
+                        )
+                        tags = self._extract_tags(tags_response.get("TagList", []))
+                    except AWSAPIError:
+                        tags = {}
+                    
+                    resources.append({
+                        "resource_id": domain_name,
+                        "resource_type": "opensearch:domain",
+                        "region": self.region,
+                        "tags": tags,
+                        "created_at": created_at,
+                        "arn": domain_arn
+                    })
+                
+                except AWSAPIError as e:
+                    # Log but continue with other domains
+                    import logging
+                    logging.getLogger(__name__).warning(
+                        f"Failed to describe OpenSearch domain {domain_name}: {str(e)}"
+                    )
+                    continue
+            
+            return resources
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch OpenSearch domains: {str(e)}") from e
     
     async def get_cost_data(
         self,

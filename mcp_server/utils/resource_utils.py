@@ -38,6 +38,7 @@ async def fetch_resources_by_type(
         "s3:bucket": aws_client.get_s3_buckets,
         "lambda:function": aws_client.get_lambda_functions,
         "ecs:service": aws_client.get_ecs_services,
+        "opensearch:domain": aws_client.get_opensearch_domains,
     }
     
     fetcher = resource_fetchers.get(resource_type)

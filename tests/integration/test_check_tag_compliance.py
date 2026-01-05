@@ -36,6 +36,7 @@ def mock_aws_client():
     client.get_s3_buckets = AsyncMock(return_value=[])
     client.get_lambda_functions = AsyncMock(return_value=[])
     client.get_ecs_services = AsyncMock(return_value=[])
+    client.get_opensearch_domains = AsyncMock(return_value=[])
     
     return client
 
@@ -694,11 +695,12 @@ class TestCheckTagComplianceHistoryStorage:
             [violation]  # Second resource has violation
         ]
         
-        # Run compliance check with history service
+        # Run compliance check with history service and store_snapshot=True
         result = await check_tag_compliance(
             compliance_service=compliance_service,
             resource_types=["ec2:instance"],
-            history_service=history_service
+            history_service=history_service,
+            store_snapshot=True  # Explicitly request history storage
         )
         
         # Verify compliance result
@@ -707,28 +709,26 @@ class TestCheckTagComplianceHistoryStorage:
         assert result.compliance_score == 0.5
         assert len(result.violations) == 1
         
-        # Verify that the result was stored in history
-        history_result = await get_violation_history(
+        # Verify that the result was stored in history using the same history service
+        history_result = await history_service.get_history(
             days_back=1,
-            group_by="day",
-            db_path=":memory:"  # Use same in-memory database
+            group_by="day"
         )
         
         # Should have one history entry
-        assert len(history_result.history_result.history) == 1
+        assert len(history_result.history) == 1
         
         # Verify stored data matches compliance result
-        stored_entry = history_result.history_result.history[0]
+        stored_entry = history_result.history[0]
         assert stored_entry.compliance_score == result.compliance_score
         assert stored_entry.total_resources == result.total_resources
         assert stored_entry.compliant_resources == result.compliant_resources
         assert stored_entry.violation_count == len(result.violations)
         
-        # Verify timestamp is recent (within last minute)
+        # Verify timestamp is from today (grouped by day, so it's at midnight)
         from datetime import datetime, timedelta
-        now = datetime.utcnow()
-        time_diff = abs((stored_entry.timestamp - now).total_seconds())
-        assert time_diff < 60, f"Stored timestamp {stored_entry.timestamp} is not recent"
+        today = datetime.utcnow().date()
+        assert stored_entry.timestamp.date() == today, f"Stored timestamp {stored_entry.timestamp} is not from today"
         
         # Clean up
         history_service.close()
@@ -759,12 +759,13 @@ class TestCheckTagComplianceHistoryStorage:
         mock_aws_client.get_ec2_instances.return_value = mock_resources
         mock_policy_service.validate_resource_tags.return_value = []
         
-        # Run compliance check with failing history service
+        # Run compliance check with failing history service and store_snapshot=True
         # This should NOT raise an exception
         result = await check_tag_compliance(
             compliance_service=compliance_service,
             resource_types=["ec2:instance"],
-            history_service=history_service
+            history_service=history_service,
+            store_snapshot=True  # Explicitly request history storage
         )
         
         # Verify compliance check still worked
@@ -807,3 +808,175 @@ class TestCheckTagComplianceHistoryStorage:
         assert result.compliant_resources == 1
         assert result.compliance_score == 1.0
         assert len(result.violations) == 0
+
+    @pytest.mark.asyncio
+    async def test_compliance_check_does_not_store_history_by_default(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that compliance checks do NOT store history when store_snapshot=False (default)."""
+        from mcp_server.services.history_service import HistoryService
+        
+        # Create an in-memory history service for testing
+        history_service = HistoryService(db_path=":memory:")
+        
+        # Setup mock resources
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            }
+        ]
+        mock_aws_client.get_ec2_instances.return_value = mock_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        # Run compliance check WITHOUT store_snapshot (defaults to False)
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance"],
+            history_service=history_service
+            # store_snapshot defaults to False
+        )
+        
+        # Verify compliance result
+        assert result.total_resources == 1
+        assert result.compliant_resources == 1
+        assert result.compliance_score == 1.0
+        
+        # Verify that NO history was stored
+        history_result = await history_service.get_history(
+            days_back=1,
+            group_by="day"
+        )
+        
+        # Should have NO history entries
+        assert len(history_result.history) == 0, "History should NOT be stored when store_snapshot=False"
+        
+        # Clean up
+        history_service.close()
+
+
+@pytest.mark.integration
+class TestCheckTagComplianceOpenSearch:
+    """Test check_tag_compliance with OpenSearch domains."""
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_opensearch_domains(
+        self, compliance_service, mock_aws_client
+    ):
+        """Test checking compliance for OpenSearch domains."""
+        # Setup mock OpenSearch resources
+        mock_resources = [
+            {
+                "resource_id": "test-domain",
+                "resource_type": "opensearch:domain",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering", "Environment": "production"},
+                "cost_impact": 84.80,
+                "arn": "arn:aws:es:us-east-1:123456789012:domain/test-domain"
+            }
+        ]
+        mock_aws_client.get_opensearch_domains.return_value = mock_resources
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["opensearch:domain"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert isinstance(result, ComplianceResult)
+        assert result.total_resources == 1
+        assert result.compliance_score >= 0.0
+        assert result.compliance_score <= 1.0
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_opensearch_with_other_types(
+        self, compliance_service, mock_aws_client
+    ):
+        """Test checking compliance for OpenSearch along with other resource types."""
+        # Setup mock EC2 resources
+        ec2_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            }
+        ]
+        
+        # Setup mock OpenSearch resources
+        opensearch_resources = [
+            {
+                "resource_id": "search-domain",
+                "resource_type": "opensearch:domain",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "DataTeam"},
+                "cost_impact": 84.80,
+                "arn": "arn:aws:es:us-east-1:123456789012:domain/search-domain"
+            }
+        ]
+        
+        mock_aws_client.get_ec2_instances.return_value = ec2_resources
+        mock_aws_client.get_opensearch_domains.return_value = opensearch_resources
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance", "opensearch:domain"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert isinstance(result, ComplianceResult)
+        assert result.total_resources == 2
+        assert result.compliance_score >= 0.0
+        assert result.compliance_score <= 1.0
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_opensearch_with_violations(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test OpenSearch compliance check with violations."""
+        # Setup mock OpenSearch resources without required tags
+        mock_resources = [
+            {
+                "resource_id": "untagged-domain",
+                "resource_type": "opensearch:domain",
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 84.80,
+                "arn": "arn:aws:es:us-east-1:123456789012:domain/untagged-domain"
+            }
+        ]
+        mock_aws_client.get_opensearch_domains.return_value = mock_resources
+        
+        # Setup violation for missing tags
+        violation = Violation(
+            resource_id="untagged-domain",
+            resource_type="opensearch:domain",
+            region="us-east-1",
+            violation_type=ViolationType.MISSING_REQUIRED_TAG,
+            tag_name="CostCenter",
+            severity=Severity.ERROR,
+            cost_impact_monthly=84.80
+        )
+        mock_policy_service.validate_resource_tags.return_value = [violation]
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["opensearch:domain"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert result.total_resources == 1
+        assert result.compliant_resources == 0
+        assert result.compliance_score == 0.0
+        assert len(result.violations) == 1
+        assert result.violations[0].resource_type == "opensearch:domain"
+        assert result.violations[0].cost_impact_monthly == 84.80

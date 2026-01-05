@@ -734,3 +734,159 @@ class TestCostThresholdValidation:
         
         error = exc_info.value
         assert "unreasonably large" in error.message.lower() or "1,000,000" in error.message
+
+
+class TestArnFormatValidationProperty:
+    """Property tests for comprehensive ARN format validation.
+    
+    Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+    Validates: Requirements 16.3
+    
+    These tests verify that the ARN validation correctly handles all AWS service
+    ARN formats including global services, S3 buckets, and various partitions.
+    """
+    
+    # Strategy for generating valid standard ARNs (with region and account)
+    standard_arn = st.builds(
+        lambda partition, service, region, account, resource: 
+            f"arn:{partition}:{service}:{region}:{account}:{resource}",
+        partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
+        service=st.sampled_from(["ec2", "rds", "lambda", "ecs", "dynamodb", "sns", "sqs", "kinesis"]),
+        region=st.sampled_from(["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "cn-north-1", "us-gov-west-1"]),
+        account=st.from_regex(r"^\d{12}$", fullmatch=True),
+        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(lambda x: 1 < len(x) < 100),
+    )
+    
+    # Strategy for generating valid global service ARNs (empty region)
+    global_service_arn = st.builds(
+        lambda partition, service, account, resource:
+            f"arn:{partition}:{service}::{account}:{resource}",
+        partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
+        service=st.sampled_from(["iam", "route53", "cloudfront", "waf"]),
+        account=st.from_regex(r"^\d{12}$", fullmatch=True),
+        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(lambda x: 1 < len(x) < 100),
+    )
+    
+    # Strategy for generating valid S3 bucket ARNs (empty region AND account)
+    s3_bucket_arn = st.builds(
+        lambda partition, bucket:
+            f"arn:{partition}:s3:::{bucket}",
+        partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
+        bucket=st.from_regex(r"^[a-z0-9][a-z0-9\-._]{2,62}$", fullmatch=True),
+    )
+    
+    # Combined strategy for any valid ARN
+    any_valid_arn = st.one_of(standard_arn, global_service_arn, s3_bucket_arn)
+    
+    @given(arn=standard_arn)
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_standard_arns_accepted(self, arn: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any valid standard ARN (with region and account), validation SHALL accept it.
+        """
+        result = InputValidator.validate_resource_arns([arn])
+        assert result == [arn]
+    
+    @given(arn=global_service_arn)
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_global_service_arns_accepted(self, arn: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any valid global service ARN (empty region), validation SHALL accept it.
+        """
+        result = InputValidator.validate_resource_arns([arn])
+        assert result == [arn]
+    
+    @given(arn=s3_bucket_arn)
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_s3_bucket_arns_accepted(self, arn: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any valid S3 bucket ARN (empty region and account), validation SHALL accept it.
+        """
+        result = InputValidator.validate_resource_arns([arn])
+        assert result == [arn]
+    
+    @given(arns=st.lists(any_valid_arn, min_size=1, max_size=10, unique=True))
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_mixed_arn_types_accepted(self, arns: list[str]):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any list of valid ARNs (mixed types), validation SHALL accept all of them.
+        """
+        result = InputValidator.validate_resource_arns(arns)
+        assert result == arns
+    
+    @given(
+        partition=st.text(min_size=1, max_size=20).filter(
+            lambda x: x not in ["aws", "aws-cn", "aws-us-gov"] and x.strip() != ""
+        )
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_invalid_partition_rejected(self, partition: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any ARN with invalid partition, validation SHALL reject it.
+        """
+        arn = f"arn:{partition}:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+        
+        with pytest.raises((ValidationError, SecurityViolationError)):
+            InputValidator.validate_resource_arns([arn])
+    
+    @given(
+        account=st.text(min_size=1, max_size=20).filter(
+            lambda x: not (x.isdigit() and len(x) == 12) and x != "" and x.strip() != ""
+        )
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_invalid_account_id_rejected(self, account: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any ARN with invalid account ID (not 12 digits and not empty),
+        validation SHALL reject it.
+        """
+        # Skip if account contains characters that would trigger security violations
+        try:
+            InputValidator.detect_injection_attempt(account, "test")
+        except SecurityViolationError:
+            assume(False)  # Skip this test case
+        
+        arn = f"arn:aws:ec2:us-east-1:{account}:instance/i-1234567890abcdef0"
+        
+        with pytest.raises((ValidationError, SecurityViolationError)):
+            InputValidator.validate_resource_arns([arn])
+    
+    @given(
+        prefix=st.text(min_size=1, max_size=50).filter(
+            lambda x: not x.startswith("arn:") and x.strip() != ""
+        )
+    )
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_non_arn_strings_rejected(self, prefix: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any string that doesn't start with 'arn:', validation SHALL reject it.
+        """
+        # Skip if prefix contains characters that would trigger security violations
+        try:
+            InputValidator.detect_injection_attempt(prefix, "test")
+        except SecurityViolationError:
+            assume(False)  # Skip this test case
+        
+        with pytest.raises((ValidationError, SecurityViolationError)):
+            InputValidator.validate_resource_arns([prefix])

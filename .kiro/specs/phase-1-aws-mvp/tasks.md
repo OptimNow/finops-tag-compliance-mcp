@@ -377,34 +377,49 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
   - _Requirements: 14.1, 14.3_
 
 - [ ] 27. AWS Infrastructure Provisioning
-  - [ ] 27.1 Deploy CloudFormation stack `[Haiku]`
+  - [x] 27.1 Deploy CloudFormation stack `[Haiku]`
     - Deploy infrastructure/cloudformation.yaml
     - Provision EC2 instance (t3.medium), IAM role, security group
     - Wait for stack creation to complete
+    - Stack name: `tagging-mcp-server`
+    - Instance ID: `i-0dc314272ccf812db`
+    - IAM Role: `arn:aws:iam::382598791951:role/finops-mcp-server-role-dev`
+    - Security Group: `sg-0bd742e0695eb6d5d`
+    - CloudWatch Log Group: `/finops-mcp-server/dev`
     - _Requirements: 14.1, 14.4, 10.1_
 
-  - [ ] 27.2 Configure EC2 instance `[Haiku]`
+  - [x] 27.1.1 Attach Elastic IP to EC2 instance `[Manual]`
+    - Allocated Elastic IP named `tagging-mcp`: `100.50.91.35`
+    - Associated EIP with the EC2 instance
+    - MCP Endpoint: `http://100.50.91.35:8080`
+    - Note: Can optionally add EIP to CloudFormation template later
+    - _Requirements: 14.4_
+
+  - [x] 27.2 Configure EC2 instance `[Haiku]`
     - SSH into instance and verify Docker is installed
     - Clone repository to /opt/finops-mcp
     - Create .env file with production settings
     - _Requirements: 14.2_
 
-  - [ ] 27.3 Deploy application to EC2 `[Haiku]`
+  - [x] 27.3 Deploy application to EC2 `[Haiku]`
     - Run docker-compose up -d
     - Verify containers are running
     - Test health endpoint responds
+    - Note: Use `docker build -t finops-mcp-mcp-server .` instead of `docker-compose build` (buildx version issue on Amazon Linux)
     - _Requirements: 14.1, 14.5_
 
 - [ ] 28. Production Verification
-  - [ ] 28.1 Verify MCP server is accessible `[Haiku]`
-    - Test health endpoint from external IP
+  - [x] 28.1 Verify MCP server is accessible `[Haiku]`
+    - Test health endpoint from external IP: `curl http://100.50.91.35:8080/health`
+    - Health check confirmed: status=healthy, redis_connected=true, sqlite_connected=true
     - Verify IAM role can access AWS resources
     - Test one compliance check against real resources
     - _Requirements: 13.1, 10.1_
 
-  - [ ] 28.2 Configure Claude Desktop connection `[Haiku]`
-    - Add MCP server to Claude Desktop config
+  - [x] 28.2 Configure Claude Desktop connection `[Haiku]`
+    - Add MCP server to Claude Desktop config using bridge script
     - Test tool invocation through Claude
+    - Verified: get_tagging_policy, check_tag_compliance, find_untagged_resources all working
     - _Requirements: 14.5_
 
 - [ ] 29. Deployment Complete Checkpoint
@@ -787,6 +802,40 @@ Based on code assessment report (Quality Score: 7.5/10)
   - Test get_violation_history returns actual data
   - Run full regression test suite
   - Rebuild Docker container and verify fixes
+
+## Documentation and Naming Standardization
+
+- [ ] 55. Standardize Naming to "tagging-mcp-server"
+  - [ ] 55.1 Update CloudFormation template naming `[Haiku]`
+    - Rename all resources from `finops-mcp-server` to `tagging-mcp-server`
+    - Update IAM role name, security group name, CloudWatch log group
+    - Update stack name references in documentation
+    - _Files: infrastructure/cloudformation.yaml_
+
+  - [ ] 55.2 Update deployment documentation `[Haiku]`
+    - Update `docs/DEPLOYMENT.md` with new naming convention
+    - Update all example commands with `tagging-mcp-server` stack name
+    - Update Claude Desktop config examples
+    - _Files: docs/DEPLOYMENT.md_
+
+  - [ ] 55.3 Update docker-compose and environment files `[Haiku]`
+    - Update container names in docker-compose.yml
+    - Update any hardcoded references in .env.example
+    - _Files: docker-compose.yml, .env.example_
+
+- [x] 56. Create User Manual and Update Deployment Guide `[Sonnet]`
+  - Created `docs/USER_MANUAL.md` for FinOps practitioners
+    - Documented all 8 MCP tools with descriptions and use cases
+    - Included example prompts for Claude Desktop
+    - Documented common workflows (compliance check → remediation → tracking)
+    - Added troubleshooting guide (common errors, connectivity, permissions)
+  - Updated `docs/DEPLOYMENT.md` with local deployment section
+    - Added clear step-by-step instructions for local Docker deployment
+    - Included prerequisites (Docker Desktop, AWS credentials)
+    - Added .env configuration examples
+    - Documented how to connect Claude Desktop to local server
+  - Updated main README.md with links to both guides
+  - _Files: docs/USER_MANUAL.md, docs/DEPLOYMENT.md, README.md_
 
 ## Notes
 

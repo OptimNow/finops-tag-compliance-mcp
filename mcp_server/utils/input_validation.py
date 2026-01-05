@@ -122,10 +122,112 @@ class InputValidator:
         re.compile(r';\s*(rm|del|drop|truncate)', re.IGNORECASE),  # Destructive commands
     ]
     
-    # ARN pattern validation (more permissive to handle various resource types)
-    # Note: S3 bucket ARNs have empty region/account fields: arn:aws:s3:::bucket-name
+    # ==========================================================================
+    # ARN Pattern Validation
+    # ==========================================================================
+    # AWS ARN Format: arn:partition:service:region:account-id:resource
+    #
+    # Different AWS services have different ARN formats:
+    #
+    # 1. STANDARD FORMAT (most services):
+    #    arn:aws:service:region:account-id:resource-type/resource-id
+    #    Example: arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0
+    #
+    # 2. GLOBAL SERVICES (no region):
+    #    arn:aws:service::account-id:resource
+    #    Examples:
+    #    - IAM: arn:aws:iam::123456789012:user/johndoe
+    #    - IAM: arn:aws:iam::123456789012:role/admin-role
+    #    - IAM: arn:aws:iam::123456789012:policy/my-policy
+    #    - Route53: arn:aws:route53::123456789012:hostedzone/Z1234567890
+    #    - CloudFront: arn:aws:cloudfront::123456789012:distribution/E1234567890
+    #
+    # 3. S3 BUCKETS (no region, no account):
+    #    arn:aws:s3:::bucket-name
+    #    arn:aws:s3:::bucket-name/key-name
+    #    Note: S3 bucket ARNs have empty region AND account fields
+    #
+    # 4. S3 ACCESS POINTS (with region and account):
+    #    arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point
+    #
+    # 5. LAMBDA FUNCTIONS:
+    #    arn:aws:lambda:region:account-id:function:function-name
+    #    arn:aws:lambda:region:account-id:function:function-name:alias
+    #    arn:aws:lambda:region:account-id:function:function-name:$LATEST
+    #
+    # 6. RDS RESOURCES:
+    #    arn:aws:rds:region:account-id:db:db-instance-id
+    #    arn:aws:rds:region:account-id:cluster:cluster-id
+    #    arn:aws:rds:region:account-id:snapshot:snapshot-id
+    #
+    # 7. ECS RESOURCES:
+    #    arn:aws:ecs:region:account-id:cluster/cluster-name
+    #    arn:aws:ecs:region:account-id:service/cluster-name/service-name
+    #    arn:aws:ecs:region:account-id:task/cluster-name/task-id
+    #
+    # 8. OPENSEARCH/ELASTICSEARCH:
+    #    arn:aws:es:region:account-id:domain/domain-name
+    #    arn:aws:opensearch:region:account-id:domain/domain-name
+    #
+    # 9. SNS/SQS:
+    #    arn:aws:sns:region:account-id:topic-name
+    #    arn:aws:sqs:region:account-id:queue-name
+    #
+    # 10. DYNAMODB:
+    #     arn:aws:dynamodb:region:account-id:table/table-name
+    #
+    # 11. KINESIS:
+    #     arn:aws:kinesis:region:account-id:stream/stream-name
+    #
+    # 12. SECRETS MANAGER:
+    #     arn:aws:secretsmanager:region:account-id:secret:secret-name
+    #
+    # 13. KMS:
+    #     arn:aws:kms:region:account-id:key/key-id
+    #     arn:aws:kms:region:account-id:alias/alias-name
+    #
+    # 14. STEP FUNCTIONS:
+    #     arn:aws:states:region:account-id:stateMachine:state-machine-name
+    #
+    # 15. API GATEWAY:
+    #     arn:aws:apigateway:region::/restapis/api-id
+    #     arn:aws:execute-api:region:account-id:api-id/stage/method/resource
+    #
+    # 16. CLOUDWATCH:
+    #     arn:aws:logs:region:account-id:log-group:log-group-name
+    #     arn:aws:cloudwatch:region:account-id:alarm:alarm-name
+    #
+    # 17. ELASTIC LOAD BALANCING:
+    #     arn:aws:elasticloadbalancing:region:account-id:loadbalancer/app/name/id
+    #     arn:aws:elasticloadbalancing:region:account-id:targetgroup/name/id
+    #
+    # 18. ELASTICACHE:
+    #     arn:aws:elasticache:region:account-id:cluster:cluster-id
+    #     arn:aws:elasticache:region:account-id:replicationgroup:group-id
+    #
+    # 19. REDSHIFT:
+    #     arn:aws:redshift:region:account-id:cluster:cluster-id
+    #
+    # 20. GLUE:
+    #     arn:aws:glue:region:account-id:database/database-name
+    #     arn:aws:glue:region:account-id:table/database-name/table-name
+    #
+    # ==========================================================================
+    #
+    # Comprehensive ARN pattern that handles:
+    # - Standard services with region and account (ec2, rds, lambda, etc.)
+    # - Global services with no region (iam, route53, cloudfront)
+    # - S3 buckets with no region AND no account
+    # - Various resource naming conventions (slashes, colons, dots, underscores)
+    # - AWS partitions (aws, aws-cn, aws-us-gov)
+    #
     ARN_PATTERN = re.compile(
-        r'^arn:aws:[a-z0-9\-]+:[a-z0-9\-]*:(\d{12}|):[a-z0-9\-/:._]+$'
+        r'^arn:'                           # ARN prefix
+        r'(aws|aws-cn|aws-us-gov):'        # Partition (aws, aws-cn for China, aws-us-gov for GovCloud)
+        r'[a-z0-9\-]+:'                    # Service name (ec2, s3, iam, lambda, etc.)
+        r'[a-z0-9\-]*:'                    # Region (can be empty for global services like IAM, S3)
+        r'(\d{12}|):'                      # Account ID (12 digits, or empty for S3 buckets)
+        r'[a-zA-Z0-9\-/:._*$@+=]+$'
     )
     
     # Date pattern validation (YYYY-MM-DD)

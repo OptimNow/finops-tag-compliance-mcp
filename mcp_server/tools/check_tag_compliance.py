@@ -19,21 +19,26 @@ async def check_tag_compliance(
     resource_types: list[str],
     filters: Optional[dict] = None,
     severity: str = "all",
-    history_service: Optional[HistoryService] = None
+    history_service: Optional[HistoryService] = None,
+    store_snapshot: bool = False
 ) -> ComplianceResult:
     """
     Check tag compliance for AWS resources.
     
     This tool scans specified AWS resource types and validates them against
     the organization's tagging policy. It returns a compliance score along
-    with detailed violation information. Results are automatically stored
-    in the compliance history database for trend tracking.
+    with detailed violation information.
+    
+    By default, results are NOT stored in the history database. Set 
+    store_snapshot=True to explicitly store the result for trend tracking.
+    This prevents ad-hoc queries (e.g., "check EC2 only") from polluting
+    the historical data with partial scans.
     
     Args:
         compliance_service: ComplianceService instance for performing checks
         resource_types: List of resource types to check (e.g., ["ec2:instance", "rds:db"])
                        Supported types: ec2:instance, rds:db, s3:bucket, 
-                       lambda:function, ecs:service
+                       lambda:function, ecs:service, opensearch:domain
         filters: Optional filters for narrowing the scan:
                 - region: AWS region(s) to scan (string or list)
                 - account_id: AWS account ID(s) to scan (string or list)
@@ -42,6 +47,9 @@ async def check_tag_compliance(
                  - "errors_only": Return only error-level violations
                  - "warnings_only": Return only warning-level violations
         history_service: Optional HistoryService for storing scan results
+        store_snapshot: If True, store the result in history database for
+                       trend tracking. Defaults to False to prevent partial
+                       scans from affecting historical averages.
     
     Returns:
         ComplianceResult containing:
@@ -58,11 +66,18 @@ async def check_tag_compliance(
     Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 8.1
     
     Example:
+        >>> # Ad-hoc check (not stored in history)
         >>> result = await check_tag_compliance(
         ...     compliance_service=service,
-        ...     resource_types=["ec2:instance", "rds:db"],
+        ...     resource_types=["ec2:instance"],
         ...     filters={"region": "us-east-1"},
-        ...     severity="errors_only"
+        ... )
+        >>> 
+        >>> # Full compliance snapshot (stored in history)
+        >>> result = await check_tag_compliance(
+        ...     compliance_service=service,
+        ...     resource_types=["ec2:instance", "rds:db", "s3:bucket"],
+        ...     store_snapshot=True
         ... )
         >>> print(f"Compliance: {result.compliance_score * 100:.1f}%")
     """
@@ -76,7 +91,8 @@ async def check_tag_compliance(
         "rds:db",
         "s3:bucket",
         "lambda:function",
-        "ecs:service"
+        "ecs:service",
+        "opensearch:domain"
     }
     
     invalid_types = [rt for rt in resource_types if rt not in valid_types]
@@ -111,12 +127,12 @@ async def check_tag_compliance(
         f"total={result.total_resources}, violations={len(result.violations)}"
     )
     
-    # Store the result in history database (if history service is provided)
-    if history_service:
+    # Store the result in history database only if explicitly requested
+    if store_snapshot and history_service:
         try:
             await history_service.store_scan_result(result)
-            logger.debug(
-                f"Stored compliance result in history database: "
+            logger.info(
+                f"Stored compliance snapshot in history database: "
                 f"score={result.compliance_score:.2%}, timestamp={result.scan_timestamp}"
             )
         except Exception as e:
@@ -125,5 +141,10 @@ async def check_tag_compliance(
                 f"Failed to store compliance result in history database: {e}. "
                 f"Compliance check succeeded but history tracking may be incomplete."
             )
+    elif not store_snapshot:
+        logger.debug(
+            f"Compliance check complete (not stored in history). "
+            f"Set store_snapshot=True to record this result for trend tracking."
+        )
     
     return result

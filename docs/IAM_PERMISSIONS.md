@@ -10,7 +10,7 @@ This guide covers the IAM permissions required for the MCP server to scan AWS re
 
 The MCP server requires **read-only** access to AWS resources in Phase 1. The principle of least privilege is followed - the server can only read resource metadata and tags, not modify anything.
 
-**Phase 1 (Current)**: Read-only access to EC2, RDS, S3, Lambda, ECS, Cost Explorer
+**Phase 1 (Current)**: Read-only access to EC2, RDS, S3, Lambda, ECS, OpenSearch, Cost Explorer
 **Phase 2 (Future)**: Additional write permissions for bulk tagging operations
 
 ---
@@ -203,6 +203,15 @@ aws iam add-role-to-instance-profile \
 | `ecs:DescribeServices` | Get service details |
 | `ecs:ListTagsForResource` | Get tags for ECS resources |
 
+### OpenSearch Permissions
+
+| Permission | Purpose |
+|------------|---------|
+| `es:ListDomainNames` | List OpenSearch/Elasticsearch domains |
+| `es:DescribeDomain` | Get domain details |
+| `es:DescribeDomains` | Get multiple domain details |
+| `es:ListTags` | Get tags for OpenSearch domains |
+
 ### Cost Explorer Permissions
 
 | Permission | Purpose |
@@ -278,6 +287,15 @@ else
   echo "  ✗ Lambda access: FAILED"
 fi
 
+# Test OpenSearch
+echo "✓ Testing OpenSearch access..."
+aws opensearch list-domain-names --region us-east-1 > /dev/null 2>&1
+if [ $? -eq 0 ]; then
+  echo "  ✓ OpenSearch access: OK"
+else
+  echo "  ✗ OpenSearch access: FAILED"
+fi
+
 # Test Cost Explorer
 echo "✓ Testing Cost Explorer access..."
 aws ce get-cost-and-usage \
@@ -318,6 +336,9 @@ aws s3api list-buckets
 
 # Test Lambda access
 aws lambda list-functions --region us-east-1 --max-items 5
+
+# Test OpenSearch access
+aws opensearch list-domain-names --region us-east-1
 
 # Test Cost Explorer access (requires Cost Explorer to be enabled)
 aws ce get-cost-and-usage \
@@ -452,6 +473,175 @@ Phase 2 will add write permissions for bulk tagging operations:
 
 ---
 
+## AWS ARN Format Reference
+
+The MCP server validates AWS ARNs (Amazon Resource Names) for all tool inputs. This section documents the supported ARN formats.
+
+### ARN Structure
+
+AWS ARNs follow this general format:
+
+```
+arn:partition:service:region:account-id:resource
+```
+
+| Component | Description | Example |
+|-----------|-------------|---------|
+| `partition` | AWS partition | `aws`, `aws-cn`, `aws-us-gov` |
+| `service` | AWS service namespace | `ec2`, `s3`, `iam`, `lambda` |
+| `region` | AWS region (may be empty) | `us-east-1`, `eu-west-1`, `` |
+| `account-id` | 12-digit AWS account ID (may be empty) | `123456789012`, `` |
+| `resource` | Resource identifier | `instance/i-1234567890abcdef0` |
+
+### Supported ARN Formats by Service
+
+#### EC2 (Elastic Compute Cloud)
+
+```
+arn:aws:ec2:region:account-id:instance/instance-id
+arn:aws:ec2:region:account-id:volume/volume-id
+arn:aws:ec2:region:account-id:snapshot/snapshot-id
+arn:aws:ec2:region:account-id:security-group/sg-id
+arn:aws:ec2:region:account-id:vpc/vpc-id
+```
+
+**Examples:**
+- `arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0`
+- `arn:aws:ec2:eu-west-1:123456789012:volume/vol-1234567890abcdef0`
+
+#### S3 (Simple Storage Service)
+
+S3 bucket ARNs have **empty region and account fields**:
+
+```
+arn:aws:s3:::bucket-name
+arn:aws:s3:::bucket-name/key-name
+arn:aws:s3:::bucket-name/*
+```
+
+S3 access points include region and account:
+
+```
+arn:aws:s3:region:account-id:accesspoint/access-point-name
+```
+
+**Examples:**
+- `arn:aws:s3:::my-bucket-name`
+- `arn:aws:s3:::my-bucket/path/to/object.txt`
+- `arn:aws:s3:us-east-1:123456789012:accesspoint/my-access-point`
+
+#### IAM (Identity and Access Management)
+
+IAM is a **global service** with **empty region field**:
+
+```
+arn:aws:iam::account-id:user/user-name
+arn:aws:iam::account-id:role/role-name
+arn:aws:iam::account-id:policy/policy-name
+arn:aws:iam::account-id:group/group-name
+arn:aws:iam::account-id:instance-profile/profile-name
+```
+
+**Examples:**
+- `arn:aws:iam::123456789012:user/johndoe`
+- `arn:aws:iam::123456789012:role/admin-role`
+- `arn:aws:iam::123456789012:policy/my-custom-policy`
+
+#### Lambda
+
+```
+arn:aws:lambda:region:account-id:function:function-name
+arn:aws:lambda:region:account-id:function:function-name:alias
+arn:aws:lambda:region:account-id:function:function-name:$LATEST
+arn:aws:lambda:region:account-id:layer:layer-name:version
+```
+
+**Examples:**
+- `arn:aws:lambda:us-east-1:123456789012:function:my-function`
+- `arn:aws:lambda:us-west-2:123456789012:function:my-function:prod`
+
+#### RDS (Relational Database Service)
+
+```
+arn:aws:rds:region:account-id:db:db-instance-id
+arn:aws:rds:region:account-id:cluster:cluster-id
+arn:aws:rds:region:account-id:snapshot:snapshot-id
+arn:aws:rds:region:account-id:cluster-snapshot:snapshot-id
+```
+
+**Examples:**
+- `arn:aws:rds:us-east-1:123456789012:db:my-database`
+- `arn:aws:rds:eu-central-1:123456789012:cluster:my-aurora-cluster`
+
+#### ECS (Elastic Container Service)
+
+```
+arn:aws:ecs:region:account-id:cluster/cluster-name
+arn:aws:ecs:region:account-id:service/cluster-name/service-name
+arn:aws:ecs:region:account-id:task/cluster-name/task-id
+arn:aws:ecs:region:account-id:task-definition/family:revision
+```
+
+**Examples:**
+- `arn:aws:ecs:us-east-1:123456789012:cluster/my-cluster`
+- `arn:aws:ecs:us-east-1:123456789012:service/my-cluster/my-service`
+
+#### OpenSearch / Elasticsearch
+
+```
+arn:aws:es:region:account-id:domain/domain-name
+arn:aws:opensearch:region:account-id:domain/domain-name
+```
+
+**Examples:**
+- `arn:aws:es:us-east-1:123456789012:domain/my-search-domain`
+- `arn:aws:opensearch:us-west-2:123456789012:domain/my-opensearch`
+
+#### Other Global Services (Empty Region)
+
+| Service | ARN Format | Example |
+|---------|------------|---------|
+| Route53 | `arn:aws:route53::account-id:hostedzone/zone-id` | `arn:aws:route53::123456789012:hostedzone/Z1234567890` |
+| CloudFront | `arn:aws:cloudfront::account-id:distribution/dist-id` | `arn:aws:cloudfront::123456789012:distribution/E1234567890` |
+| WAF (Global) | `arn:aws:waf::account-id:webacl/acl-id` | `arn:aws:waf::123456789012:webacl/abc123` |
+
+#### Additional Services
+
+| Service | ARN Format |
+|---------|------------|
+| SNS | `arn:aws:sns:region:account-id:topic-name` |
+| SQS | `arn:aws:sqs:region:account-id:queue-name` |
+| DynamoDB | `arn:aws:dynamodb:region:account-id:table/table-name` |
+| Kinesis | `arn:aws:kinesis:region:account-id:stream/stream-name` |
+| Secrets Manager | `arn:aws:secretsmanager:region:account-id:secret:secret-name` |
+| KMS | `arn:aws:kms:region:account-id:key/key-id` |
+| Step Functions | `arn:aws:states:region:account-id:stateMachine:name` |
+| CloudWatch Logs | `arn:aws:logs:region:account-id:log-group:name` |
+| ELB | `arn:aws:elasticloadbalancing:region:account-id:loadbalancer/type/name/id` |
+| ElastiCache | `arn:aws:elasticache:region:account-id:cluster:cluster-id` |
+| Redshift | `arn:aws:redshift:region:account-id:cluster:cluster-id` |
+| Glue | `arn:aws:glue:region:account-id:database/database-name` |
+
+### ARN Validation Rules
+
+The MCP server validates ARNs with the following rules:
+
+1. **Partition**: Must be `aws`, `aws-cn` (China), or `aws-us-gov` (GovCloud)
+2. **Service**: Must be a valid AWS service namespace (lowercase, alphanumeric with hyphens)
+3. **Region**: Can be empty for global services (IAM, S3 buckets, Route53, CloudFront)
+4. **Account ID**: Must be exactly 12 digits, or empty for S3 bucket ARNs
+5. **Resource**: Must contain valid characters (alphanumeric, hyphens, slashes, colons, dots, underscores)
+
+### Common ARN Validation Errors
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| "Invalid ARN format" | ARN doesn't match expected pattern | Check ARN structure matches service format |
+| "Invalid account ID" | Account ID is not 12 digits | Verify account ID is exactly 12 digits |
+| "Invalid partition" | Partition is not aws/aws-cn/aws-us-gov | Use correct partition for your region |
+
+---
+
 ## Summary
 
 | Environment | Recommended Approach | IAM Entity |
@@ -461,7 +651,7 @@ Phase 2 will add write permissions for bulk tagging operations:
 | **Production (EC2)** | Custom IAM Policy | IAM Role + Instance Profile |
 | **Production (ECS)** | Custom IAM Policy | IAM Task Role |
 
-**Minimum Required Permissions**: EC2, RDS, S3, Lambda, ECS read access
+**Minimum Required Permissions**: EC2, RDS, S3, Lambda, ECS, OpenSearch read access
 **Optional Permissions**: Cost Explorer (for cost attribution gap tool), CloudWatch Logs (for logging)
 
 ---

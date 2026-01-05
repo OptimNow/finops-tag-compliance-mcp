@@ -192,6 +192,16 @@ class MCPHandler:
                         "default": "all",
                         "description": "Filter results by severity level",
                     },
+                    "store_snapshot": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "If true, store this compliance result in the history database "
+                            "for trend tracking. Use this for full compliance audits, not "
+                            "ad-hoc queries. Defaults to false to prevent partial scans "
+                            "from affecting historical averages."
+                        ),
+                    },
                 },
                 "required": ["resource_types"],
                 "additionalProperties": False,
@@ -269,7 +279,7 @@ class MCPHandler:
                         "type": "array",
                         "items": {
                             "type": "string",
-                            "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*:\\d{12}:[a-z0-9\\-/:._]+$",
+                            "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*(:\\d{12}|::)[a-z0-9\\-/:._]+$",
                             "minLength": 20,
                             "maxLength": 1024,
                         },
@@ -384,7 +394,7 @@ class MCPHandler:
                 "properties": {
                     "resource_arn": {
                         "type": "string",
-                        "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*:\\d{12}:[a-z0-9\\-/:._]+$",
+                        "pattern": "^arn:aws:[a-z0-9\\-]+:[a-z0-9\\-]*(:\\d{12}|::)[a-z0-9\\-/:._]+$",
                         "minLength": 20,
                         "maxLength": 1024,
                         "description": "AWS ARN of the resource to suggest tags for",
@@ -549,6 +559,11 @@ class MCPHandler:
                 )
                 InputValidator.validate_severity(
                     arguments.get("severity", "all"),
+                    required=False,
+                )
+                InputValidator.validate_boolean(
+                    arguments.get("store_snapshot", False),
+                    field_name="store_snapshot",
                     required=False,
                 )
             
@@ -991,12 +1006,16 @@ class MCPHandler:
         if not self.compliance_service:
             raise ValueError("ComplianceService not initialized")
         
+        # Only pass history_service if store_snapshot is True
+        store_snapshot = arguments.get("store_snapshot", False)
+        
         result = await check_tag_compliance(
             compliance_service=self.compliance_service,
             resource_types=arguments["resource_types"],
             filters=arguments.get("filters"),
             severity=arguments.get("severity", "all"),
             history_service=self.history_service,
+            store_snapshot=store_snapshot,
         )
         
         return {
@@ -1019,6 +1038,7 @@ class MCPHandler:
             ],
             "cost_attribution_gap": result.cost_attribution_gap,
             "scan_timestamp": result.scan_timestamp.isoformat(),
+            "stored_in_history": store_snapshot,
         }
     
     async def _handle_find_untagged_resources(self, arguments: dict) -> dict:
@@ -1177,9 +1197,20 @@ class MCPHandler:
     
     async def _handle_get_violation_history(self, arguments: dict) -> dict:
         """Handle get_violation_history tool invocation."""
+        # Use the history_service's db_path if available, otherwise use default
+        db_path = "compliance_history.db"
+        if self.history_service:
+            db_path = self.history_service.db_path
+            logger.debug(f"Using history_service db_path: {db_path}")
+        else:
+            logger.warning("history_service is None, using default db_path")
+        
+        logger.info(f"get_violation_history using db_path: {db_path}")
+        
         result = await get_violation_history(
             days_back=arguments.get("days_back", 30),
             group_by=arguments.get("group_by", "day"),
+            db_path=db_path,
         )
         
         return result.to_dict()
