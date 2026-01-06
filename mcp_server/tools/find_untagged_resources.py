@@ -207,18 +207,18 @@ async def find_untagged_resources(
         # This prevents false "Cost Explorer not enabled" messages when cost threshold filters out all resources
         if "actual" in all_cost_sources_used:
             cost_note = (
-                "Cost data includes actual per-resource costs from Cost Explorer for EC2/RDS. "
-                "Other resource types use service-level averages (rough estimates)."
+                "EC2/RDS costs are actual per-resource values from Cost Explorer. "
+                "S3/Lambda/ECS costs are estimates (service total ÷ resource count) since AWS doesn't provide per-resource granularity for these services."
             )
         elif "service_average" in all_cost_sources_used:
             cost_note = (
-                "Cost data uses service-level totals divided by resource count (rough estimates). "
-                "Enable Cost Allocation Tags in AWS Billing for per-resource accuracy."
+                "Costs are estimates (service total ÷ resource count). "
+                "AWS Cost Explorer doesn't provide per-resource granularity for S3, Lambda, or ECS."
             )
         else:
             cost_note = (
-                "Cost data unavailable from Cost Explorer. "
-                "Ensure Cost Explorer is enabled (takes 24-48 hours to activate)."
+                "Cost data unavailable. "
+                "Ensure Cost Explorer is enabled in your AWS account (takes 24-48 hours after activation)."
             )
     else:
         total_cost = 0.0
