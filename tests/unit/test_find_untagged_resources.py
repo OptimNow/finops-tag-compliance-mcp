@@ -15,6 +15,13 @@ def mock_aws_client():
     """Create a mock AWS client."""
     client = MagicMock(spec=AWSClient)
     client.region = "us-east-1"
+    # Add the new method for cost data
+    client.get_service_name_for_resource_type = MagicMock(side_effect=lambda rt: {
+        "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+        "rds:db": "Amazon Relational Database Service",
+        "s3:bucket": "Amazon Simple Storage Service",
+        "lambda:function": "AWS Lambda",
+    }.get(rt, ""))
     return client
 
 
@@ -74,7 +81,6 @@ async def test_find_untagged_resources_no_resources(mock_aws_client, mock_policy
     """Test finding untagged resources when no resources exist."""
     # Mock AWS client to return no resources
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={})
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
@@ -85,11 +91,12 @@ async def test_find_untagged_resources_no_resources(mock_aws_client, mock_policy
     assert result.total_untagged == 0
     assert len(result.resources) == 0
     assert result.total_monthly_cost == 0.0
+    assert result.cost_data_note is None  # No costs requested
 
 
 @pytest.mark.asyncio
 async def test_find_untagged_resources_completely_untagged(mock_aws_client, mock_policy_service):
-    """Test finding resources with no tags at all."""
+    """Test finding resources with no tags at all (without costs)."""
     # Mock AWS client to return untagged resource
     created_at = datetime.now() - timedelta(days=30)
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
@@ -102,7 +109,6 @@ async def test_find_untagged_resources_completely_untagged(mock_aws_client, mock
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
         }
     ])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"i-12345": 100.0})
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
@@ -119,8 +125,45 @@ async def test_find_untagged_resources_completely_untagged(mock_aws_client, mock
     assert len(resource.missing_required_tags) == 2  # CostCenter and Environment
     assert "CostCenter" in resource.missing_required_tags
     assert "Environment" in resource.missing_required_tags
-    assert resource.monthly_cost_estimate == 100.0
+    assert resource.monthly_cost_estimate is None  # No costs requested
+    assert resource.cost_source is None
     assert resource.age_days == 30
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_with_costs(mock_aws_client, mock_policy_service):
+    """Test finding resources with include_costs=True."""
+    created_at = datetime.now() - timedelta(days=30)
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "created_at": created_at,
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+        }
+    ])
+    # Return per-resource cost data
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-12345": 100.0},  # resource_costs
+        {"Amazon Elastic Compute Cloud - Compute": 100.0},  # service_costs
+        "actual"  # cost_source
+    ))
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"],
+        include_costs=True
+    )
+    
+    assert result.total_untagged == 1
+    resource = result.resources[0]
+    assert resource.monthly_cost_estimate == 100.0
+    assert resource.cost_source == "actual"
+    assert result.total_monthly_cost == 100.0
+    assert result.cost_data_note is not None
 
 
 @pytest.mark.asyncio
@@ -137,7 +180,6 @@ async def test_find_untagged_resources_partially_tagged(mock_aws_client, mock_po
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-67890"
         }
     ])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"i-67890": 50.0})
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
@@ -154,7 +196,7 @@ async def test_find_untagged_resources_partially_tagged(mock_aws_client, mock_po
     assert "CostCenter" in resource.missing_required_tags
     assert "Environment" not in resource.missing_required_tags
     assert resource.current_tags == {"Environment": "production"}
-    assert resource.monthly_cost_estimate == 50.0
+    assert resource.monthly_cost_estimate is None  # No costs requested
     assert resource.age_days == 15
 
 
@@ -174,7 +216,6 @@ async def test_find_untagged_resources_fully_tagged(mock_aws_client, mock_policy
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-11111"
         }
     ])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"i-11111": 75.0})
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
@@ -189,7 +230,7 @@ async def test_find_untagged_resources_fully_tagged(mock_aws_client, mock_policy
 
 @pytest.mark.asyncio
 async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_policy_service):
-    """Test filtering by minimum cost threshold."""
+    """Test filtering by minimum cost threshold (implies include_costs=True)."""
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
         {
             "resource_id": "i-low-cost",
@@ -208,12 +249,14 @@ async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_poli
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-high-cost"
         }
     ])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={
-        "i-low-cost": 25.0,
-        "i-high-cost": 200.0
-    })
+    # Return per-resource cost data
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-low-cost": 25.0, "i-high-cost": 200.0},  # resource_costs
+        {"Amazon Elastic Compute Cloud - Compute": 225.0},  # service_costs
+        "actual"  # cost_source
+    ))
     
-    # Filter for resources costing at least $100/month
+    # Filter for resources costing at least $100/month (implies include_costs=True)
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
@@ -225,12 +268,14 @@ async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_poli
     assert result.total_untagged == 1
     assert len(result.resources) == 1
     assert result.resources[0].resource_id == "i-high-cost"
+    assert result.resources[0].cost_source == "actual"
+    assert result.resources[0].monthly_cost_estimate == 200.0
     assert result.total_monthly_cost == 200.0
 
 
 @pytest.mark.asyncio
 async def test_find_untagged_resources_multiple_types(mock_aws_client, mock_policy_service):
-    """Test finding untagged resources across multiple resource types."""
+    """Test finding untagged resources across multiple resource types (without costs)."""
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
         {
             "resource_id": "i-12345",
@@ -251,10 +296,6 @@ async def test_find_untagged_resources_multiple_types(mock_aws_client, mock_poli
             "arn": "arn:aws:rds:us-east-1::db:db-67890"
         }
     ])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={
-        "i-12345": 100.0,
-        "db-67890": 150.0
-    })
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
@@ -264,13 +305,16 @@ async def test_find_untagged_resources_multiple_types(mock_aws_client, mock_poli
     
     assert result.total_untagged == 2
     assert len(result.resources) == 2
-    assert result.total_monthly_cost == 250.0
+    assert result.total_monthly_cost == 0.0  # No costs requested
+    # Verify no cost data was fetched
+    for resource in result.resources:
+        assert resource.monthly_cost_estimate is None
 
 
 @pytest.mark.asyncio
 @patch('mcp_server.tools.find_untagged_resources.logger')
 async def test_find_untagged_resources_cost_data_unavailable(mock_logger, mock_aws_client, mock_policy_service):
-    """Test handling when cost data is unavailable."""
+    """Test handling when cost data is unavailable (with include_costs=True)."""
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
         {
             "resource_id": "i-12345",
@@ -282,15 +326,17 @@ async def test_find_untagged_resources_cost_data_unavailable(mock_logger, mock_a
         }
     ])
     # Simulate cost data fetch failure
-    mock_aws_client.get_cost_data = AsyncMock(side_effect=Exception("Cost Explorer unavailable"))
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(side_effect=Exception("Cost Explorer unavailable"))
     
     result = await find_untagged_resources(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
-        resource_types=["ec2:instance"]
+        resource_types=["ec2:instance"],
+        include_costs=True
     )
     
-    # Should still return results with zero cost
+    # Should still return results with None cost and estimated source
     assert result.total_untagged == 1
     assert len(result.resources) == 1
     assert result.resources[0].monthly_cost_estimate == 0.0
+    assert result.resources[0].cost_source == "estimated"

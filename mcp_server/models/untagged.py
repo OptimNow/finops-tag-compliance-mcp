@@ -23,9 +23,22 @@ class UntaggedResource(BaseModel):
         default_factory=list,
         description="List of required tag names that are missing"
     )
-    monthly_cost_estimate: float = Field(
-        0.0,
-        description="Estimated monthly cost in USD"
+    monthly_cost_estimate: float | None = Field(
+        None,
+        description=(
+            "Estimated monthly cost in USD. Only populated when include_costs=True. "
+            "For EC2/RDS this is actual per-resource cost from Cost Explorer. "
+            "For S3/Lambda/ECS this is a rough estimate (service total / resource count)."
+        )
+    )
+    cost_source: str | None = Field(
+        None,
+        description=(
+            "Source of cost data (only populated when include_costs=True): "
+            "'actual' = from Cost Explorer per-resource data (EC2/RDS), "
+            "'service_average' = service total divided by resource count (rough estimate), "
+            "'estimated' = placeholder (Cost Explorer unavailable)"
+        )
     )
     age_days: int = Field(
         0,
@@ -50,7 +63,18 @@ class UntaggedResourcesResult(BaseModel):
     )
     total_monthly_cost: float = Field(
         0.0,
-        description="Total estimated monthly cost of all untagged resources"
+        description=(
+            "Total estimated monthly cost of all untagged resources. "
+            "Only populated when include_costs=True was requested."
+        )
+    )
+    cost_data_note: str | None = Field(
+        None,
+        description=(
+            "Note about cost data accuracy (only when include_costs=True). "
+            "EC2/RDS costs are actual per-resource data from Cost Explorer. "
+            "S3/Lambda/ECS costs are rough estimates (service total / resource count)."
+        )
     )
     scan_timestamp: datetime = Field(
         default_factory=datetime.now,

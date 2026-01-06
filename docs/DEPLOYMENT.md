@@ -560,6 +560,24 @@ docker build -t finops-mcp-mcp-server .
 docker-compose up -d
 ```
 
+### Quick Start Command (EC2)
+
+For convenience, we provide a script that handles the full restart process:
+
+```bash
+# First time setup: make the script executable and create an alias
+chmod +x /opt/finops-mcp/scripts/start-tagging-mcp.sh
+
+# Add to your .bashrc for easy access
+echo 'alias start-tagging-mcp="/opt/finops-mcp/scripts/start-tagging-mcp.sh"' >> ~/.bashrc
+source ~/.bashrc
+
+# Now you can restart the server anytime with:
+start-tagging-mcp
+```
+
+The script stops existing containers, rebuilds the Docker image, starts the services, and runs a health check.
+
 ---
 
 ## Cleanup

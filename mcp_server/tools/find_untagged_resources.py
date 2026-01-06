@@ -21,14 +21,14 @@ async def find_untagged_resources(
     policy_service: PolicyService,
     resource_types: list[str],
     regions: Optional[list[str]] = None,
-    min_cost_threshold: Optional[float] = None
+    min_cost_threshold: Optional[float] = None,
+    include_costs: bool = False
 ) -> UntaggedResourcesResult:
     """
     Find resources with no tags or missing required tags.
     
     This tool searches for resources that are completely untagged or missing
-    critical required tags. It includes cost estimates and resource age to help
-    prioritize remediation efforts.
+    critical required tags. It includes resource age to help prioritize remediation.
     
     Args:
         aws_client: AWSClient instance for fetching resources
@@ -39,12 +39,17 @@ async def find_untagged_resources(
         regions: Optional list of AWS regions to search. If None, searches current region.
         min_cost_threshold: Optional minimum monthly cost threshold in USD.
                            Only return resources with estimated cost >= this value.
+                           Implies include_costs=True.
+        include_costs: Whether to include cost estimates. Defaults to False.
+                      Set to True only when user explicitly asks about costs.
+                      Note: EC2/RDS have accurate per-resource costs from Cost Explorer.
+                      S3/Lambda/ECS costs are rough estimates (service total / resource count).
     
     Returns:
         UntaggedResourcesResult containing:
         - total_untagged: Count of untagged/partially tagged resources
         - resources: List of UntaggedResource objects with details
-        - total_monthly_cost: Sum of estimated monthly costs
+        - total_monthly_cost: Sum of estimated monthly costs (0 if include_costs=False)
         - scan_timestamp: When the scan was performed
     
     Raises:
@@ -57,10 +62,17 @@ async def find_untagged_resources(
         ...     aws_client=client,
         ...     policy_service=policy,
         ...     resource_types=["ec2:instance", "s3:bucket"],
-        ...     regions=["us-east-1", "us-west-2"],
-        ...     min_cost_threshold=100.0
+        ...     regions=["us-east-1", "us-west-2"]
         ... )
         >>> print(f"Found {result.total_untagged} untagged resources")
+        
+        # With costs (only when user asks about cost impact):
+        >>> result = await find_untagged_resources(
+        ...     aws_client=client,
+        ...     policy_service=policy,
+        ...     resource_types=["ec2:instance"],
+        ...     include_costs=True
+        ... )
         >>> print(f"Total cost impact: ${result.total_monthly_cost:.2f}/month")
     """
     # Validate inputs
@@ -86,8 +98,12 @@ async def find_untagged_resources(
     
     logger.info(
         f"Finding untagged resources for types={resource_types}, "
-        f"regions={regions}, min_cost={min_cost_threshold}"
+        f"regions={regions}, min_cost={min_cost_threshold}, include_costs={include_costs}"
     )
+    
+    # If min_cost_threshold is set, we need costs to filter
+    if min_cost_threshold is not None:
+        include_costs = True
     
     # Get the tagging policy to know what required tags to check for
     policy = policy_service.get_policy()
@@ -119,9 +135,13 @@ async def find_untagged_resources(
     
     logger.info(f"Total resources fetched: {len(all_resources)}")
     
-    # Get cost data for all resources
-    resource_ids = [r["resource_id"] for r in all_resources]
-    cost_data = await _get_cost_estimates(aws_client, resource_ids)
+    # Get cost data only if requested
+    if include_costs:
+        resource_ids = [r["resource_id"] for r in all_resources]
+        cost_data, cost_sources = await _get_cost_estimates(aws_client, resource_ids, all_resources)
+    else:
+        cost_data = {}
+        cost_sources = {}
     
     # Find untagged or partially tagged resources
     untagged_resources = []
@@ -151,12 +171,15 @@ async def find_untagged_resources(
             # Calculate resource age
             age_days = _calculate_age_days(resource.get("created_at"))
             
-            # Get cost estimate
-            monthly_cost = cost_data.get(resource_id, 0.0)
+            # Get cost estimate and source (only if costs requested)
+            monthly_cost = cost_data.get(resource_id, None) if include_costs else None
+            cost_source = cost_sources.get(resource_id, None) if include_costs else None
             
             # Apply cost threshold filter if specified
-            if min_cost_threshold is not None and monthly_cost < min_cost_threshold:
-                continue
+            if min_cost_threshold is not None:
+                actual_cost = monthly_cost if monthly_cost is not None else 0.0
+                if actual_cost < min_cost_threshold:
+                    continue
             
             untagged_resource = UntaggedResource(
                 resource_id=resource_id,
@@ -166,14 +189,37 @@ async def find_untagged_resources(
                 current_tags=tags,
                 missing_required_tags=missing_tags,
                 monthly_cost_estimate=monthly_cost,
+                cost_source=cost_source,
                 age_days=age_days,
                 created_at=resource.get("created_at")
             )
             
             untagged_resources.append(untagged_resource)
     
-    # Calculate total cost
-    total_cost = sum(r.monthly_cost_estimate for r in untagged_resources)
+    # Calculate total cost (only if costs were requested)
+    if include_costs:
+        total_cost = sum(r.monthly_cost_estimate or 0.0 for r in untagged_resources)
+        
+        # Determine cost data note based on sources used
+        sources_used = set(r.cost_source for r in untagged_resources if r.cost_source)
+        if "actual" in sources_used:
+            cost_note = (
+                "Cost data includes actual per-resource costs from Cost Explorer for EC2/RDS. "
+                "Other resource types use service-level averages (rough estimates)."
+            )
+        elif "service_average" in sources_used:
+            cost_note = (
+                "Cost data uses service-level totals divided by resource count (rough estimates). "
+                "Enable Cost Allocation Tags in AWS Billing for per-resource accuracy."
+            )
+        else:
+            cost_note = (
+                "Cost data unavailable from Cost Explorer. "
+                "Ensure Cost Explorer is enabled (takes 24-48 hours to activate)."
+            )
+    else:
+        total_cost = 0.0
+        cost_note = None
     
     logger.info(
         f"Found {len(untagged_resources)} untagged resources "
@@ -184,6 +230,7 @@ async def find_untagged_resources(
         total_untagged=len(untagged_resources),
         resources=untagged_resources,
         total_monthly_cost=total_cost,
+        cost_data_note=cost_note,
         scan_timestamp=datetime.now()
     )
 
@@ -229,32 +276,79 @@ async def _fetch_resources_by_type(
 
 async def _get_cost_estimates(
     aws_client: AWSClient,
-    resource_ids: list[str]
-) -> dict[str, float]:
+    resource_ids: list[str],
+    resources: list[dict]
+) -> tuple[dict[str, float], dict[str, str]]:
     """
-    Get cost estimates for resources.
+    Get cost estimates for resources with source tracking.
+    
+    Uses per-resource costs from Cost Explorer where available (EC2, RDS),
+    and service-level averages for other resource types (S3, Lambda, ECS).
     
     Args:
         aws_client: AWSClient instance
         resource_ids: List of resource IDs
+        resources: List of resource dictionaries with resource_type info
     
     Returns:
-        Dictionary mapping resource IDs to monthly cost estimates
+        Tuple of:
+        - cost_data: Dictionary mapping resource IDs to monthly cost estimates
+        - cost_sources: Dictionary mapping resource IDs to cost source type
     """
     if not resource_ids:
-        return {}
+        return {}, {}
+    
+    cost_data: dict[str, float] = {}
+    cost_sources: dict[str, str] = {}
     
     try:
-        cost_data = await aws_client.get_cost_data(
-            resource_ids=resource_ids,
-            time_period=None,  # Use default (last 30 days)
-            granularity="MONTHLY"
-        )
-        return cost_data
+        # Get per-resource and service-level costs
+        resource_costs, service_costs, base_source = await aws_client.get_cost_data_by_resource()
+        
+        # Count resources by service for averaging
+        resources_by_service: dict[str, list[str]] = {}
+        resource_type_map: dict[str, str] = {}
+        
+        for resource in resources:
+            rid = resource["resource_id"]
+            rtype = resource["resource_type"]
+            resource_type_map[rid] = rtype
+            service_name = aws_client.get_service_name_for_resource_type(rtype)
+            
+            if service_name not in resources_by_service:
+                resources_by_service[service_name] = []
+            resources_by_service[service_name].append(rid)
+        
+        # Assign costs to each resource
+        for rid in resource_ids:
+            rtype = resource_type_map.get(rid, "")
+            
+            # Check if we have actual per-resource cost
+            if rid in resource_costs:
+                cost_data[rid] = resource_costs[rid]
+                cost_sources[rid] = "actual"
+            else:
+                # Use service-level average
+                service_name = aws_client.get_service_name_for_resource_type(rtype)
+                service_total = service_costs.get(service_name, 0.0)
+                resource_count = len(resources_by_service.get(service_name, [rid]))
+                
+                if service_total > 0 and resource_count > 0:
+                    cost_data[rid] = service_total / resource_count
+                    cost_sources[rid] = "service_average"
+                else:
+                    cost_data[rid] = 0.0
+                    cost_sources[rid] = "estimated"
+        
+        return cost_data, cost_sources
+        
     except Exception as e:
         logger.warning(f"Failed to fetch cost data: {str(e)}")
-        # Return zero costs if cost data unavailable
-        return {rid: 0.0 for rid in resource_ids}
+        # Return zero costs with estimated source if cost data unavailable
+        return (
+            {rid: 0.0 for rid in resource_ids},
+            {rid: "estimated" for rid in resource_ids}
+        )
 
 
 def _get_required_tags_for_resource(policy: TagPolicy, resource_type: str) -> list[str]:

@@ -599,3 +599,153 @@ class AWSClient:
             raise
         except Exception as e:
             raise AWSAPIError(f"Failed to fetch cost data: {str(e)}") from e
+
+
+    async def get_cost_data_by_resource(
+        self,
+        time_period: dict[str, str] | None = None,
+    ) -> tuple[dict[str, float], dict[str, float], str]:
+        """
+        Fetch cost data from AWS Cost Explorer with per-resource granularity where available.
+        
+        This method attempts to get actual per-resource costs for EC2 and RDS using
+        the RESOURCE_ID dimension. For other services (S3, Lambda, ECS), it returns
+        service-level totals that can be distributed among resources.
+        
+        Args:
+            time_period: Time period for cost data (e.g., {"Start": "2025-01-01", "End": "2025-01-31"})
+        
+        Returns:
+            Tuple of:
+            - resource_costs: Dict mapping resource IDs to actual costs (EC2/RDS)
+            - service_costs: Dict mapping service names to total costs
+            - cost_source: "actual" if per-resource data available, "service_average" otherwise
+        """
+        # Default to last 30 days if no time period specified
+        if not time_period:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            time_period = {
+                "Start": start_date.strftime("%Y-%m-%d"),
+                "End": end_date.strftime("%Y-%m-%d")
+            }
+        
+        resource_costs: dict[str, float] = {}
+        service_costs: dict[str, float] = {}
+        cost_source = "estimated"
+        
+        try:
+            # First, get service-level costs (always works)
+            service_response = await self._call_with_backoff(
+                "ce",
+                self.ce.get_cost_and_usage,
+                TimePeriod=time_period,
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"],
+                GroupBy=[
+                    {"Type": "DIMENSION", "Key": "SERVICE"}
+                ]
+            )
+            
+            for result in service_response.get("ResultsByTime", []):
+                for group in result.get("Groups", []):
+                    service = group.get("Keys", [""])[0]
+                    amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                    service_costs[service] = service_costs.get(service, 0) + amount
+            
+            cost_source = "service_average"
+            
+            # Try to get per-resource costs for EC2 (uses RESOURCE_ID dimension)
+            try:
+                ec2_response = await self._call_with_backoff(
+                    "ce",
+                    self.ce.get_cost_and_usage,
+                    TimePeriod=time_period,
+                    Granularity="MONTHLY",
+                    Metrics=["UnblendedCost"],
+                    Filter={
+                        "Dimensions": {
+                            "Key": "SERVICE",
+                            "Values": ["Amazon Elastic Compute Cloud - Compute"]
+                        }
+                    },
+                    GroupBy=[
+                        {"Type": "DIMENSION", "Key": "RESOURCE_ID"}
+                    ]
+                )
+                
+                for result in ec2_response.get("ResultsByTime", []):
+                    for group in result.get("Groups", []):
+                        resource_id = group.get("Keys", [""])[0]
+                        if resource_id and resource_id.startswith("i-"):
+                            amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                            resource_costs[resource_id] = resource_costs.get(resource_id, 0) + amount
+                
+                if resource_costs:
+                    cost_source = "actual"
+                    
+            except Exception as e:
+                # Per-resource costs not available, continue with service-level
+                import logging
+                logging.getLogger(__name__).debug(f"Per-resource EC2 costs not available: {e}")
+            
+            # Try to get per-resource costs for RDS
+            try:
+                rds_response = await self._call_with_backoff(
+                    "ce",
+                    self.ce.get_cost_and_usage,
+                    TimePeriod=time_period,
+                    Granularity="MONTHLY",
+                    Metrics=["UnblendedCost"],
+                    Filter={
+                        "Dimensions": {
+                            "Key": "SERVICE",
+                            "Values": ["Amazon Relational Database Service"]
+                        }
+                    },
+                    GroupBy=[
+                        {"Type": "DIMENSION", "Key": "RESOURCE_ID"}
+                    ]
+                )
+                
+                for result in rds_response.get("ResultsByTime", []):
+                    for group in result.get("Groups", []):
+                        resource_id = group.get("Keys", [""])[0]
+                        if resource_id:
+                            # RDS resource IDs in Cost Explorer are ARNs
+                            # Extract the DB identifier
+                            if ":db:" in resource_id:
+                                db_id = resource_id.split(":db:")[-1]
+                                amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                                resource_costs[db_id] = resource_costs.get(db_id, 0) + amount
+                
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"Per-resource RDS costs not available: {e}")
+            
+            return resource_costs, service_costs, cost_source
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch cost data: {str(e)}") from e
+    
+    def get_service_name_for_resource_type(self, resource_type: str) -> str:
+        """
+        Map resource type to AWS Cost Explorer service name.
+        
+        Args:
+            resource_type: Resource type (e.g., "ec2:instance")
+        
+        Returns:
+            AWS service name as it appears in Cost Explorer
+        """
+        service_map = {
+            "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+            "rds:db": "Amazon Relational Database Service",
+            "s3:bucket": "Amazon Simple Storage Service",
+            "lambda:function": "AWS Lambda",
+            "ecs:service": "Amazon Elastic Container Service",
+            "opensearch:domain": "Amazon OpenSearch Service",
+        }
+        return service_map.get(resource_type, "")

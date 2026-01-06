@@ -78,31 +78,51 @@ def create_mock_aws_client():
     """Create a mock AWS client."""
     client = MagicMock(spec=AWSClient)
     client.region = "us-east-1"
+    # Add the service name mapping method
+    client.get_service_name_for_resource_type = MagicMock(side_effect=lambda rt: {
+        "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+        "rds:db": "Amazon Relational Database Service",
+        "s3:bucket": "Amazon Simple Storage Service",
+        "lambda:function": "AWS Lambda",
+        "ecs:service": "Amazon Elastic Container Service",
+    }.get(rt, ""))
     return client
 
 
 def create_mock_policy_service(required_tags: list[dict] = None):
     """Create a mock policy service with configurable required tags."""
+    from mcp_server.models.policy import TagPolicy, RequiredTag
+    
     if required_tags is None:
         required_tags = [
-            {
-                "name": "CostCenter",
-                "description": "Cost center for billing",
-                "applies_to": VALID_RESOURCE_TYPES,
-            },
-            {
-                "name": "Environment",
-                "description": "Deployment environment",
-                "applies_to": ["ec2:instance", "rds:db", "lambda:function"],
-            },
+            RequiredTag(
+                name="CostCenter",
+                description="Cost center for billing",
+                applies_to=VALID_RESOURCE_TYPES,
+            ),
+            RequiredTag(
+                name="Environment",
+                description="Deployment environment",
+                applies_to=["ec2:instance", "rds:db", "lambda:function"],
+            ),
+        ]
+    else:
+        # Convert dict format to RequiredTag objects
+        required_tags = [
+            RequiredTag(
+                name=tag["name"],
+                description=tag.get("description", ""),
+                applies_to=tag.get("applies_to", []),
+            )
+            for tag in required_tags
         ]
     
     service = MagicMock(spec=PolicyService)
-    service.get_policy.return_value = {
-        "version": "1.0",
-        "required_tags": required_tags,
-        "optional_tags": [],
-    }
+    service.get_policy.return_value = TagPolicy(
+        version="1.0",
+        required_tags=required_tags,
+        optional_tags=[],
+    )
     return service
 
 
@@ -203,9 +223,9 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=[resource])
         
-        mock_aws_client.get_cost_data = AsyncMock(return_value={resource_id: cost})
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: cost}, {"Amazon Elastic Compute Cloud - Compute": cost}, "actual"))
         
-        # Execute
+        # Execute - without include_costs, costs should be None
         result = await find_untagged_resources(
             aws_client=mock_aws_client,
             policy_service=mock_policy_service,
@@ -216,7 +236,6 @@ class TestResourceMetadataCompleteness:
         assert isinstance(result, UntaggedResourcesResult)
         assert result.total_untagged >= 0
         assert isinstance(result.resources, list)
-        assert isinstance(result.total_monthly_cost, float)
         assert isinstance(result.scan_timestamp, datetime)
         
         # If resource was found as untagged, verify all required fields
@@ -228,7 +247,8 @@ class TestResourceMetadataCompleteness:
             assert untagged.resource_type is not None, "resource_type must be present"
             assert untagged.region is not None, "region must be present"
             assert untagged.current_tags is not None, "current_tags must be present (even if empty)"
-            assert isinstance(untagged.monthly_cost_estimate, float), "monthly_cost_estimate must be a float"
+            # Cost is optional when include_costs=False
+            assert untagged.monthly_cost_estimate is None, "monthly_cost_estimate should be None when include_costs=False"
             assert isinstance(untagged.age_days, int), "age_days must be an integer"
             
             # Verify field values match input
@@ -291,7 +311,7 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=resources)
         
-        mock_aws_client.get_cost_data = AsyncMock(return_value=cost_data)
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
         
         # Execute
         result = await find_untagged_resources(
@@ -311,7 +331,8 @@ class TestResourceMetadataCompleteness:
             assert untagged.resource_type == resource_type
             assert untagged.region is not None
             assert untagged.current_tags == {}  # Empty tags
-            assert isinstance(untagged.monthly_cost_estimate, float)
+            # Cost is None when include_costs=False
+            assert untagged.monthly_cost_estimate is None
             assert isinstance(untagged.age_days, int)
 
     @given(
@@ -370,7 +391,7 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=resources)
         
-        mock_aws_client.get_cost_data = AsyncMock(return_value=cost_data)
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
         
         # Execute
         result = await find_untagged_resources(
@@ -405,7 +426,7 @@ class TestResourceMetadataCompleteness:
         Validates: Requirements 2.2
         
         For any untagged resource returned, the result SHALL include
-        the monthly cost estimate.
+        the monthly cost estimate when include_costs=True.
         """
         # Create mocks
         mock_aws_client = create_mock_aws_client()
@@ -426,13 +447,14 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data = AsyncMock(return_value={resource_id: cost})
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: cost}, {"Amazon Elastic Compute Cloud - Compute": cost}, "actual"))
         
-        # Execute
+        # Execute with include_costs=True to get cost data
         result = await find_untagged_resources(
             aws_client=mock_aws_client,
             policy_service=mock_policy_service,
             resource_types=["ec2:instance"],
+            include_costs=True,
         )
         
         # Verify cost is included
@@ -477,7 +499,7 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data = AsyncMock(return_value={resource_id: 100.0})
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: 100.0}, {"Amazon Elastic Compute Cloud - Compute": 100.0}, "actual"))
         
         # Execute
         result = await find_untagged_resources(
@@ -555,7 +577,7 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data = AsyncMock(return_value=cost_data)
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
         
         # Execute
         result = await find_untagged_resources(
@@ -589,7 +611,7 @@ class TestResourceMetadataCompleteness:
         Validates: Requirements 2.2
         
         The total_monthly_cost in the result SHALL equal the sum of
-        monthly_cost_estimate for all returned untagged resources.
+        monthly_cost_estimate for all returned untagged resources when include_costs=True.
         """
         # Create mocks
         mock_aws_client = create_mock_aws_client()
@@ -615,13 +637,14 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data = AsyncMock(return_value=cost_data)
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
         
-        # Execute
+        # Execute with include_costs=True to get cost data
         result = await find_untagged_resources(
             aws_client=mock_aws_client,
             policy_service=mock_policy_service,
             resource_types=["ec2:instance"],
+            include_costs=True,
         )
         
         # Verify total cost equals sum of individual costs
@@ -675,12 +698,16 @@ class TestGetRequiredTagsForResource:
         
         The function SHALL return a list of required tag names for the resource type.
         """
-        policy = {
-            "required_tags": [
-                {"name": "CostCenter", "applies_to": VALID_RESOURCE_TYPES},
-                {"name": "Environment", "applies_to": ["ec2:instance", "rds:db"]},
-            ]
-        }
+        from mcp_server.models.policy import TagPolicy, RequiredTag
+        
+        policy = TagPolicy(
+            version="1.0",
+            required_tags=[
+                RequiredTag(name="CostCenter", description="Cost center", applies_to=VALID_RESOURCE_TYPES),
+                RequiredTag(name="Environment", description="Environment", applies_to=["ec2:instance", "rds:db"]),
+            ],
+            optional_tags=[],
+        )
         
         required_tags = _get_required_tags_for_resource(policy, resource_type)
         

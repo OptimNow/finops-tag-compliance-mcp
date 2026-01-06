@@ -214,7 +214,8 @@ class MCPHandler:
             handler=self._handle_find_untagged_resources,
             description=(
                 "Find resources with no tags or missing required tags. "
-                "Includes cost estimates and resource age to help prioritize remediation."
+                "Returns resource details and age to help prioritize remediation. "
+                "Cost estimates are only included when explicitly requested via include_costs=true."
             ),
             input_schema={
                 "type": "object",
@@ -251,11 +252,23 @@ class MCPHandler:
                         "uniqueItems": True,
                         "description": "Optional list of AWS regions to search. Maximum 20 regions per request.",
                     },
+                    "include_costs": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "Whether to include cost estimates. Only set to true when user explicitly "
+                            "asks about costs or cost impact. EC2/RDS costs are accurate (from Cost Explorer). "
+                            "S3/Lambda/ECS costs are rough estimates (service total / resource count)."
+                        ),
+                    },
                     "min_cost_threshold": {
                         "type": "number",
                         "minimum": 0,
                         "maximum": 1000000,
-                        "description": "Optional minimum monthly cost threshold in USD (0-1,000,000)",
+                        "description": (
+                            "Optional minimum monthly cost threshold in USD (0-1,000,000). "
+                            "Implies include_costs=true."
+                        ),
                     },
                 },
                 "required": ["resource_types"],
@@ -574,6 +587,11 @@ class MCPHandler:
                 )
                 InputValidator.validate_regions(
                     arguments.get("regions"),
+                    required=False,
+                )
+                InputValidator.validate_boolean(
+                    arguments.get("include_costs", False),
+                    field_name="include_costs",
                     required=False,
                 )
                 InputValidator.validate_min_cost_threshold(
@@ -1046,32 +1064,48 @@ class MCPHandler:
         if not self.aws_client or not self.policy_service:
             raise ValueError("AWSClient or PolicyService not initialized")
         
+        include_costs = arguments.get("include_costs", False)
+        
         result = await find_untagged_resources(
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_types=arguments["resource_types"],
             regions=arguments.get("regions"),
             min_cost_threshold=arguments.get("min_cost_threshold"),
+            include_costs=include_costs,
         )
         
-        return {
+        # Build resource list - only include cost fields if costs were requested
+        resources = []
+        for r in result.resources:
+            resource_data = {
+                "resource_id": r.resource_id,
+                "resource_type": r.resource_type,
+                "region": r.region,
+                "arn": r.arn,
+                "current_tags": r.current_tags,
+                "missing_required_tags": r.missing_required_tags,
+                "age_days": r.age_days,
+            }
+            # Only include cost fields if costs were requested and available
+            if include_costs and r.monthly_cost_estimate is not None:
+                resource_data["monthly_cost_estimate"] = r.monthly_cost_estimate
+                resource_data["cost_source"] = r.cost_source
+            resources.append(resource_data)
+        
+        response = {
             "total_untagged": result.total_untagged,
-            "resources": [
-                {
-                    "resource_id": r.resource_id,
-                    "resource_type": r.resource_type,
-                    "region": r.region,
-                    "arn": r.arn,
-                    "current_tags": r.current_tags,
-                    "missing_required_tags": r.missing_required_tags,
-                    "monthly_cost_estimate": r.monthly_cost_estimate,
-                    "age_days": r.age_days,
-                }
-                for r in result.resources
-            ],
-            "total_monthly_cost": result.total_monthly_cost,
+            "resources": resources,
             "scan_timestamp": result.scan_timestamp.isoformat(),
         }
+        
+        # Only include cost summary if costs were requested
+        if include_costs:
+            response["total_monthly_cost"] = result.total_monthly_cost
+            if result.cost_data_note:
+                response["cost_data_note"] = result.cost_data_note
+        
+        return response
     
     async def _handle_validate_resource_tags(self, arguments: dict) -> dict:
         """Handle validate_resource_tags tool invocation."""
