@@ -101,3 +101,148 @@ class LoopDetector:
     @property
     def sliding_window_seconds(self) -> int:
         return self._sliding_window_seconds
+
+
+    def generate_call_signature(self, tool_name: str, parameters: dict) -> str:
+        """Generate a unique signature for a tool call."""
+        param_str = json.dumps(parameters, sort_keys=True, default=str)
+        combined = f"{tool_name}:{param_str}"
+        return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+    async def check_for_loop(
+        self,
+        session_id: str,
+        tool_name: str,
+        parameters: dict,
+    ) -> tuple[bool, int]:
+        """
+        Check if this call would create a loop.
+        
+        Returns:
+            Tuple of (is_loop, call_count)
+        """
+        signature = self.generate_call_signature(tool_name, parameters)
+        key = f"{self.LOOP_KEY_PREFIX}{session_id}:{signature}"
+        
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=self._sliding_window_seconds)
+        
+        # Use Redis if available
+        if self._cache and self._cache.is_connected():
+            try:
+                count_str = await self._cache.get(key)
+                count = int(count_str) if count_str else 0
+                count += 1
+                await self._cache.set(key, str(count), ttl=self._sliding_window_seconds)
+                
+                if count > self._max_identical_calls:
+                    self._record_loop_event(session_id, tool_name, signature, count)
+                    return True, count
+                return False, count
+            except Exception as e:
+                logger.warning(f"Redis error in loop detection: {e}, falling back to local")
+        
+        # Fall back to local tracking
+        if session_id not in self._local_history:
+            self._local_history[session_id] = []
+        
+        # Clean old entries
+        self._local_history[session_id] = [
+            (sig, ts) for sig, ts in self._local_history[session_id]
+            if ts > cutoff
+        ]
+        
+        # Count matching signatures
+        count = sum(1 for sig, _ in self._local_history[session_id] if sig == signature)
+        count += 1
+        
+        # Add this call
+        self._local_history[session_id].append((signature, now))
+        
+        if count > self._max_identical_calls:
+            self._record_loop_event(session_id, tool_name, signature, count)
+            return True, count
+        
+        return False, count
+
+    def _record_loop_event(
+        self,
+        session_id: str,
+        tool_name: str,
+        signature: str,
+        count: int
+    ) -> None:
+        """Record a loop detection event."""
+        self._total_loops_detected += 1
+        self._loop_events_by_tool[tool_name] = self._loop_events_by_tool.get(tool_name, 0) + 1
+        
+        event = LoopDetectionEvent(
+            timestamp=datetime.now(),
+            session_id=session_id,
+            tool_name=tool_name,
+            call_signature=signature,
+            call_count=count,
+            max_calls=self._max_identical_calls,
+            correlation_id=get_correlation_id(),
+        )
+        self._last_loop_event = event
+        self._loop_events_history.append(event)
+        
+        # Keep only last 100 events
+        if len(self._loop_events_history) > 100:
+            self._loop_events_history = self._loop_events_history[-100:]
+        
+        logger.warning(f"Loop detected: {event.to_dict()}")
+
+    async def get_loop_detection_stats(self, session_id: Optional[str] = None) -> dict:
+        """Get loop detection statistics."""
+        stats = {
+            "enabled": True,
+            "max_identical_calls": self._max_identical_calls,
+            "sliding_window_seconds": self._sliding_window_seconds,
+            "loops_detected_total": self._total_loops_detected,
+            "loops_by_tool": self._loop_events_by_tool.copy(),
+            "active_sessions": len(self._local_history),
+            "last_loop_detected_at": (
+                self._last_loop_event.timestamp.isoformat()
+                if self._last_loop_event else None
+            ),
+            "last_loop_tool_name": (
+                self._last_loop_event.tool_name
+                if self._last_loop_event else None
+            ),
+            "last_loop_session_id": (
+                self._last_loop_event.session_id
+                if self._last_loop_event else None
+            ),
+        }
+        return stats
+
+    def get_recent_loop_events(self, limit: int = 10) -> list[dict]:
+        """Get recent loop detection events."""
+        events = self._loop_events_history[-limit:]
+        return [e.to_dict() for e in events]
+
+    async def reset_session(self, session_id: str) -> None:
+        """Reset loop tracking for a session."""
+        if session_id in self._local_history:
+            del self._local_history[session_id]
+        
+        if self._cache and self._cache.is_connected():
+            # Would need to track keys per session to delete from Redis
+            pass
+
+
+# Global loop detector instance
+_loop_detector: Optional[LoopDetector] = None
+
+
+def get_loop_detector() -> Optional[LoopDetector]:
+    """Get the global loop detector instance."""
+    return _loop_detector
+
+
+def set_loop_detector(detector: LoopDetector) -> None:
+    """Set the global loop detector instance."""
+    global _loop_detector
+    _loop_detector = detector
