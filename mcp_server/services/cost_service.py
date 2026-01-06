@@ -84,9 +84,10 @@ class CostService:
         Process:
         1. Fetch all resources of specified types
         2. Get cost data from Cost Explorer for the time period
-        3. Validate each resource's tags against policy
-        4. Calculate total spend vs. attributable spend
-        5. If grouping specified, break down gap by dimension
+        3. Map costs to resources (per-resource for EC2/RDS, service average for others)
+        4. Validate each resource's tags against policy
+        5. Calculate total spend vs. attributable spend
+        6. If grouping specified, break down gap by dimension
         
         Args:
             resource_types: List of resource types to analyze (e.g., ["ec2:instance"])
@@ -110,29 +111,69 @@ class CostService:
                 "End": end_date.strftime("%Y-%m-%d")
             }
         
-        # Fetch all resources
+        # Fetch all resources grouped by type
+        resources_by_type: dict[str, list[dict]] = {}
         all_resources = []
         for resource_type in resource_types:
             try:
                 resources = await self._fetch_resources_by_type(resource_type, filters)
+                resources_by_type[resource_type] = resources
                 all_resources.extend(resources)
                 logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
             except Exception as e:
                 logger.error(f"Failed to fetch resources of type {resource_type}: {str(e)}")
+                resources_by_type[resource_type] = []
                 continue
         
         logger.info(f"Total resources fetched: {len(all_resources)}")
         
-        # Get cost data from Cost Explorer
-        cost_data = await self.aws_client.get_cost_data(
-            resource_ids=None,  # Get all costs
-            time_period=time_period,
-            granularity="MONTHLY"
+        # Get cost data with per-resource granularity where available
+        resource_costs, service_costs, cost_source = await self.aws_client.get_cost_data_by_resource(
+            time_period=time_period
         )
         
-        # Calculate total spend from cost data
-        total_spend = sum(cost_data.values())
-        logger.info(f"Total spend for period: ${total_spend:.2f}")
+        logger.info(f"Cost source: {cost_source}, per-resource costs: {len(resource_costs)}, service costs: {len(service_costs)}")
+        
+        # Calculate costs for each resource
+        # For EC2/RDS: use actual per-resource costs from Cost Explorer
+        # For S3/Lambda/ECS: distribute service total among resources of that type
+        resource_cost_map: dict[str, float] = {}
+        
+        for resource_type, resources in resources_by_type.items():
+            service_name = self.aws_client.get_service_name_for_resource_type(resource_type)
+            service_total = service_costs.get(service_name, 0.0)
+            
+            if resource_type in ["ec2:instance", "rds:db"]:
+                # Use per-resource costs where available
+                for resource in resources:
+                    rid = resource["resource_id"]
+                    if rid in resource_costs:
+                        resource_cost_map[rid] = resource_costs[rid]
+                    elif resources:
+                        # Fallback: distribute service total among resources without specific costs
+                        resources_without_costs = [r for r in resources if r["resource_id"] not in resource_costs]
+                        if resources_without_costs:
+                            # Calculate remaining cost after subtracting known per-resource costs
+                            known_costs = sum(resource_costs.get(r["resource_id"], 0) for r in resources)
+                            remaining = max(0, service_total - known_costs)
+                            per_resource = remaining / len(resources_without_costs)
+                            if rid not in resource_costs:
+                                resource_cost_map[rid] = per_resource
+            else:
+                # For S3, Lambda, ECS: distribute service total evenly among resources
+                if resources:
+                    per_resource = service_total / len(resources)
+                    for resource in resources:
+                        resource_cost_map[resource["resource_id"]] = per_resource
+        
+        # Calculate total spend ONLY for the services we're tracking
+        # This prevents costs from untracked services (OpenSearch, etc.) from inflating the gap
+        total_spend = 0.0
+        for resource_type in resource_types:
+            service_name = self.aws_client.get_service_name_for_resource_type(resource_type)
+            total_spend += service_costs.get(service_name, 0.0)
+        
+        logger.info(f"Total spend for tracked services: ${total_spend:.2f}")
         
         # Validate resources and calculate attributable spend
         attributable_spend = 0.0
@@ -151,10 +192,8 @@ class CostService:
                 cost_impact=0.0  # We'll calculate cost separately
             )
             
-            # Estimate cost for this resource
-            # In a real implementation, we'd need resource-level cost allocation
-            # For now, distribute total cost evenly among resources
-            resource_cost = total_spend / len(all_resources) if all_resources else 0.0
+            # Get the actual cost for this resource
+            resource_cost = resource_cost_map.get(resource["resource_id"], 0.0)
             
             # If resource has no violations, it's properly tagged and attributable
             is_attributable = len(violations) == 0

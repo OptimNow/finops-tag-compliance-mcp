@@ -15,6 +15,14 @@ from mcp_server.models.enums import ViolationType, Severity
 def mock_aws_client():
     """Create a mock AWS client."""
     client = MagicMock(spec=AWSClient)
+    # Add the service name mapping method
+    client.get_service_name_for_resource_type = MagicMock(side_effect=lambda rt: {
+        "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+        "rds:db": "Amazon Relational Database Service",
+        "s3:bucket": "Amazon Simple Storage Service",
+        "lambda:function": "AWS Lambda",
+        "ecs:service": "Amazon Elastic Container Service",
+    }.get(rt, ""))
     return client
 
 
@@ -58,8 +66,12 @@ async def test_calculate_attribution_gap_basic(cost_service, mock_aws_client, mo
     # Mock resource fetching
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
     
-    # Mock cost data - $1000 total spend
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    # Mock cost data - $1000 total spend for EC2, with per-resource costs
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},  # Per-resource costs
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},  # Service costs
+        "actual"
+    ))
     
     # Mock policy validation - first resource compliant, second has violations
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -105,7 +117,11 @@ async def test_calculate_attribution_gap_all_compliant(cost_service, mock_aws_cl
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     result = await cost_service.calculate_attribution_gap(
@@ -132,7 +148,11 @@ async def test_calculate_attribution_gap_all_non_compliant(cost_service, mock_aw
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[
         Violation(
             resource_id="i-123",
@@ -189,7 +209,14 @@ async def test_calculate_attribution_gap_with_grouping_by_resource_type(
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=ec2_resources)
     mock_aws_client.get_rds_instances = AsyncMock(return_value=rds_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 600.0, "Amazon RDS": 300.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 300.0, "i-456": 300.0, "db-789": 300.0},  # Per-resource costs
+        {
+            "Amazon Elastic Compute Cloud - Compute": 600.0,
+            "Amazon Relational Database Service": 300.0
+        },
+        "actual"
+    ))
     
     # Mock validation: first EC2 compliant, others non-compliant
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -226,13 +253,13 @@ async def test_calculate_attribution_gap_with_grouping_by_resource_type(
     
     # EC2: 2 resources, 1 compliant, 1 non-compliant
     ec2_breakdown = result.breakdown["ec2:instance"]
-    assert ec2_breakdown["total"] == 600.0  # 2/3 of total
+    assert ec2_breakdown["total"] == 600.0
     assert ec2_breakdown["attributable"] == 300.0  # 1 of 2 EC2 compliant
     assert ec2_breakdown["gap"] == 300.0
     
     # RDS: 1 resource, 0 compliant
     rds_breakdown = result.breakdown["rds:db"]
-    assert rds_breakdown["total"] == 300.0  # 1/3 of total
+    assert rds_breakdown["total"] == 300.0
     assert rds_breakdown["attributable"] == 0.0
     assert rds_breakdown["gap"] == 300.0
 
@@ -260,7 +287,11 @@ async def test_calculate_attribution_gap_with_grouping_by_region(
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         if resource_id == "i-123":
@@ -320,7 +351,11 @@ async def test_calculate_attribution_gap_with_grouping_by_account(
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         if resource_id == "i-123":
@@ -373,7 +408,11 @@ async def test_calculate_attribution_gap_with_custom_time_period(
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     custom_period = {
@@ -387,8 +426,8 @@ async def test_calculate_attribution_gap_with_custom_time_period(
     )
     
     # Verify cost data was called with custom time period
-    mock_aws_client.get_cost_data.assert_called_once()
-    call_args = mock_aws_client.get_cost_data.call_args
+    mock_aws_client.get_cost_data_by_resource.assert_called_once()
+    call_args = mock_aws_client.get_cost_data_by_resource.call_args
     assert call_args[1]["time_period"] == custom_period
 
 
@@ -396,7 +435,11 @@ async def test_calculate_attribution_gap_with_custom_time_period(
 async def test_calculate_attribution_gap_no_resources(cost_service, mock_aws_client, mock_policy_service):
     """Test cost attribution gap when no resources exist."""
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {},  # No per-resource costs
+        {},  # No service costs
+        "estimated"
+    ))
     
     result = await cost_service.calculate_attribution_gap(
         resource_types=["ec2:instance"]
@@ -425,7 +468,11 @@ async def test_calculate_attribution_gap_handles_fetch_errors(
         }
     ])
     mock_aws_client.get_rds_instances = AsyncMock(side_effect=Exception("API Error"))
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "actual"
+    ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     # Should not raise, should continue with available resources
