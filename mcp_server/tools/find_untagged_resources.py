@@ -139,9 +139,12 @@ async def find_untagged_resources(
     if include_costs:
         resource_ids = [r["resource_id"] for r in all_resources]
         cost_data, cost_sources = await _get_cost_estimates(aws_client, resource_ids, all_resources)
+        # Track all cost sources for accurate reporting (not just filtered results)
+        all_cost_sources_used = set(cost_sources.values()) if cost_sources else set()
     else:
         cost_data = {}
         cost_sources = {}
+        all_cost_sources_used = set()
     
     # Find untagged or partially tagged resources
     untagged_resources = []
@@ -200,14 +203,14 @@ async def find_untagged_resources(
     if include_costs:
         total_cost = sum(r.monthly_cost_estimate or 0.0 for r in untagged_resources)
         
-        # Determine cost data note based on sources used
-        sources_used = set(r.cost_source for r in untagged_resources if r.cost_source)
-        if "actual" in sources_used:
+        # Determine cost data note based on ALL sources used during scan (not just filtered results)
+        # This prevents false "Cost Explorer not enabled" messages when cost threshold filters out all resources
+        if "actual" in all_cost_sources_used:
             cost_note = (
                 "Cost data includes actual per-resource costs from Cost Explorer for EC2/RDS. "
                 "Other resource types use service-level averages (rough estimates)."
             )
-        elif "service_average" in sources_used:
+        elif "service_average" in all_cost_sources_used:
             cost_note = (
                 "Cost data uses service-level totals divided by resource count (rough estimates). "
                 "Enable Cost Allocation Tags in AWS Billing for per-resource accuracy."
