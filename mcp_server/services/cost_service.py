@@ -24,7 +24,10 @@ class CostAttributionResult:
         attributable_spend: float,
         attribution_gap: float,
         attribution_gap_percentage: float,
-        breakdown: Optional[dict[str, dict[str, float]]] = None
+        breakdown: Optional[dict[str, dict[str, float]]] = None,
+        total_resources_scanned: int = 0,
+        total_resources_compliant: int = 0,
+        total_resources_non_compliant: int = 0
     ):
         """
         Initialize cost attribution result.
@@ -35,12 +38,18 @@ class CostAttributionResult:
             attribution_gap: Dollar amount that cannot be attributed (total - attributable)
             attribution_gap_percentage: Gap as percentage of total spend
             breakdown: Optional breakdown by grouping dimension
+            total_resources_scanned: Total number of resources scanned
+            total_resources_compliant: Number of resources with proper tags
+            total_resources_non_compliant: Number of resources missing required tags
         """
         self.total_spend = total_spend
         self.attributable_spend = attributable_spend
         self.attribution_gap = attribution_gap
         self.attribution_gap_percentage = attribution_gap_percentage
         self.breakdown = breakdown or {}
+        self.total_resources_scanned = total_resources_scanned
+        self.total_resources_compliant = total_resources_compliant
+        self.total_resources_non_compliant = total_resources_non_compliant
 
 
 class CostService:
@@ -179,8 +188,25 @@ class CostService:
         attributable_spend = 0.0
         non_attributable_spend = 0.0
         
+        # Track resource counts
+        total_resources_scanned = len(all_resources)
+        total_resources_compliant = 0
+        total_resources_non_compliant = 0
+        
         # Track breakdown by grouping dimension if specified
         breakdown: dict[str, dict[str, float]] = {}
+        
+        # Always track by resource_type for notes generation
+        type_breakdown: dict[str, dict] = {}
+        for resource_type in resource_types:
+            type_breakdown[resource_type] = {
+                "total": 0.0,
+                "attributable": 0.0,
+                "gap": 0.0,
+                "resources_scanned": 0,
+                "resources_compliant": 0,
+                "resources_non_compliant": 0
+            }
         
         for resource in all_resources:
             # Validate resource tags against policy
@@ -200,8 +226,21 @@ class CostService:
             
             if is_attributable:
                 attributable_spend += resource_cost
+                total_resources_compliant += 1
             else:
                 non_attributable_spend += resource_cost
+                total_resources_non_compliant += 1
+            
+            # Track by resource type for notes
+            rt = resource["resource_type"]
+            type_breakdown[rt]["total"] += resource_cost
+            type_breakdown[rt]["resources_scanned"] += 1
+            if is_attributable:
+                type_breakdown[rt]["attributable"] += resource_cost
+                type_breakdown[rt]["resources_compliant"] += 1
+            else:
+                type_breakdown[rt]["gap"] += resource_cost
+                type_breakdown[rt]["resources_non_compliant"] += 1
             
             # Track breakdown if grouping specified
             if group_by:
@@ -211,29 +250,87 @@ class CostService:
                     breakdown[group_key] = {
                         "total": 0.0,
                         "attributable": 0.0,
-                        "gap": 0.0
+                        "gap": 0.0,
+                        "resources_scanned": 0,
+                        "resources_compliant": 0,
+                        "resources_non_compliant": 0
                     }
                 
                 breakdown[group_key]["total"] += resource_cost
+                breakdown[group_key]["resources_scanned"] += 1
                 
                 if is_attributable:
                     breakdown[group_key]["attributable"] += resource_cost
+                    breakdown[group_key]["resources_compliant"] += 1
                 else:
                     breakdown[group_key]["gap"] += resource_cost
+                    breakdown[group_key]["resources_non_compliant"] += 1
+        
+        # Add notes to breakdown for $0 spend cases
+        if group_by == "resource_type":
+            for rt, data in breakdown.items():
+                data["note"] = self._generate_spend_note(data)
+        else:
+            # If grouping by something else, still use type_breakdown for notes
+            for rt, data in type_breakdown.items():
+                data["note"] = self._generate_spend_note(data)
+        
+        # If no group_by specified, use type_breakdown as the breakdown
+        if not group_by:
+            breakdown = type_breakdown
         
         # Calculate attribution gap
         attribution_gap = total_spend - attributable_spend
         attribution_gap_percentage = (attribution_gap / total_spend * 100) if total_spend > 0 else 0.0
         
         logger.info(f"Attribution gap: ${attribution_gap:.2f} ({attribution_gap_percentage:.1f}%)")
+        logger.info(f"Resources: {total_resources_scanned} scanned, {total_resources_compliant} compliant, {total_resources_non_compliant} non-compliant")
         
         return CostAttributionResult(
             total_spend=total_spend,
             attributable_spend=attributable_spend,
             attribution_gap=attribution_gap,
             attribution_gap_percentage=attribution_gap_percentage,
-            breakdown=breakdown if group_by else None
+            breakdown=breakdown if breakdown else None,
+            total_resources_scanned=total_resources_scanned,
+            total_resources_compliant=total_resources_compliant,
+            total_resources_non_compliant=total_resources_non_compliant
         )
+    
+    def _generate_spend_note(self, data: dict) -> Optional[str]:
+        """
+        Generate a clarification note for $0 spend cases.
+        
+        Helps distinguish between:
+        - No resources found for this type
+        - Resources exist but have $0 cost in the period
+        - Resources are actually compliant
+        
+        Args:
+            data: Breakdown data with total, resources_scanned, etc.
+        
+        Returns:
+            Clarification note or None if not needed
+        """
+        total = data.get("total", 0.0)
+        resources_scanned = data.get("resources_scanned", 0)
+        resources_compliant = data.get("resources_compliant", 0)
+        resources_non_compliant = data.get("resources_non_compliant", 0)
+        
+        if resources_scanned == 0:
+            return "No resources found for this type"
+        
+        if total == 0.0:
+            if resources_non_compliant > 0:
+                return f"{resources_non_compliant} resource(s) found but $0 cost reported - may need Cost Allocation Tags or resources are in free tier"
+            else:
+                return f"{resources_scanned} resource(s) found with $0 cost - may be in free tier or newly created"
+        
+        # If there's spend but 0% gap, clarify it's actually compliant
+        if resources_non_compliant == 0 and resources_scanned > 0:
+            return f"All {resources_scanned} resource(s) are properly tagged"
+        
+        return None
     
     def _get_group_key(self, resource: dict, group_by: str) -> str:
         """

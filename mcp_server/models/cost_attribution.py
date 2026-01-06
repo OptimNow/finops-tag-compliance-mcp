@@ -22,6 +22,22 @@ class CostBreakdown(BaseModel):
     gap: float = Field(
         description="Spend that cannot be attributed in this group"
     )
+    resources_scanned: int = Field(
+        default=0,
+        description="Number of resources scanned in this group"
+    )
+    resources_compliant: int = Field(
+        default=0,
+        description="Number of resources with proper tags in this group"
+    )
+    resources_non_compliant: int = Field(
+        default=0,
+        description="Number of resources missing required tags in this group"
+    )
+    note: Optional[str] = Field(
+        default=None,
+        description="Clarification note when spend is $0 (e.g., no resources found vs resources with $0 cost)"
+    )
 
 
 class CostAttributionGapResult(BaseModel):
@@ -53,6 +69,18 @@ class CostAttributionGapResult(BaseModel):
         default=None,
         description="Optional breakdown by grouping dimension (resource_type, region, or account)"
     )
+    total_resources_scanned: int = Field(
+        default=0,
+        description="Total number of resources scanned across all types"
+    )
+    total_resources_compliant: int = Field(
+        default=0,
+        description="Total number of resources with proper tags"
+    )
+    total_resources_non_compliant: int = Field(
+        default=0,
+        description="Total number of resources missing required tags"
+    )
     scan_timestamp: datetime = Field(
         default_factory=datetime.now,
         description="When this analysis was performed"
@@ -73,14 +101,25 @@ class CostAttributionGapResult(BaseModel):
                     "ec2:instance": {
                         "total": 30000.00,
                         "attributable": 20000.00,
-                        "gap": 10000.00
+                        "gap": 10000.00,
+                        "resources_scanned": 10,
+                        "resources_compliant": 6,
+                        "resources_non_compliant": 4,
+                        "note": None
                     },
                     "rds:db": {
                         "total": 20000.00,
                         "attributable": 15000.00,
-                        "gap": 5000.00
+                        "gap": 5000.00,
+                        "resources_scanned": 3,
+                        "resources_compliant": 2,
+                        "resources_non_compliant": 1,
+                        "note": None
                     }
                 },
+                "total_resources_scanned": 13,
+                "total_resources_compliant": 8,
+                "total_resources_non_compliant": 5,
                 "scan_timestamp": "2025-01-31T12:00:00"
             }
         }

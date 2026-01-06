@@ -126,7 +126,13 @@ async def test_get_cost_attribution_gap_basic(mock_aws_client, mock_policy_servi
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    # Return: (per_resource_costs, service_costs, cost_source)
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},  # per-resource costs
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},  # service costs
+        "cost_explorer"  # cost source
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
     # Mock validation: first resource compliant, second has violations
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -161,6 +167,10 @@ async def test_get_cost_attribution_gap_basic(mock_aws_client, mock_policy_servi
     assert "Start" in result.time_period
     assert "End" in result.time_period
     assert result.scan_timestamp is not None
+    # Verify new resource count fields
+    assert result.total_resources_scanned == 2
+    assert result.total_resources_compliant == 1
+    assert result.total_resources_non_compliant == 1
 
 
 @pytest.mark.asyncio
@@ -184,7 +194,12 @@ async def test_get_cost_attribution_gap_all_compliant(mock_aws_client, mock_poli
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     result = await get_cost_attribution_gap(
@@ -197,6 +212,9 @@ async def test_get_cost_attribution_gap_all_compliant(mock_aws_client, mock_poli
     assert result.attributable_spend == 1000.0
     assert result.attribution_gap == 0.0
     assert result.attribution_gap_percentage == 0.0
+    assert result.total_resources_scanned == 2
+    assert result.total_resources_compliant == 2
+    assert result.total_resources_non_compliant == 0
 
 
 @pytest.mark.asyncio
@@ -220,7 +238,12 @@ async def test_get_cost_attribution_gap_all_non_compliant(mock_aws_client, mock_
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         return [
@@ -246,13 +269,21 @@ async def test_get_cost_attribution_gap_all_non_compliant(mock_aws_client, mock_
     assert result.attributable_spend == 0.0
     assert result.attribution_gap == 1000.0
     assert result.attribution_gap_percentage == 100.0
+    assert result.total_resources_scanned == 2
+    assert result.total_resources_compliant == 0
+    assert result.total_resources_non_compliant == 2
 
 
 @pytest.mark.asyncio
 async def test_get_cost_attribution_gap_no_resources(mock_aws_client, mock_policy_service):
     """Test cost attribution gap when no resources exist."""
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
-    mock_aws_client.get_cost_data = AsyncMock(return_value={})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {},  # no per-resource costs
+        {},  # no service costs
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
     result = await get_cost_attribution_gap(
         aws_client=mock_aws_client,
@@ -264,6 +295,13 @@ async def test_get_cost_attribution_gap_no_resources(mock_aws_client, mock_polic
     assert result.attributable_spend == 0.0
     assert result.attribution_gap == 0.0
     assert result.attribution_gap_percentage == 0.0
+    assert result.total_resources_scanned == 0
+    assert result.total_resources_compliant == 0
+    assert result.total_resources_non_compliant == 0
+    # Verify breakdown has note about no resources
+    assert result.breakdown is not None
+    assert "ec2:instance" in result.breakdown
+    assert result.breakdown["ec2:instance"].note == "No resources found for this type"
 
 
 @pytest.mark.asyncio
@@ -280,7 +318,12 @@ async def test_get_cost_attribution_gap_with_custom_time_period(mock_aws_client,
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     custom_period = {
@@ -299,8 +342,8 @@ async def test_get_cost_attribution_gap_with_custom_time_period(mock_aws_client,
     assert result.time_period == custom_period
     
     # Verify cost data was called with custom time period
-    mock_aws_client.get_cost_data.assert_called_once()
-    call_args = mock_aws_client.get_cost_data.call_args
+    mock_aws_client.get_cost_data_by_resource.assert_called_once()
+    call_args = mock_aws_client.get_cost_data_by_resource.call_args
     assert call_args[1]["time_period"] == custom_period
 
 
@@ -337,7 +380,20 @@ async def test_get_cost_attribution_gap_group_by_resource_type(mock_aws_client, 
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=ec2_resources)
     mock_aws_client.get_rds_instances = AsyncMock(return_value=rds_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 600.0, "Amazon RDS": 300.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 300.0, "i-456": 300.0, "db-789": 300.0},
+        {"Amazon Elastic Compute Cloud - Compute": 600.0, "Amazon Relational Database Service": 300.0},
+        "cost_explorer"
+    ))
+    
+    def mock_service_name(resource_type):
+        if resource_type == "ec2:instance":
+            return "Amazon Elastic Compute Cloud - Compute"
+        elif resource_type == "rds:db":
+            return "Amazon Relational Database Service"
+        return "Unknown"
+    
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(side_effect=mock_service_name)
     
     # Mock validation: first EC2 compliant, others non-compliant
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -378,12 +434,18 @@ async def test_get_cost_attribution_gap_group_by_resource_type(mock_aws_client, 
     assert ec2_breakdown.total == 600.0
     assert ec2_breakdown.attributable == 300.0
     assert ec2_breakdown.gap == 300.0
+    assert ec2_breakdown.resources_scanned == 2
+    assert ec2_breakdown.resources_compliant == 1
+    assert ec2_breakdown.resources_non_compliant == 1
     
     # RDS: 1 resource, 0 compliant
     rds_breakdown = result.breakdown["rds:db"]
     assert rds_breakdown.total == 300.0
     assert rds_breakdown.attributable == 0.0
     assert rds_breakdown.gap == 300.0
+    assert rds_breakdown.resources_scanned == 1
+    assert rds_breakdown.resources_compliant == 0
+    assert rds_breakdown.resources_non_compliant == 1
 
 
 @pytest.mark.asyncio
@@ -407,7 +469,12 @@ async def test_get_cost_attribution_gap_group_by_region(mock_aws_client, mock_po
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         if resource_id == "i-123":
@@ -467,7 +534,12 @@ async def test_get_cost_attribution_gap_group_by_account(mock_aws_client, mock_p
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 500.0, "i-456": 500.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         if resource_id == "i-123":
@@ -542,11 +614,25 @@ async def test_get_cost_attribution_gap_multiple_resource_types(mock_aws_client,
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=ec2_resources)
     mock_aws_client.get_rds_instances = AsyncMock(return_value=rds_resources)
     mock_aws_client.get_s3_buckets = AsyncMock(return_value=s3_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={
-        "Amazon EC2": 400.0,
-        "Amazon RDS": 300.0,
-        "Amazon S3": 300.0
-    })
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 400.0, "db-456": 300.0, "bucket-789": 300.0},
+        {
+            "Amazon Elastic Compute Cloud - Compute": 400.0,
+            "Amazon Relational Database Service": 300.0,
+            "Amazon Simple Storage Service": 300.0
+        },
+        "cost_explorer"
+    ))
+    
+    def mock_service_name(resource_type):
+        mapping = {
+            "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+            "rds:db": "Amazon Relational Database Service",
+            "s3:bucket": "Amazon Simple Storage Service"
+        }
+        return mapping.get(resource_type, "Unknown")
+    
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(side_effect=mock_service_name)
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
         if resource_id == "bucket-789":
@@ -571,11 +657,14 @@ async def test_get_cost_attribution_gap_multiple_resource_types(mock_aws_client,
     )
     
     assert result.total_spend == 1000.0
-    # 2 of 3 resources compliant: 2/3 * 1000 = 666.67
-    assert abs(result.attributable_spend - 666.67) < 0.01
-    # 1 of 3 resources non-compliant: 1/3 * 1000 = 333.33
-    assert abs(result.attribution_gap - 333.33) < 0.01
-    assert abs(result.attribution_gap_percentage - 33.33) < 0.01
+    # 2 of 3 resources compliant: EC2 (400) + RDS (300) = 700
+    assert result.attributable_spend == 700.0
+    # 1 of 3 resources non-compliant: S3 (300)
+    assert result.attribution_gap == 300.0
+    assert result.attribution_gap_percentage == 30.0
+    assert result.total_resources_scanned == 3
+    assert result.total_resources_compliant == 2
+    assert result.total_resources_non_compliant == 1
 
 
 @pytest.mark.asyncio
@@ -593,7 +682,20 @@ async def test_get_cost_attribution_gap_handles_fetch_errors(mock_logger, mock_a
         }
     ])
     mock_aws_client.get_rds_instances = AsyncMock(side_effect=Exception("API Error"))
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    
+    def mock_service_name(resource_type):
+        if resource_type == "ec2:instance":
+            return "Amazon Elastic Compute Cloud - Compute"
+        elif resource_type == "rds:db":
+            return "Amazon Relational Database Service"
+        return "Unknown"
+    
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(side_effect=mock_service_name)
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     # Should not raise, should continue with available resources
@@ -622,7 +724,12 @@ async def test_get_cost_attribution_gap_default_time_period(mock_aws_client, moc
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     result = await get_cost_attribution_gap(
@@ -663,7 +770,12 @@ async def test_get_cost_attribution_gap_result_has_timestamp(mock_aws_client, mo
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    mock_aws_client.get_cost_data = AsyncMock(return_value={"Amazon EC2": 1000.0})
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 1000.0},
+        {"Amazon Elastic Compute Cloud - Compute": 1000.0},
+        "cost_explorer"
+    ))
+    mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
     before = datetime.now()

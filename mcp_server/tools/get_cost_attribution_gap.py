@@ -148,7 +148,11 @@ async def get_cost_attribution_gap(
             key: CostBreakdown(
                 total=value["total"],
                 attributable=value["attributable"],
-                gap=value["gap"]
+                gap=value["gap"],
+                resources_scanned=value.get("resources_scanned", 0),
+                resources_compliant=value.get("resources_compliant", 0),
+                resources_non_compliant=value.get("resources_non_compliant", 0),
+                note=value.get("note")
             )
             for key, value in result.breakdown.items()
         }
@@ -160,5 +164,8 @@ async def get_cost_attribution_gap(
         attribution_gap_percentage=result.attribution_gap_percentage,
         time_period=time_period,
         breakdown=breakdown_dict,
+        total_resources_scanned=result.total_resources_scanned,
+        total_resources_compliant=result.total_resources_compliant,
+        total_resources_non_compliant=result.total_resources_non_compliant,
         scan_timestamp=datetime.now()
     )
