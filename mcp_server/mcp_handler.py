@@ -136,7 +136,8 @@ class MCPHandler:
             description=(
                 "Check tag compliance for AWS resources. Scans specified resource types "
                 "and validates them against the organization's tagging policy. Returns "
-                "a compliance score along with detailed violation information."
+                "a compliance score along with detailed violation information. "
+                "Use 'all' to scan all tagged resources including Bedrock, OpenSearch, etc."
             ),
             input_schema={
                 "type": "object",
@@ -146,11 +147,13 @@ class MCPHandler:
                         "items": {
                             "type": "string",
                             "enum": [
+                                "all",
                                 "ec2:instance",
                                 "rds:db",
                                 "s3:bucket",
                                 "lambda:function",
                                 "ecs:service",
+                                "opensearch:domain",
                             ],
                             "minLength": 1,
                             "maxLength": 50,
@@ -160,7 +163,8 @@ class MCPHandler:
                         "uniqueItems": True,
                         "description": (
                             "List of resource types to check. "
-                            "Valid types: ec2:instance, rds:db, s3:bucket, lambda:function, ecs:service. "
+                            "Use 'all' to scan all tagged resources (Bedrock, OpenSearch, etc.). "
+                            "Valid types: all, ec2:instance, rds:db, s3:bucket, lambda:function, ecs:service, opensearch:domain. "
                             "Maximum 10 types per request."
                         ),
                     },
@@ -215,7 +219,8 @@ class MCPHandler:
             description=(
                 "Find resources with no tags or missing required tags. "
                 "Returns resource details and age to help prioritize remediation. "
-                "Cost estimates are only included when explicitly requested via include_costs=true."
+                "Cost estimates are only included when explicitly requested via include_costs=true. "
+                "Use 'all' to scan all tagged resources including Bedrock, OpenSearch, etc."
             ),
             input_schema={
                 "type": "object",
@@ -225,11 +230,13 @@ class MCPHandler:
                         "items": {
                             "type": "string",
                             "enum": [
+                                "all",
                                 "ec2:instance",
                                 "rds:db",
                                 "s3:bucket",
                                 "lambda:function",
                                 "ecs:service",
+                                "opensearch:domain",
                             ],
                             "minLength": 1,
                             "maxLength": 50,
@@ -237,7 +244,7 @@ class MCPHandler:
                         "minItems": 1,
                         "maxItems": 10,
                         "uniqueItems": True,
-                        "description": "List of resource types to search. Maximum 10 types per request.",
+                        "description": "List of resource types to search. Use 'all' for all tagged resources. Maximum 10 types per request.",
                     },
                     "regions": {
                         "type": "array",
@@ -314,7 +321,8 @@ class MCPHandler:
             description=(
                 "Calculate the cost attribution gap - the financial impact of tagging gaps. "
                 "Shows how much cloud spend cannot be allocated to teams/projects due to "
-                "missing or invalid resource tags."
+                "missing or invalid resource tags. "
+                "Use 'all' to analyze all tagged resources including Bedrock, OpenSearch, etc."
             ),
             input_schema={
                 "type": "object",
@@ -324,11 +332,13 @@ class MCPHandler:
                         "items": {
                             "type": "string",
                             "enum": [
+                                "all",
                                 "ec2:instance",
                                 "rds:db",
                                 "s3:bucket",
                                 "lambda:function",
                                 "ecs:service",
+                                "opensearch:domain",
                             ],
                             "minLength": 1,
                             "maxLength": 50,
@@ -336,7 +346,7 @@ class MCPHandler:
                         "minItems": 1,
                         "maxItems": 10,
                         "uniqueItems": True,
-                        "description": "List of resource types to analyze. Maximum 10 types per request.",
+                        "description": "List of resource types to analyze. Use 'all' for all tagged resources. Maximum 10 types per request.",
                     },
                     "time_period": {
                         "type": "object",
@@ -442,7 +452,8 @@ class MCPHandler:
             description=(
                 "Generate a comprehensive compliance report. "
                 "Includes overall compliance summary, top violations ranked by "
-                "count and cost impact, and actionable recommendations."
+                "count and cost impact, and actionable recommendations. "
+                "Use 'all' to include all tagged resources including Bedrock, OpenSearch, etc."
             ),
             input_schema={
                 "type": "object",
@@ -452,11 +463,13 @@ class MCPHandler:
                         "items": {
                             "type": "string",
                             "enum": [
+                                "all",
                                 "ec2:instance",
                                 "rds:db",
                                 "s3:bucket",
                                 "lambda:function",
                                 "ecs:service",
+                                "opensearch:domain",
                             ],
                             "minLength": 1,
                             "maxLength": 50,
@@ -464,7 +477,7 @@ class MCPHandler:
                         "minItems": 1,
                         "maxItems": 10,
                         "uniqueItems": True,
-                        "description": "List of resource types to include in the report. Maximum 10 types per request.",
+                        "description": "List of resource types to include in the report. Use 'all' for all tagged resources. Maximum 10 types per request.",
                     },
                     "format": {
                         "type": "string",

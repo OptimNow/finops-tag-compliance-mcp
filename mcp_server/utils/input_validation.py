@@ -67,12 +67,15 @@ class InputValidator:
     """
     
     # Valid resource types
+    # "all" uses Resource Groups Tagging API to scan all tagged resources
     VALID_RESOURCE_TYPES = {
+        "all",
         "ec2:instance",
         "rds:db",
         "s3:bucket",
         "lambda:function",
         "ecs:service",
+        "opensearch:domain",
     }
     
     # Valid severity levels
