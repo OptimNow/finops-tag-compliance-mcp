@@ -84,20 +84,18 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md)
 
 ### Expanded Resource Coverage (Included in Phase 1)
 
-**Note**: Originally planned as Phase 1.7, this capability is being implemented as part of Phase 1 completion.
+**Note**: Originally planned as Phase 1.7, this capability has been implemented as part of Phase 1 completion.
 
-**Status**: 🔄 In Progress
+**Status**: ✅ Complete (January 2026)
 
-**Current State**:
-- ✅ IAM permissions for `tag:GetResources` are in place
-- ❌ Code still uses individual service APIs (EC2, RDS, S3, Lambda, ECS, OpenSearch)
-- ❌ Resource Groups Tagging API not yet integrated
+**Deliverables**:
+- ✅ AWS Resource Groups Tagging API integration for universal resource discovery
+- ✅ 50+ AWS resource types supported (including Bedrock agents, knowledge bases, guardrails)
+- ✅ Resource type filter with "all" option
+- ✅ Universal tagging policy (applies_to: [] = wildcard for all resource types)
+- ✅ Performance optimization with pagination for large-scale scans
 
-**Deliverables** (Pending):
-- AWS Resource Groups Tagging API for universal resource discovery
-- 50+ AWS resource types supported
-- Resource type filter with "all" option
-- Performance optimization for large-scale scans
+**Important Note**: The Resource Groups Tagging API only returns resources that have at least one tag. For completely untagged resources, users should use specific resource types (ec2:instance, s3:bucket, etc.).
 
 See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md) for full details on supported resource types.
 

@@ -266,7 +266,7 @@ Phase 1 delivers a minimum viable product (MVP) focused exclusively on AWS tag c
 
 ## Supported AWS Resource Types (50+)
 
-Phase 1 uses the AWS Resource Groups Tagging API for comprehensive resource coverage.
+Phase 1 uses the AWS Resource Groups Tagging API for comprehensive resource coverage. The tagging policy applies to ALL resource types by default (wildcard).
 
 ### Compute
 - `ec2:instance` - EC2 instances
@@ -275,6 +275,7 @@ Phase 1 uses the AWS Resource Groups Tagging API for comprehensive resource cove
 - `ec2:image` - AMIs
 - `lambda:function` - Lambda functions
 - `ecs:service` - ECS services
+- `ecs:cluster` - ECS clusters
 
 ### Storage
 - `s3:bucket` - S3 buckets
@@ -287,13 +288,42 @@ Phase 1 uses the AWS Resource Groups Tagging API for comprehensive resource cove
 - `elasticache:cluster` - ElastiCache clusters
 - `es:domain` - OpenSearch/Elasticsearch domains
 
+### AI/ML (Bedrock, SageMaker)
+- `bedrock:agent` - Bedrock agents
+- `bedrock:agent-alias` - Bedrock agent aliases
+- `bedrock:knowledge-base` - Bedrock knowledge bases
+- `bedrock:guardrail` - Bedrock guardrails
+- `bedrock:custom-model` - Bedrock custom models
+- `sagemaker:endpoint` - SageMaker endpoints
+- `sagemaker:notebook-instance` - SageMaker notebooks
+
 ### Networking
 - `ec2:vpc` - VPCs
 - `ec2:subnet` - Subnets
 - `ec2:security-group` - Security groups
 - `elasticloadbalancing:loadbalancer` - Load balancers
 
-### And 30+ more resource types...
+### Messaging
+- `sns:topic` - SNS topics
+- `sqs:queue` - SQS queues
+- `kinesis:stream` - Kinesis streams
+
+### Other
+- `secretsmanager:secret` - Secrets Manager secrets
+- `kms:key` - KMS keys
+- `cloudwatch:alarm` - CloudWatch alarms
+- `states:stateMachine` - Step Functions state machines
+
+### Using "all" Resource Types
+
+To scan ALL taggable resources at once:
+```json
+{
+  "resource_types": ["all"]
+}
+```
+
+**Important**: The Resource Groups Tagging API only returns resources that have at least one tag. Resources with zero tags won't appear in "all" scans. For completely untagged resources, use specific resource types (ec2:instance, s3:bucket, etc.).
 
 ---
 

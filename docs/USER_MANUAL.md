@@ -62,7 +62,11 @@ What's the compliance score for all my S3 buckets?
 Scan my Lambda functions for tag violations
 ```
 
-**Resource types**: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:function`, `ecs:service`, `opensearch:domain`
+**Resource types**: 
+- Specific types: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:function`, `ecs:service`, `opensearch:domain`
+- Use `all` to scan ALL taggable resources (50+ types including Bedrock, DynamoDB, SNS, SQS, etc.)
+
+**Note**: The `all` option uses AWS Resource Groups Tagging API which only returns resources that have at least one tag. For completely untagged resources, use specific resource types.
 
 ---
 
@@ -275,22 +279,27 @@ Identify ownership gaps:
 
 | Resource Type | Example prompt |
 |---------------|----------------|
+| All resources | "Check tag compliance for all resource types" |
 | EC2 | "Check tag compliance for EC2 instances" |
 | S3 | "Find S3 buckets missing the DataClassification tag" |
 | RDS | "Which RDS databases are missing required tags?" |
 | Lambda | "Scan Lambda functions for tag violations" |
 | ECS | "Check compliance for ECS services" |
 | OpenSearch | "Find untagged OpenSearch domains" |
+| Bedrock | "Check compliance for my Bedrock agents and knowledge bases" |
+| DynamoDB | "Find untagged DynamoDB tables" |
 
 ### Advanced Queries
 
 | Scenario | Example prompt |
 |----------|----------------|
+| All resources | "Check tag compliance for all resource types" |
 | Filter by region | "Check compliance for EC2 instances in us-east-1" |
 | Filter by severity | "Show only critical tag violations" |
 | Cost threshold | "Find untagged resources costing more than $50/month" |
 | Time-based | "Show compliance history for the last 30 days" |
 | Specific resource | "Validate tags on arn:aws:s3:::my-bucket" |
+| AI/ML resources | "Find all untagged Bedrock and SageMaker resources" |
 
 ---
 
