@@ -10,6 +10,8 @@ A practical guide for FinOps practitioners to use the Tag Compliance MCP Server 
 4. [Example Prompts](#example-prompts)
 5. [Understanding Results](#understanding-results)
 6. [Troubleshooting](#troubleshooting)
+7. [Tips for FinOps Practitioners](#tips-for-finops-practitioners)
+8. [Customizing Output Formatting](#customizing-output-formatting)
 
 ---
 
@@ -331,6 +333,54 @@ The default policy is a starting point. Customize `policies/tagging_policy.json`
 
 ### Tag at Creation
 The best time to tag is when resources are created. Use this tool to catch what slips through and establish better processes.
+
+---
+
+## Customizing Output Formatting
+
+The MCP server returns structured data, and Claude decides how to present it (bullet points, tables, charts, etc.). You can customize this by instructing Claude on your preferred format.
+
+### One-Time Formatting Request
+
+Add formatting instructions to your prompt:
+
+```
+Check tag compliance for my EC2 instances. Display the results in a table format.
+```
+
+```
+Find untagged resources and show them in a markdown table with columns for Resource ID, Type, Region, and Missing Tags.
+```
+
+```
+Show me the cost attribution gap with a bar chart visualization.
+```
+
+### Persistent Formatting Preferences
+
+To make Claude always use your preferred format, start your conversation with a formatting instruction:
+
+```
+For all tag compliance results in this conversation, please:
+- Display violations and resources in markdown tables (not bullet points)
+- Include a summary section at the top
+- Sort by cost impact (highest first)
+- Use charts/graphs when showing trends or comparisons
+```
+
+### Example Formatting Prompts
+
+| Format | Example Prompt |
+|--------|----------------|
+| Tables | "Show untagged resources in a table with Resource ID, Type, Cost, and Missing Tags columns" |
+| Charts | "Display the compliance score trend as a bar chart" |
+| CSV-ready | "List violations in CSV format I can paste into Excel" |
+| Executive summary | "Give me a brief executive summary with key metrics, then detailed tables" |
+| Grouped | "Show violations grouped by resource type in separate tables" |
+
+### Claude Desktop System Prompt (Advanced)
+
+For organization-wide formatting preferences, you can add instructions to Claude Desktop's system prompt. Edit your Claude Desktop config to include formatting preferences that apply to all conversations.
 
 ---
 
