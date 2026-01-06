@@ -165,6 +165,47 @@ class LoopDetector:
         
         return False, count
 
+    async def record_call(
+        self,
+        session_id: str,
+        tool_name: str,
+        parameters: dict,
+    ) -> tuple[bool, int]:
+        """
+        Record a tool call and check for loops.
+        
+        This is the primary API for loop detection. It records the call
+        and raises LoopDetectedError if a loop is detected.
+        
+        Args:
+            session_id: The session identifier
+            tool_name: Name of the tool being called
+            parameters: Tool parameters
+            
+        Returns:
+            Tuple of (loop_detected, call_count)
+            
+        Raises:
+            LoopDetectedError: If a loop is detected
+        """
+        is_loop, call_count = await self.check_for_loop(
+            session_id=session_id,
+            tool_name=tool_name,
+            parameters=parameters,
+        )
+        
+        if is_loop:
+            signature = self.generate_call_signature(tool_name, parameters)
+            raise LoopDetectedError(
+                tool_name=tool_name,
+                call_signature=signature,
+                call_count=call_count,
+                max_calls=self._max_identical_calls,
+                session_id=session_id,
+            )
+        
+        return is_loop, call_count
+
     def _record_loop_event(
         self,
         session_id: str,
