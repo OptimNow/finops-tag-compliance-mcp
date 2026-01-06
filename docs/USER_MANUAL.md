@@ -52,9 +52,15 @@ Scan resources and get a compliance score.
 **What it does**: Scans specified resource types, validates them against your tagging policy, and returns a compliance score with detailed violations.
 
 **Example prompts**:
-- "Check tag compliance for my EC2 instances"
-- "What's the compliance score for all my S3 buckets?"
-- "Scan my Lambda functions for tag violations"
+```
+Check tag compliance for my EC2 instances
+```
+```
+What's the compliance score for all my S3 buckets?
+```
+```
+Scan my Lambda functions for tag violations
+```
 
 **Resource types**: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:function`, `ecs:service`, `opensearch:domain`
 
@@ -67,9 +73,15 @@ Find resources missing required tags.
 **What it does**: Identifies resources with no tags or missing required tags, includes cost estimates and resource age to help prioritize remediation.
 
 **Example prompts**:
-- "Find all untagged S3 buckets"
-- "Which EC2 instances are missing the CostCenter tag?"
-- "Show me untagged resources costing more than $50/month"
+```
+Find all untagged S3 buckets
+```
+```
+Which EC2 instances are missing the CostCenter tag?
+```
+```
+Show me untagged resources costing more than $50/month
+```
 
 ---
 
@@ -80,8 +92,12 @@ Validate specific resources by ARN.
 **What it does**: Validates one or more specific resources against the tagging policy, returns detailed violation information.
 
 **Example prompts**:
-- "Validate the tags on arn:aws:ec2:us-east-1:123456789:instance/i-abc123"
-- "Check if this S3 bucket has valid tags: arn:aws:s3:::my-bucket"
+```
+Validate the tags on arn:aws:ec2:us-east-1:123456789:instance/i-abc123
+```
+```
+Check if this S3 bucket has valid tags: arn:aws:s3:::my-bucket
+```
 
 ---
 
@@ -92,9 +108,15 @@ Calculate the financial impact of tagging gaps.
 **What it does**: Shows how much cloud spend cannot be allocated to teams/projects due to missing or invalid tags.
 
 **Example prompts**:
-- "What's my cost attribution gap?"
-- "How much money can't be attributed due to missing tags?"
-- "Show me the cost impact of untagged resources by region"
+```
+What's my cost attribution gap?
+```
+```
+How much money can't be attributed due to missing tags?
+```
+```
+Show me the cost impact of untagged resources by region
+```
 
 ---
 
@@ -105,8 +127,12 @@ Get tag suggestions for a resource.
 **What it does**: Analyzes patterns like VPC naming, IAM roles, and similar resources to recommend tag values with confidence scores.
 
 **Example prompts**:
-- "Suggest tags for arn:aws:ec2:us-east-1:123456789:instance/i-abc123"
-- "What tags should I add to this S3 bucket?"
+```
+Suggest tags for arn:aws:ec2:us-east-1:123456789:instance/i-abc123
+```
+```
+What tags should I add to this S3 bucket?
+```
 
 ---
 
@@ -117,9 +143,15 @@ View the current tagging policy.
 **What it does**: Returns the complete policy configuration including required tags, optional tags, and validation rules.
 
 **Example prompts**:
-- "What tagging policy is configured?"
-- "Show me the required tags"
-- "What are the allowed values for the Environment tag?"
+```
+What tagging policy is configured?
+```
+```
+Show me the required tags
+```
+```
+What are the allowed values for the Environment tag?
+```
 
 ---
 
@@ -130,9 +162,15 @@ Generate a comprehensive compliance report.
 **What it does**: Creates a detailed report with compliance summary, top violations ranked by count and cost, and actionable recommendations.
 
 **Example prompts**:
-- "Generate a compliance report for all my resources"
-- "Create a markdown report of tag violations"
-- "Give me a summary report with recommendations"
+```
+Generate a compliance report for all my resources
+```
+```
+Create a markdown report of tag violations
+```
+```
+Give me a summary report with recommendations
+```
 
 **Output formats**: JSON, CSV, Markdown
 
@@ -145,9 +183,15 @@ View historical compliance data.
 **What it does**: Shows how compliance has changed over time to track progress and measure remediation effectiveness.
 
 **Example prompts**:
-- "Show me compliance history for the last 30 days"
-- "How has our tag compliance improved this month?"
-- "What's the trend in tag violations?"
+```
+Show me compliance history for the last 30 days
+```
+```
+How has our tag compliance improved this month?
+```
+```
+What's the trend in tag violations?
+```
 
 ---
 
