@@ -52,6 +52,8 @@ class AWSClient:
         self.ecs = boto3.client('ecs', config=config)
         self.sts = boto3.client('sts', config=config)
         self.opensearch = boto3.client('opensearch', config=config)
+        # Resource Groups Tagging API - discovers all taggable resources
+        self.resourcegroupstaggingapi = boto3.client('resourcegroupstaggingapi', config=config)
         # Cost Explorer is always us-east-1
         self.ce = boto3.client('ce', region_name='us-east-1')
         
@@ -749,3 +751,413 @@ class AWSClient:
             "opensearch:domain": "Amazon OpenSearch Service",
         }
         return service_map.get(resource_type, "")
+
+    async def get_all_tagged_resources(
+        self,
+        resource_type_filters: list[str] | None = None,
+        tag_filters: list[dict[str, Any]] | None = None,
+        include_compliance_details: bool = False
+    ) -> list[dict[str, Any]]:
+        """
+        Fetch all taggable resources using AWS Resource Groups Tagging API.
+        
+        This method provides a unified way to discover resources across 50+ AWS services
+        without needing individual service API calls. It handles pagination automatically.
+        
+        Args:
+            resource_type_filters: Optional list of resource type filters 
+                (e.g., ["ec2:instance", "rds:db", "s3", "lambda:function"])
+                If None, returns all taggable resources.
+            tag_filters: Optional list of tag filters in format:
+                [{"Key": "Environment", "Values": ["production", "staging"]}]
+            include_compliance_details: If True, includes ComplianceDetails in response
+        
+        Returns:
+            List of resources with their tags, ARNs, and resource types
+        
+        Example response:
+            [
+                {
+                    "resource_id": "i-1234567890abcdef0",
+                    "resource_type": "ec2:instance",
+                    "region": "us-east-1",
+                    "tags": {"Environment": "production", "Owner": "team@example.com"},
+                    "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+                },
+                ...
+            ]
+        """
+        try:
+            resources = []
+            pagination_token = None
+            
+            # Build request parameters
+            request_params: dict[str, Any] = {}
+            
+            if resource_type_filters:
+                # Convert our resource type format to AWS format
+                aws_resource_types = self._convert_resource_types_to_aws_format(resource_type_filters)
+                if aws_resource_types:
+                    request_params["ResourceTypeFilters"] = aws_resource_types
+            
+            if tag_filters:
+                request_params["TagFilters"] = tag_filters
+            
+            if include_compliance_details:
+                request_params["IncludeComplianceDetails"] = True
+                request_params["ExcludeCompliantResources"] = False
+            
+            # Paginate through all results
+            while True:
+                if pagination_token:
+                    request_params["PaginationToken"] = pagination_token
+                
+                response = await self._call_with_backoff(
+                    "resourcegroupstaggingapi",
+                    self.resourcegroupstaggingapi.get_resources,
+                    **request_params
+                )
+                
+                # Process resources from this page
+                for resource_mapping in response.get("ResourceTagMappingList", []):
+                    arn = resource_mapping.get("ResourceARN", "")
+                    tags = self._extract_tags(resource_mapping.get("Tags", []))
+                    
+                    # Parse ARN to extract resource details
+                    parsed = self._parse_arn(arn)
+                    
+                    resource_entry = {
+                        "resource_id": parsed["resource_id"],
+                        "resource_type": parsed["resource_type"],
+                        "region": parsed["region"] or self.region,
+                        "tags": tags,
+                        "arn": arn,
+                        "created_at": None  # Resource Groups Tagging API doesn't provide creation date
+                    }
+                    
+                    # Include compliance details if requested
+                    if include_compliance_details and "ComplianceDetails" in resource_mapping:
+                        resource_entry["compliance_details"] = resource_mapping["ComplianceDetails"]
+                    
+                    resources.append(resource_entry)
+                
+                # Check for more pages
+                pagination_token = response.get("PaginationToken")
+                if not pagination_token:
+                    break
+            
+            return resources
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch resources via Resource Groups Tagging API: {str(e)}") from e
+    
+    def _convert_resource_types_to_aws_format(self, resource_types: list[str]) -> list[str]:
+        """
+        Convert our internal resource type format to AWS Resource Groups Tagging API format.
+        
+        Our format: "ec2:instance", "rds:db", "s3:bucket"
+        AWS format: "ec2:instance", "rds:db", "s3", "lambda:function"
+        
+        Args:
+            resource_types: List of resource types in our format
+        
+        Returns:
+            List of resource types in AWS format
+        """
+        # Mapping from our format to AWS Resource Groups Tagging API format
+        type_mapping = {
+            "ec2:instance": "ec2:instance",
+            "rds:db": "rds:db",
+            "s3:bucket": "s3",  # S3 uses just "s3" in the API
+            "lambda:function": "lambda:function",
+            "ecs:service": "ecs:service",
+            "opensearch:domain": "es:domain",  # OpenSearch uses "es" prefix
+            # Additional common resource types
+            "dynamodb:table": "dynamodb:table",
+            "sns:topic": "sns",
+            "sqs:queue": "sqs",
+            "elasticache:cluster": "elasticache:cluster",
+            "cloudwatch:alarm": "cloudwatch:alarm",
+            "secretsmanager:secret": "secretsmanager:secret",
+            "kms:key": "kms:key",
+            "ecr:repository": "ecr:repository",
+            "efs:file-system": "elasticfilesystem:file-system",
+            "elasticloadbalancing:loadbalancer": "elasticloadbalancing:loadbalancer",
+            "elasticloadbalancing:targetgroup": "elasticloadbalancing:targetgroup",
+            "apigateway:restapi": "apigateway",
+            "cloudfront:distribution": "cloudfront:distribution",
+            "route53:hostedzone": "route53:hostedzone",
+            "kinesis:stream": "kinesis:stream",
+            "glue:database": "glue:database",
+            "glue:table": "glue:table",
+            "athena:workgroup": "athena:workgroup",
+            "redshift:cluster": "redshift:cluster",
+            "emr:cluster": "elasticmapreduce:cluster",
+            "stepfunctions:statemachine": "states:stateMachine",
+            "codebuild:project": "codebuild:project",
+            "codepipeline:pipeline": "codepipeline",
+        }
+        
+        aws_types = []
+        for rt in resource_types:
+            if rt == "all":
+                # Return empty list to get all resources
+                return []
+            
+            aws_type = type_mapping.get(rt, rt)
+            if aws_type not in aws_types:
+                aws_types.append(aws_type)
+        
+        return aws_types
+    
+    def _parse_arn(self, arn: str) -> dict[str, str]:
+        """
+        Parse an AWS ARN to extract resource details.
+        
+        ARN format: arn:partition:service:region:account:resource
+        
+        Args:
+            arn: AWS ARN string
+        
+        Returns:
+            Dictionary with parsed ARN components:
+            - service: AWS service name
+            - region: AWS region (may be empty for global services)
+            - account: AWS account ID (may be empty for some services)
+            - resource_type: Our internal resource type format
+            - resource_id: Resource identifier
+        """
+        parts = arn.split(":")
+        
+        if len(parts) < 6:
+            return {
+                "service": "",
+                "region": "",
+                "account": "",
+                "resource_type": "unknown",
+                "resource_id": arn
+            }
+        
+        service = parts[2]
+        region = parts[3]
+        account = parts[4]
+        resource_part = ":".join(parts[5:])  # Handle resources with colons
+        
+        # Parse resource type and ID based on service
+        resource_type, resource_id = self._parse_resource_part(service, resource_part)
+        
+        return {
+            "service": service,
+            "region": region,
+            "account": account,
+            "resource_type": resource_type,
+            "resource_id": resource_id
+        }
+    
+    def _parse_resource_part(self, service: str, resource_part: str) -> tuple[str, str]:
+        """
+        Parse the resource part of an ARN to extract type and ID.
+        
+        Args:
+            service: AWS service name from ARN
+            resource_part: Resource portion of ARN (everything after account)
+        
+        Returns:
+            Tuple of (resource_type, resource_id)
+        """
+        # Service-specific parsing rules
+        if service == "ec2":
+            if resource_part.startswith("instance/"):
+                return "ec2:instance", resource_part.split("/")[1]
+            elif resource_part.startswith("volume/"):
+                return "ec2:volume", resource_part.split("/")[1]
+            elif resource_part.startswith("vpc/"):
+                return "ec2:vpc", resource_part.split("/")[1]
+            elif resource_part.startswith("subnet/"):
+                return "ec2:subnet", resource_part.split("/")[1]
+            elif resource_part.startswith("security-group/"):
+                return "ec2:security-group", resource_part.split("/")[1]
+            elif resource_part.startswith("snapshot/"):
+                return "ec2:snapshot", resource_part.split("/")[1]
+            elif resource_part.startswith("image/"):
+                return "ec2:image", resource_part.split("/")[1]
+            else:
+                return f"ec2:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "rds":
+            if resource_part.startswith("db:"):
+                return "rds:db", resource_part.split(":")[1]
+            elif resource_part.startswith("cluster:"):
+                return "rds:cluster", resource_part.split(":")[1]
+            elif resource_part.startswith("snapshot:"):
+                return "rds:snapshot", resource_part.split(":")[1]
+            else:
+                return f"rds:{resource_part.split(':')[0]}", resource_part.split(":")[-1]
+        
+        elif service == "s3":
+            # S3 ARNs: arn:aws:s3:::bucket-name or arn:aws:s3:::bucket-name/key
+            return "s3:bucket", resource_part.split("/")[0]
+        
+        elif service == "lambda":
+            if resource_part.startswith("function:"):
+                func_name = resource_part.split(":")[1]
+                # Remove version/alias if present
+                if ":" in func_name:
+                    func_name = func_name.split(":")[0]
+                return "lambda:function", func_name
+            else:
+                return "lambda:function", resource_part
+        
+        elif service == "ecs":
+            if "/service/" in resource_part:
+                # Format: cluster/cluster-name/service/service-name
+                parts = resource_part.split("/")
+                return "ecs:service", parts[-1]
+            elif resource_part.startswith("cluster/"):
+                return "ecs:cluster", resource_part.split("/")[1]
+            elif resource_part.startswith("task/"):
+                return "ecs:task", resource_part.split("/")[-1]
+            else:
+                return f"ecs:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "es" or service == "opensearch":
+            if resource_part.startswith("domain/"):
+                return "opensearch:domain", resource_part.split("/")[1]
+            else:
+                return "opensearch:domain", resource_part
+        
+        elif service == "dynamodb":
+            if resource_part.startswith("table/"):
+                return "dynamodb:table", resource_part.split("/")[1]
+            else:
+                return f"dynamodb:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "sns":
+            return "sns:topic", resource_part
+        
+        elif service == "sqs":
+            return "sqs:queue", resource_part.split("/")[-1]
+        
+        elif service == "elasticache":
+            if resource_part.startswith("cluster:"):
+                return "elasticache:cluster", resource_part.split(":")[1]
+            elif resource_part.startswith("replicationgroup:"):
+                return "elasticache:replicationgroup", resource_part.split(":")[1]
+            else:
+                return f"elasticache:{resource_part.split(':')[0]}", resource_part.split(":")[-1]
+        
+        elif service == "secretsmanager":
+            if resource_part.startswith("secret:"):
+                return "secretsmanager:secret", resource_part.split(":")[1]
+            else:
+                return "secretsmanager:secret", resource_part
+        
+        elif service == "kms":
+            if resource_part.startswith("key/"):
+                return "kms:key", resource_part.split("/")[1]
+            elif resource_part.startswith("alias/"):
+                return "kms:alias", resource_part.split("/")[1]
+            else:
+                return f"kms:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "ecr":
+            if resource_part.startswith("repository/"):
+                return "ecr:repository", resource_part.split("/")[1]
+            else:
+                return "ecr:repository", resource_part
+        
+        elif service == "elasticfilesystem":
+            if resource_part.startswith("file-system/"):
+                return "efs:file-system", resource_part.split("/")[1]
+            else:
+                return "efs:file-system", resource_part
+        
+        elif service == "elasticloadbalancing":
+            if resource_part.startswith("loadbalancer/"):
+                return "elasticloadbalancing:loadbalancer", resource_part.split("/")[-1]
+            elif resource_part.startswith("targetgroup/"):
+                return "elasticloadbalancing:targetgroup", resource_part.split("/")[-1]
+            else:
+                return f"elasticloadbalancing:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "apigateway":
+            if resource_part.startswith("/restapis/"):
+                return "apigateway:restapi", resource_part.split("/")[2]
+            else:
+                return "apigateway:restapi", resource_part
+        
+        elif service == "cloudfront":
+            if resource_part.startswith("distribution/"):
+                return "cloudfront:distribution", resource_part.split("/")[1]
+            else:
+                return "cloudfront:distribution", resource_part
+        
+        elif service == "route53":
+            if resource_part.startswith("hostedzone/"):
+                return "route53:hostedzone", resource_part.split("/")[1]
+            else:
+                return "route53:hostedzone", resource_part
+        
+        elif service == "kinesis":
+            if resource_part.startswith("stream/"):
+                return "kinesis:stream", resource_part.split("/")[1]
+            else:
+                return "kinesis:stream", resource_part
+        
+        elif service == "glue":
+            if resource_part.startswith("database/"):
+                return "glue:database", resource_part.split("/")[1]
+            elif resource_part.startswith("table/"):
+                return "glue:table", resource_part.split("/")[-1]
+            else:
+                return f"glue:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "athena":
+            if resource_part.startswith("workgroup/"):
+                return "athena:workgroup", resource_part.split("/")[1]
+            else:
+                return "athena:workgroup", resource_part
+        
+        elif service == "redshift":
+            if resource_part.startswith("cluster:"):
+                return "redshift:cluster", resource_part.split(":")[1]
+            else:
+                return "redshift:cluster", resource_part
+        
+        elif service == "elasticmapreduce":
+            if resource_part.startswith("cluster/"):
+                return "emr:cluster", resource_part.split("/")[1]
+            else:
+                return "emr:cluster", resource_part
+        
+        elif service == "states":
+            if resource_part.startswith("stateMachine:"):
+                return "stepfunctions:statemachine", resource_part.split(":")[1]
+            else:
+                return "stepfunctions:statemachine", resource_part
+        
+        elif service == "codebuild":
+            if resource_part.startswith("project/"):
+                return "codebuild:project", resource_part.split("/")[1]
+            else:
+                return "codebuild:project", resource_part
+        
+        elif service == "codepipeline":
+            return "codepipeline:pipeline", resource_part
+        
+        elif service == "logs":
+            if resource_part.startswith("log-group:"):
+                return "logs:log-group", resource_part.split(":")[1]
+            else:
+                return "logs:log-group", resource_part
+        
+        elif service == "cloudwatch":
+            if resource_part.startswith("alarm:"):
+                return "cloudwatch:alarm", resource_part.split(":")[1]
+            else:
+                return f"cloudwatch:{resource_part.split(':')[0]}", resource_part.split(":")[-1]
+        
+        # Default: use service name and full resource part
+        return f"{service}:resource", resource_part

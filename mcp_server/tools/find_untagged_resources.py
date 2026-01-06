@@ -12,6 +12,11 @@ from ..models.untagged import UntaggedResourcesResult, UntaggedResource
 from ..models.policy import TagPolicy
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
+from ..utils.resource_utils import (
+    fetch_resources_by_type,
+    SUPPORTED_RESOURCE_TYPES,
+    TAGGING_API_RESOURCE_TYPES,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +41,8 @@ async def find_untagged_resources(
         resource_types: List of resource types to search (e.g., ["ec2:instance", "rds:db"])
                        Supported types: ec2:instance, rds:db, s3:bucket,
                        lambda:function, ecs:service, opensearch:domain
+                       Special value: ["all"] - scan ALL taggable resources (50+ types)
+                       using AWS Resource Groups Tagging API
         regions: Optional list of AWS regions to search. If None, searches current region.
         min_cost_threshold: Optional minimum monthly cost threshold in USD.
                            Only return resources with estimated cost >= this value.
@@ -55,7 +62,7 @@ async def find_untagged_resources(
     Raises:
         ValueError: If resource_types is empty or contains invalid types
     
-    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5
+    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 17.3, 17.4
     
     Example:
         >>> result = await find_untagged_resources(
@@ -65,6 +72,14 @@ async def find_untagged_resources(
         ...     regions=["us-east-1", "us-west-2"]
         ... )
         >>> print(f"Found {result.total_untagged} untagged resources")
+        
+        # Scan ALL taggable resources (50+ types):
+        >>> result = await find_untagged_resources(
+        ...     aws_client=client,
+        ...     policy_service=policy,
+        ...     resource_types=["all"]
+        ... )
+        >>> print(f"Found {result.total_untagged} untagged resources across all services")
         
         # With costs (only when user asks about cost impact):
         >>> result = await find_untagged_resources(
@@ -79,22 +94,18 @@ async def find_untagged_resources(
     if not resource_types:
         raise ValueError("resource_types cannot be empty")
     
-    # Validate resource types
-    valid_types = {
-        "ec2:instance",
-        "rds:db",
-        "s3:bucket",
-        "lambda:function",
-        "ecs:service",
-        "opensearch:domain"
-    }
+    # Check for "all" special value
+    use_tagging_api = "all" in resource_types
     
-    invalid_types = [rt for rt in resource_types if rt not in valid_types]
-    if invalid_types:
-        raise ValueError(
-            f"Invalid resource types: {invalid_types}. "
-            f"Valid types are: {sorted(valid_types)}"
-        )
+    # Validate resource types (unless using "all")
+    if not use_tagging_api:
+        valid_types = set(SUPPORTED_RESOURCE_TYPES)
+        invalid_types = [rt for rt in resource_types if rt not in valid_types]
+        if invalid_types:
+            raise ValueError(
+                f"Invalid resource types: {invalid_types}. "
+                f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
+            )
     
     logger.info(
         f"Finding untagged resources for types={resource_types}, "
@@ -111,16 +122,19 @@ async def find_untagged_resources(
     # Collect all resources across resource types
     all_resources = []
     
-    for resource_type in resource_types:
+    # Determine which resource types to scan
+    types_to_scan = ["all"] if use_tagging_api else resource_types
+    
+    for resource_type in types_to_scan:
         try:
-            # Fetch resources of this type
+            # Fetch resources using shared utility
             filters = {}
             if regions:
                 # For now, we only support the current region
                 # Multi-region support would require creating multiple AWS clients
                 filters["region"] = regions[0] if regions else None
             
-            resources = await _fetch_resources_by_type(
+            resources = await fetch_resources_by_type(
                 aws_client,
                 resource_type,
                 filters
@@ -236,45 +250,6 @@ async def find_untagged_resources(
         cost_data_note=cost_note,
         scan_timestamp=datetime.now()
     )
-
-
-async def _fetch_resources_by_type(
-    aws_client: AWSClient,
-    resource_type: str,
-    filters: dict
-) -> list[dict]:
-    """
-    Fetch resources of a specific type from AWS.
-    
-    Args:
-        aws_client: AWSClient instance
-        resource_type: Type of resource (e.g., "ec2:instance")
-        filters: Filters for the query
-    
-    Returns:
-        List of resource dictionaries
-    """
-    # Map resource types to AWS client methods
-    resource_fetchers = {
-        "ec2:instance": aws_client.get_ec2_instances,
-        "rds:db": aws_client.get_rds_instances,
-        "s3:bucket": aws_client.get_s3_buckets,
-        "lambda:function": aws_client.get_lambda_functions,
-        "ecs:service": aws_client.get_ecs_services,
-        "opensearch:domain": aws_client.get_opensearch_domains,
-    }
-    
-    fetcher = resource_fetchers.get(resource_type)
-    if not fetcher:
-        logger.warning(f"Unknown resource type: {resource_type}")
-        return []
-    
-    try:
-        resources = await fetcher(filters)
-        return resources
-    except Exception as e:
-        logger.error(f"Failed to fetch {resource_type}: {str(e)}")
-        raise
 
 
 async def _get_cost_estimates(

@@ -340,3 +340,115 @@ async def test_find_untagged_resources_cost_data_unavailable(mock_logger, mock_a
     assert len(result.resources) == 1
     assert result.resources[0].monthly_cost_estimate == 0.0
     assert result.resources[0].cost_source == "estimated"
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_all_resource_types(mock_aws_client, mock_policy_service):
+    """Test finding untagged resources using 'all' to scan via Resource Groups Tagging API."""
+    # Mock the Resource Groups Tagging API method
+    mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # No tags
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+        },
+        {
+            "resource_id": "table/MyTable",
+            "resource_type": "dynamodb:table",
+            "region": "us-east-1",
+            "tags": {"Environment": "prod"},  # Has some tags but missing CostCenter
+            "arn": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"
+        },
+        {
+            "resource_id": "my-queue",
+            "resource_type": "sqs:queue",
+            "region": "us-east-1",
+            "tags": {},  # No tags
+            "arn": "arn:aws:sqs:us-east-1:123456789012:my-queue"
+        }
+    ])
+    
+    # Update policy to apply to all resource types (empty applies_to)
+    mock_policy_service.get_policy.return_value = TagPolicy(
+        version="1.0",
+        required_tags=[
+            RequiredTag(
+                name="CostCenter",
+                description="Cost center",
+                applies_to=[]  # Applies to all resource types
+            )
+        ]
+    )
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["all"]
+    )
+    
+    # All 3 resources should be returned (all missing CostCenter)
+    assert result.total_untagged == 3
+    assert len(result.resources) == 3
+    
+    # Verify resource types include non-standard types from Tagging API
+    resource_types = {r.resource_type for r in result.resources}
+    assert "ec2:instance" in resource_types
+    assert "dynamodb:table" in resource_types
+    assert "sqs:queue" in resource_types
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_all_with_filters(mock_aws_client, mock_policy_service):
+    """Test 'all' resource type with tag filters passed to Tagging API."""
+    mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {"Environment": "prod"},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+        }
+    ])
+    
+    mock_policy_service.get_policy.return_value = TagPolicy(
+        version="1.0",
+        required_tags=[
+            RequiredTag(name="CostCenter", description="Cost center", applies_to=[])
+        ]
+    )
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["all"],
+        regions=["us-east-1"]
+    )
+    
+    assert result.total_untagged == 1
+    # Verify the Tagging API was called
+    mock_aws_client.get_all_tagged_resources.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_all_no_validation_error():
+    """Test that 'all' bypasses the normal resource type validation."""
+    mock_client = MagicMock()
+    mock_policy = MagicMock()
+    
+    # Mock the Tagging API to return empty list
+    mock_client.get_all_tagged_resources = AsyncMock(return_value=[])
+    mock_policy.get_policy.return_value = TagPolicy(
+        version="1.0",
+        required_tags=[]
+    )
+    
+    # Should NOT raise ValueError for "all"
+    result = await find_untagged_resources(
+        aws_client=mock_client,
+        policy_service=mock_policy,
+        resource_types=["all"]
+    )
+    
+    assert result.total_untagged == 0

@@ -10,6 +10,7 @@ from typing import Optional
 from ..models.compliance import ComplianceResult
 from ..services.compliance_service import ComplianceService
 from ..services.history_service import HistoryService
+from ..utils.resource_utils import SUPPORTED_RESOURCE_TYPES
 
 logger = logging.getLogger(__name__)
 
@@ -39,6 +40,8 @@ async def check_tag_compliance(
         resource_types: List of resource types to check (e.g., ["ec2:instance", "rds:db"])
                        Supported types: ec2:instance, rds:db, s3:bucket, 
                        lambda:function, ecs:service, opensearch:domain
+                       Special value: ["all"] - scan ALL taggable resources (50+ types)
+                       using AWS Resource Groups Tagging API
         filters: Optional filters for narrowing the scan:
                 - region: AWS region(s) to scan (string or list)
                 - account_id: AWS account ID(s) to scan (string or list)
@@ -63,7 +66,7 @@ async def check_tag_compliance(
     Raises:
         ValueError: If resource_types is empty or contains invalid types
         
-    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 8.1
+    Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 8.1, 17.3, 17.7
     
     Example:
         >>> # Ad-hoc check (not stored in history)
@@ -79,28 +82,31 @@ async def check_tag_compliance(
         ...     resource_types=["ec2:instance", "rds:db", "s3:bucket"],
         ...     store_snapshot=True
         ... )
+        >>> 
+        >>> # Scan ALL taggable resources (50+ types)
+        >>> result = await check_tag_compliance(
+        ...     compliance_service=service,
+        ...     resource_types=["all"],
+        ...     store_snapshot=True
+        ... )
         >>> print(f"Compliance: {result.compliance_score * 100:.1f}%")
     """
     # Validate inputs
     if not resource_types:
         raise ValueError("resource_types cannot be empty")
     
-    # Validate resource types
-    valid_types = {
-        "ec2:instance",
-        "rds:db",
-        "s3:bucket",
-        "lambda:function",
-        "ecs:service",
-        "opensearch:domain"
-    }
+    # Check for "all" special value
+    use_tagging_api = "all" in resource_types
     
-    invalid_types = [rt for rt in resource_types if rt not in valid_types]
-    if invalid_types:
-        raise ValueError(
-            f"Invalid resource types: {invalid_types}. "
-            f"Valid types are: {sorted(valid_types)}"
-        )
+    # Validate resource types (unless using "all")
+    if not use_tagging_api:
+        valid_types = set(SUPPORTED_RESOURCE_TYPES)
+        invalid_types = [rt for rt in resource_types if rt not in valid_types]
+        if invalid_types:
+            raise ValueError(
+                f"Invalid resource types: {invalid_types}. "
+                f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
+            )
     
     # Validate severity parameter
     valid_severities = {"all", "errors_only", "warnings_only"}

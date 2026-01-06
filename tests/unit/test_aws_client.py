@@ -785,3 +785,526 @@ async def test_ec2_arn_includes_account_id():
             
             # Verify account ID was fetched
             mock_get_account.assert_called_once()
+
+
+# =============================================================================
+# Resource Groups Tagging API Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_empty():
+    """Test fetching resources when none exist."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {"ResourceTagMappingList": []}
+        
+        resources = await client.get_all_tagged_resources()
+        assert resources == []
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_ec2():
+    """Test fetching EC2 instances via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+                    "Tags": [
+                        {"Key": "Environment", "Value": "production"},
+                        {"Key": "Owner", "Value": "team-a"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "ec2:instance"
+        assert resources[0]["resource_id"] == "i-1234567890abcdef0"
+        assert resources[0]["region"] == "us-east-1"
+        assert resources[0]["tags"]["Environment"] == "production"
+        assert resources[0]["tags"]["Owner"] == "team-a"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_s3():
+    """Test fetching S3 buckets via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:s3:::my-bucket-name",
+                    "Tags": [
+                        {"Key": "DataClassification", "Value": "confidential"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "s3:bucket"
+        assert resources[0]["resource_id"] == "my-bucket-name"
+        assert resources[0]["tags"]["DataClassification"] == "confidential"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_lambda():
+    """Test fetching Lambda functions via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+                    "Tags": [
+                        {"Key": "Application", "Value": "backend-api"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "lambda:function"
+        assert resources[0]["resource_id"] == "my-function"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_rds():
+    """Test fetching RDS instances via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:rds:us-east-1:123456789012:db:my-database",
+                    "Tags": [
+                        {"Key": "Environment", "Value": "staging"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "rds:db"
+        assert resources[0]["resource_id"] == "my-database"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_dynamodb():
+    """Test fetching DynamoDB tables via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+                    "Tags": [
+                        {"Key": "Application", "Value": "user-service"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "dynamodb:table"
+        assert resources[0]["resource_id"] == "my-table"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_sns():
+    """Test fetching SNS topics via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:sns:us-east-1:123456789012:my-topic",
+                    "Tags": [
+                        {"Key": "Team", "Value": "notifications"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "sns:topic"
+        assert resources[0]["resource_id"] == "my-topic"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_sqs():
+    """Test fetching SQS queues via Resource Groups Tagging API."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:sqs:us-east-1:123456789012:my-queue",
+                    "Tags": [
+                        {"Key": "Purpose", "Value": "order-processing"}
+                    ]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["resource_type"] == "sqs:queue"
+        assert resources[0]["resource_id"] == "my-queue"
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_multiple_types():
+    """Test fetching multiple resource types in one call."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0",
+                    "Tags": [{"Key": "Environment", "Value": "production"}]
+                },
+                {
+                    "ResourceARN": "arn:aws:s3:::my-bucket",
+                    "Tags": [{"Key": "DataClassification", "Value": "public"}]
+                },
+                {
+                    "ResourceARN": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
+                    "Tags": [{"Key": "Team", "Value": "backend"}]
+                },
+                {
+                    "ResourceARN": "arn:aws:dynamodb:us-east-1:123456789012:table/users",
+                    "Tags": [{"Key": "Application", "Value": "user-service"}]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 4
+        resource_types = {r["resource_type"] for r in resources}
+        assert "ec2:instance" in resource_types
+        assert "s3:bucket" in resource_types
+        assert "lambda:function" in resource_types
+        assert "dynamodb:table" in resource_types
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_pagination():
+    """Test pagination handling for large result sets."""
+    client = AWSClient(region="us-east-1")
+    
+    call_count = [0]
+    
+    async def mock_call_side_effect(service_name, func, **kwargs):
+        call_count[0] += 1
+        if call_count[0] == 1:
+            return {
+                "ResourceTagMappingList": [
+                    {
+                        "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-page1",
+                        "Tags": [{"Key": "Page", "Value": "1"}]
+                    }
+                ],
+                "PaginationToken": "token123"
+            }
+        else:
+            return {
+                "ResourceTagMappingList": [
+                    {
+                        "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-page2",
+                        "Tags": [{"Key": "Page", "Value": "2"}]
+                    }
+                ]
+            }
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.side_effect = mock_call_side_effect
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 2
+        assert call_count[0] == 2
+        resource_ids = {r["resource_id"] for r in resources}
+        assert "i-page1" in resource_ids
+        assert "i-page2" in resource_ids
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_resource_type_filter():
+    """Test filtering by resource type."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+                    "Tags": [{"Key": "Environment", "Value": "production"}]
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources(
+            resource_type_filters=["ec2:instance"]
+        )
+        
+        assert len(resources) == 1
+        # Verify the filter was passed to the API
+        mock_call.assert_called_once()
+        call_kwargs = mock_call.call_args[1]
+        assert "ResourceTypeFilters" in call_kwargs
+        assert "ec2:instance" in call_kwargs["ResourceTypeFilters"]
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_with_tag_filter():
+    """Test filtering by tag key/value."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+                    "Tags": [{"Key": "Environment", "Value": "production"}]
+                }
+            ]
+        }
+        
+        tag_filters = [{"Key": "Environment", "Values": ["production"]}]
+        resources = await client.get_all_tagged_resources(tag_filters=tag_filters)
+        
+        assert len(resources) == 1
+        # Verify the filter was passed to the API
+        mock_call.assert_called_once()
+        call_kwargs = mock_call.call_args[1]
+        assert "TagFilters" in call_kwargs
+
+
+@pytest.mark.asyncio
+async def test_get_all_tagged_resources_without_tags():
+    """Test handling resources with no tags."""
+    client = AWSClient(region="us-east-1")
+    
+    with patch.object(client, '_call_with_backoff', new_callable=AsyncMock) as mock_call:
+        mock_call.return_value = {
+            "ResourceTagMappingList": [
+                {
+                    "ResourceARN": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+                    "Tags": []
+                }
+            ]
+        }
+        
+        resources = await client.get_all_tagged_resources()
+        
+        assert len(resources) == 1
+        assert resources[0]["tags"] == {}
+
+
+# =============================================================================
+# ARN Parsing Tests
+# =============================================================================
+
+def test_parse_arn_ec2_instance(aws_client):
+    """Test parsing EC2 instance ARN."""
+    arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "ec2"
+    assert result["region"] == "us-east-1"
+    assert result["account"] == "123456789012"
+    assert result["resource_type"] == "ec2:instance"
+    assert result["resource_id"] == "i-1234567890abcdef0"
+
+
+def test_parse_arn_s3_bucket(aws_client):
+    """Test parsing S3 bucket ARN (no region/account)."""
+    arn = "arn:aws:s3:::my-bucket-name"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "s3"
+    assert result["region"] == ""
+    assert result["account"] == ""
+    assert result["resource_type"] == "s3:bucket"
+    assert result["resource_id"] == "my-bucket-name"
+
+
+def test_parse_arn_lambda_function(aws_client):
+    """Test parsing Lambda function ARN."""
+    arn = "arn:aws:lambda:us-west-2:123456789012:function:my-function"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "lambda"
+    assert result["region"] == "us-west-2"
+    assert result["resource_type"] == "lambda:function"
+    assert result["resource_id"] == "my-function"
+
+
+def test_parse_arn_rds_db(aws_client):
+    """Test parsing RDS database ARN."""
+    arn = "arn:aws:rds:eu-west-1:123456789012:db:my-database"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "rds"
+    assert result["region"] == "eu-west-1"
+    assert result["resource_type"] == "rds:db"
+    assert result["resource_id"] == "my-database"
+
+
+def test_parse_arn_dynamodb_table(aws_client):
+    """Test parsing DynamoDB table ARN."""
+    arn = "arn:aws:dynamodb:us-east-1:123456789012:table/users"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "dynamodb"
+    assert result["resource_type"] == "dynamodb:table"
+    assert result["resource_id"] == "users"
+
+
+def test_parse_arn_sns_topic(aws_client):
+    """Test parsing SNS topic ARN."""
+    arn = "arn:aws:sns:us-east-1:123456789012:my-topic"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "sns"
+    assert result["resource_type"] == "sns:topic"
+    assert result["resource_id"] == "my-topic"
+
+
+def test_parse_arn_sqs_queue(aws_client):
+    """Test parsing SQS queue ARN."""
+    arn = "arn:aws:sqs:us-east-1:123456789012:my-queue"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "sqs"
+    assert result["resource_type"] == "sqs:queue"
+    assert result["resource_id"] == "my-queue"
+
+
+def test_parse_arn_ecs_service(aws_client):
+    """Test parsing ECS service ARN."""
+    arn = "arn:aws:ecs:us-east-1:123456789012:service/my-cluster/my-service"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "ecs"
+    assert result["resource_type"] == "ecs:service"
+    assert result["resource_id"] == "my-service"
+
+
+def test_parse_arn_opensearch_domain(aws_client):
+    """Test parsing OpenSearch domain ARN."""
+    arn = "arn:aws:es:us-east-1:123456789012:domain/my-search"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "es"
+    assert result["resource_type"] == "opensearch:domain"
+    assert result["resource_id"] == "my-search"
+
+
+def test_parse_arn_secretsmanager(aws_client):
+    """Test parsing Secrets Manager secret ARN."""
+    arn = "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-abc123"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "secretsmanager"
+    assert result["resource_type"] == "secretsmanager:secret"
+    assert result["resource_id"] == "my-secret-abc123"
+
+
+def test_parse_arn_kms_key(aws_client):
+    """Test parsing KMS key ARN."""
+    arn = "arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "kms"
+    assert result["resource_type"] == "kms:key"
+    assert result["resource_id"] == "12345678-1234-1234-1234-123456789012"
+
+
+def test_parse_arn_cloudwatch_alarm(aws_client):
+    """Test parsing CloudWatch alarm ARN."""
+    arn = "arn:aws:cloudwatch:us-east-1:123456789012:alarm:my-alarm"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["service"] == "cloudwatch"
+    assert result["resource_type"] == "cloudwatch:alarm"
+    assert result["resource_id"] == "my-alarm"
+
+
+def test_parse_arn_invalid(aws_client):
+    """Test parsing invalid ARN."""
+    arn = "not-an-arn"
+    result = aws_client._parse_arn(arn)
+    
+    assert result["resource_type"] == "unknown"
+    assert result["resource_id"] == "not-an-arn"
+
+
+# =============================================================================
+# Resource Type Conversion Tests
+# =============================================================================
+
+def test_convert_resource_types_ec2(aws_client):
+    """Test converting ec2:instance to AWS format."""
+    result = aws_client._convert_resource_types_to_aws_format(["ec2:instance"])
+    assert "ec2:instance" in result
+
+
+def test_convert_resource_types_s3(aws_client):
+    """Test converting s3:bucket to AWS format (s3)."""
+    result = aws_client._convert_resource_types_to_aws_format(["s3:bucket"])
+    assert "s3" in result
+
+
+def test_convert_resource_types_opensearch(aws_client):
+    """Test converting opensearch:domain to AWS format (es:domain)."""
+    result = aws_client._convert_resource_types_to_aws_format(["opensearch:domain"])
+    assert "es:domain" in result
+
+
+def test_convert_resource_types_all(aws_client):
+    """Test that 'all' returns empty list (no filter)."""
+    result = aws_client._convert_resource_types_to_aws_format(["all"])
+    assert result == []
+
+
+def test_convert_resource_types_multiple(aws_client):
+    """Test converting multiple resource types."""
+    result = aws_client._convert_resource_types_to_aws_format([
+        "ec2:instance", "s3:bucket", "lambda:function"
+    ])
+    assert "ec2:instance" in result
+    assert "s3" in result
+    assert "lambda:function" in result
+
+
+def test_convert_resource_types_unknown(aws_client):
+    """Test that unknown types are passed through unchanged."""
+    result = aws_client._convert_resource_types_to_aws_format(["custom:resource"])
+    assert "custom:resource" in result

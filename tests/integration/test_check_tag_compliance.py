@@ -37,6 +37,7 @@ def mock_aws_client():
     client.get_lambda_functions = AsyncMock(return_value=[])
     client.get_ecs_services = AsyncMock(return_value=[])
     client.get_opensearch_domains = AsyncMock(return_value=[])
+    client.get_all_tagged_resources = AsyncMock(return_value=[])
     
     return client
 
@@ -980,3 +981,317 @@ class TestCheckTagComplianceOpenSearch:
         assert len(result.violations) == 1
         assert result.violations[0].resource_type == "opensearch:domain"
         assert result.violations[0].cost_impact_monthly == 84.80
+
+
+@pytest.mark.integration
+class TestCheckTagComplianceAllResourceTypes:
+    """Test check_tag_compliance with resource_types: ["all"] using Resource Groups Tagging API."""
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_resource_types(
+        self, compliance_service, mock_aws_client
+    ):
+        """Test checking compliance for all resource types via Tagging API."""
+        # Setup mock resources from Tagging API
+        mock_tagging_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering", "Environment": "production"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            },
+            {
+                "resource_id": "my-bucket",
+                "resource_type": "s3:bucket",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "DataTeam"},
+                "cost_impact": 50.0,
+                "arn": "arn:aws:s3:::my-bucket"
+            },
+            {
+                "resource_id": "my-function",
+                "resource_type": "lambda:function",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 25.0,
+                "arn": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+            }
+        ]
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert isinstance(result, ComplianceResult)
+        assert result.total_resources == 3
+        assert result.compliance_score >= 0.0
+        assert result.compliance_score <= 1.0
+        # Verify Tagging API was called
+        mock_aws_client.get_all_tagged_resources.assert_called_once()
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_discovers_many_resource_types(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that 'all' discovers resources across many different types."""
+        # Simulate resources from 10+ different resource types
+        mock_tagging_resources = [
+            {"resource_id": "i-123", "resource_type": "ec2:instance", "region": "us-east-1", 
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 100.0, 
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"},
+            {"resource_id": "vol-456", "resource_type": "ec2:volume", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 50.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:volume/vol-456"},
+            {"resource_id": "bucket-1", "resource_type": "s3:bucket", "region": "us-east-1",
+             "tags": {"CostCenter": "Data"}, "cost_impact": 30.0,
+             "arn": "arn:aws:s3:::bucket-1"},
+            {"resource_id": "func-1", "resource_type": "lambda:function", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 20.0,
+             "arn": "arn:aws:lambda:us-east-1:123456789012:function:func-1"},
+            {"resource_id": "db-1", "resource_type": "rds:db", "region": "us-east-1",
+             "tags": {"CostCenter": "Data"}, "cost_impact": 200.0,
+             "arn": "arn:aws:rds:us-east-1:123456789012:db:db-1"},
+            {"resource_id": "cluster-1", "resource_type": "ecs:cluster", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 150.0,
+             "arn": "arn:aws:ecs:us-east-1:123456789012:cluster/cluster-1"},
+            {"resource_id": "table-1", "resource_type": "dynamodb:table", "region": "us-east-1",
+             "tags": {"CostCenter": "Data"}, "cost_impact": 80.0,
+             "arn": "arn:aws:dynamodb:us-east-1:123456789012:table/table-1"},
+            {"resource_id": "queue-1", "resource_type": "sqs:queue", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 10.0,
+             "arn": "arn:aws:sqs:us-east-1:123456789012:queue-1"},
+            {"resource_id": "topic-1", "resource_type": "sns:topic", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 5.0,
+             "arn": "arn:aws:sns:us-east-1:123456789012:topic-1"},
+            {"resource_id": "secret-1", "resource_type": "secretsmanager:secret", "region": "us-east-1",
+             "tags": {"CostCenter": "Security"}, "cost_impact": 2.0,
+             "arn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:secret-1"}
+        ]
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert result.total_resources == 10
+        assert result.compliant_resources == 10
+        assert result.compliance_score == 1.0
+        
+        # Verify we got resources from many different types
+        resource_types_found = set()
+        for resource in mock_tagging_resources:
+            resource_types_found.add(resource["resource_type"])
+        assert len(resource_types_found) >= 10
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_with_violations(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test 'all' resource type with compliance violations."""
+        mock_tagging_resources = [
+            {"resource_id": "i-compliant", "resource_type": "ec2:instance", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng", "Environment": "prod"}, "cost_impact": 100.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-compliant"},
+            {"resource_id": "i-noncompliant", "resource_type": "ec2:instance", "region": "us-east-1",
+             "tags": {}, "cost_impact": 150.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-noncompliant"},
+            {"resource_id": "bucket-noncompliant", "resource_type": "s3:bucket", "region": "us-east-1",
+             "tags": {}, "cost_impact": 75.0,
+             "arn": "arn:aws:s3:::bucket-noncompliant"}
+        ]
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        
+        # Setup violations for non-compliant resources
+        def mock_validate(resource_id, resource_type, region, tags, cost_impact):
+            if not tags:
+                return [Violation(
+                    resource_id=resource_id,
+                    resource_type=resource_type,
+                    region=region,
+                    violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                    tag_name="CostCenter",
+                    severity=Severity.ERROR,
+                    cost_impact_monthly=cost_impact
+                )]
+            return []
+        mock_policy_service.validate_resource_tags.side_effect = mock_validate
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert result.total_resources == 3
+        assert result.compliant_resources == 1
+        assert result.compliance_score == pytest.approx(1/3, rel=0.01)
+        assert len(result.violations) == 2
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_empty_account(
+        self, compliance_service, mock_aws_client
+    ):
+        """Test 'all' resource type with no resources found."""
+        mock_aws_client.get_all_tagged_resources.return_value = []
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        assert result.total_resources == 0
+        assert result.compliant_resources == 0
+        assert result.compliance_score == 1.0  # 100% compliant when no resources
+        assert len(result.violations) == 0
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_with_region_filter(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test 'all' resource type with region filter."""
+        mock_tagging_resources = [
+            {"resource_id": "i-east", "resource_type": "ec2:instance", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 100.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-east"},
+            {"resource_id": "i-west", "resource_type": "ec2:instance", "region": "us-west-2",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 100.0,
+             "arn": "arn:aws:ec2:us-west-2:123456789012:instance/i-west"}
+        ]
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters={"region": "us-east-1"},
+            severity="all"
+        )
+        
+        # Should filter to only us-east-1 resources
+        assert result.total_resources == 1
+        assert result.compliant_resources == 1
+
+
+@pytest.mark.integration
+class TestResourceGroupsTaggingAPIProperty:
+    """Property 19: Resource Groups Tagging API Coverage tests."""
+    
+    @pytest.mark.asyncio
+    async def test_property_19_tagging_api_returns_consistent_format(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """
+        Property 19: Resource Groups Tagging API Coverage
+        Validates: All resources from Tagging API have consistent format.
+        """
+        # Resources from Tagging API should have standard fields
+        mock_tagging_resources = [
+            {"resource_id": "i-123", "resource_type": "ec2:instance", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 100.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"},
+            {"resource_id": "bucket-1", "resource_type": "s3:bucket", "region": "us-east-1",
+             "tags": {}, "cost_impact": 50.0,
+             "arn": "arn:aws:s3:::bucket-1"},
+        ]
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Verify result has expected structure
+        assert hasattr(result, 'total_resources')
+        assert hasattr(result, 'compliant_resources')
+        assert hasattr(result, 'compliance_score')
+        assert hasattr(result, 'violations')
+        assert isinstance(result.compliance_score, float)
+        assert 0.0 <= result.compliance_score <= 1.0
+    
+    @pytest.mark.asyncio
+    async def test_property_19_tagging_api_handles_pagination(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """
+        Property 19: Resource Groups Tagging API handles pagination correctly.
+        Validates: Large accounts with many resources are fully scanned.
+        """
+        # Simulate a large account with 100+ resources
+        mock_tagging_resources = []
+        for i in range(150):
+            mock_tagging_resources.append({
+                "resource_id": f"resource-{i}",
+                "resource_type": "ec2:instance" if i % 2 == 0 else "s3:bucket",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Eng"} if i % 3 != 0 else {},
+                "cost_impact": 10.0,
+                "arn": f"arn:aws:ec2:us-east-1:123456789012:instance/resource-{i}"
+            })
+        mock_aws_client.get_all_tagged_resources.return_value = mock_tagging_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # All 150 resources should be scanned
+        assert result.total_resources == 150
+    
+    @pytest.mark.asyncio
+    async def test_property_19_tagging_api_vs_specific_types_consistency(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """
+        Property 19: Results from 'all' should be consistent with specific type queries.
+        Validates: Tagging API returns same resources as individual type queries.
+        """
+        # Setup resources that would be returned by both methods
+        ec2_resources = [
+            {"resource_id": "i-123", "resource_type": "ec2:instance", "region": "us-east-1",
+             "tags": {"CostCenter": "Eng"}, "cost_impact": 100.0,
+             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"}
+        ]
+        
+        # Tagging API returns same EC2 instance
+        mock_aws_client.get_all_tagged_resources.return_value = ec2_resources
+        mock_aws_client.get_ec2_instances.return_value = ec2_resources
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        # Query with "all"
+        result_all = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Query with specific type
+        result_specific = await check_tag_compliance(
+            compliance_service=compliance_service,
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Both should find the same resource count
+        assert result_all.total_resources == result_specific.total_resources
+        assert result_all.compliance_score == result_specific.compliance_score

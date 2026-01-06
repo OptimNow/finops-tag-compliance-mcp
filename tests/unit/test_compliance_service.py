@@ -698,3 +698,131 @@ class TestResourceFiltering:
         )
         
         assert len(filtered) == 2
+
+
+class TestAllResourceTypeSupport:
+    """Test support for 'all' resource type using Resource Groups Tagging API."""
+    
+    @pytest.mark.asyncio
+    async def test_scan_and_validate_all_resource_types(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test scanning all resources via Resource Groups Tagging API."""
+        # Setup mock resources from Tagging API
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            },
+            {
+                "resource_id": "table/MyTable",
+                "resource_type": "dynamodb:table",
+                "region": "us-east-1",
+                "tags": {},  # Missing tags
+                "cost_impact": 50.0,
+                "arn": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"
+            },
+            {
+                "resource_id": "my-queue",
+                "resource_type": "sqs:queue",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Marketing"},
+                "cost_impact": 10.0,
+                "arn": "arn:aws:sqs:us-east-1:123456789012:my-queue"
+            }
+        ]
+        
+        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=mock_resources)
+        
+        # First two resources compliant, third has violation
+        def validate_side_effect(resource_id, resource_type, region, tags, cost_impact):
+            if resource_type == "dynamodb:table":
+                return [Violation(
+                    resource_id=resource_id,
+                    resource_type=resource_type,
+                    region=region,
+                    violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                    tag_name="CostCenter",
+                    severity=Severity.ERROR,
+                    cost_impact_monthly=cost_impact
+                )]
+            return []
+        
+        mock_policy_service.validate_resource_tags.side_effect = validate_side_effect
+        
+        result = await compliance_service._scan_and_validate(
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Verify Tagging API was called
+        mock_aws_client.get_all_tagged_resources.assert_called_once()
+        
+        # 3 resources total, 2 compliant, 1 violation
+        assert result.total_resources == 3
+        assert result.compliant_resources == 2
+        assert len(result.violations) == 1
+        assert result.violations[0].resource_type == "dynamodb:table"
+    
+    @pytest.mark.asyncio
+    async def test_scan_all_with_region_filter(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test scanning all resources with region filter applied post-fetch."""
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            },
+            {
+                "resource_id": "i-456",
+                "resource_type": "ec2:instance",
+                "region": "us-west-2",
+                "tags": {},
+                "cost_impact": 50.0,
+                "arn": "arn:aws:ec2:us-west-2:123456789012:instance/i-456"
+            }
+        ]
+        
+        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=mock_resources)
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await compliance_service._scan_and_validate(
+            resource_types=["all"],
+            filters={"region": "us-east-1"},
+            severity="all"
+        )
+        
+        # Only us-east-1 resource should be included
+        assert result.total_resources == 1
+    
+    @pytest.mark.asyncio
+    async def test_check_compliance_all_uses_cache(
+        self, compliance_service, mock_cache, mock_aws_client
+    ):
+        """Test that 'all' resource type queries use caching."""
+        mock_cache.get.return_value = None
+        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[])
+        
+        await compliance_service.check_compliance(
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Verify cache was checked and result was cached
+        mock_cache.get.assert_called_once()
+        mock_cache.set.assert_called_once()
+        
+        # Verify cache key includes "all"
+        cache_key = mock_cache.get.call_args[0][0]
+        assert "compliance:" in cache_key
