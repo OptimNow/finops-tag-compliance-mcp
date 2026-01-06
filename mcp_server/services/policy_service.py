@@ -141,9 +141,10 @@ class PolicyService:
             return policy.required_tags
         
         # Filter tags that apply to the specified resource type
+        # None or empty applies_to means applies to ALL resource types
         return [
             tag for tag in policy.required_tags
-            if resource_type in tag.applies_to
+            if tag.applies_to_resource(resource_type)
         ]
 
     def get_optional_tags(self) -> list[OptionalTag]:

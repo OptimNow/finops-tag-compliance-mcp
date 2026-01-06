@@ -37,9 +37,24 @@ class RequiredTag(BaseModel):
     validation_regex: str | None = Field(
         None, description="Regex pattern for validating tag values (if applicable)"
     )
-    applies_to: list[str] = Field(
-        ..., description="List of resource types this tag applies to (e.g., ['ec2:instance', 'rds:db'])"
+    applies_to: list[str] | None = Field(
+        None, description="List of resource types this tag applies to. None or empty list means applies to ALL resource types."
     )
+    
+    def applies_to_resource(self, resource_type: str) -> bool:
+        """Check if this tag applies to a given resource type.
+        
+        Args:
+            resource_type: Resource type to check (e.g., "ec2:instance", "bedrock:agent")
+            
+        Returns:
+            True if this tag applies to the resource type.
+            None or empty applies_to means applies to ALL resource types.
+        """
+        # None or empty list means applies to all resource types
+        if self.applies_to is None or len(self.applies_to) == 0:
+            return True
+        return resource_type in self.applies_to
 
 
 class OptionalTag(BaseModel):

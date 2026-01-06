@@ -1,41 +1,35 @@
 {
-  "version": "1.0",
-  "last_updated": "2025-12-30T00:00:00Z",
+  "version": "1.1",
+  "last_updated": "2026-01-06T00:00:00Z",
+  "description": "Universal tagging policy - applies to ALL AWS resource types discovered via Resource Groups Tagging API. Use applies_to: null or [] for wildcard (all resources).",
   "required_tags": [
     {
       "name": "CostCenter",
       "description": "Department for cost allocation - used for chargebacks and budget tracking",
       "allowed_values": ["Engineering", "Marketing", "Sales", "Operations", "Finance"],
       "validation_regex": null,
-      "applies_to": ["ec2:instance", "rds:db", "s3:bucket", "lambda:function", "ecs:service"]
+      "applies_to": []
     },
     {
       "name": "Owner",
       "description": "Email address of the resource owner - who to contact if issues arise",
       "allowed_values": null,
       "validation_regex": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$",
-      "applies_to": ["ec2:instance", "rds:db", "s3:bucket", "lambda:function", "ecs:service"]
+      "applies_to": []
     },
     {
       "name": "Environment",
       "description": "Deployment environment - affects cost allocation and risk assessment",
       "allowed_values": ["production", "staging", "development", "test"],
       "validation_regex": null,
-      "applies_to": ["ec2:instance", "rds:db", "lambda:function", "ecs:service"]
+      "applies_to": []
     },
     {
       "name": "Application",
       "description": "Application or service name - for grouping related resources",
       "allowed_values": null,
       "validation_regex": "^[a-z][a-z0-9-]{2,63}$",
-      "applies_to": ["ec2:instance", "rds:db", "s3:bucket", "lambda:function", "ecs:service"]
-    },
-    {
-      "name": "DataClassification",
-      "description": "Data sensitivity level - for compliance and security",
-      "allowed_values": ["public", "internal", "confidential", "restricted"],
-      "validation_regex": null,
-      "applies_to": ["s3:bucket", "rds:db"]
+      "applies_to": []
     }
   ],
   "optional_tags": [
@@ -50,11 +44,65 @@
       "allowed_values": ["HIPAA", "PCI-DSS", "SOC2", "GDPR", "None"]
     },
     {
+      "name": "DataClassification",
+      "description": "Data sensitivity level - for compliance and security",
+      "allowed_values": ["public", "internal", "confidential", "restricted"]
+    },
+    {
       "name": "BackupSchedule",
       "description": "Backup schedule for this resource",
       "allowed_values": ["daily", "weekly", "monthly", "none"]
     }
   ],
+  "supported_resource_types": {
+    "_comment": "This section documents supported resource types. Empty applies_to means ALL types are checked.",
+    "compute": [
+      "ec2:instance",
+      "ec2:volume",
+      "ec2:snapshot",
+      "lambda:function",
+      "ecs:service",
+      "ecs:cluster"
+    ],
+    "storage": [
+      "s3:bucket",
+      "elasticfilesystem:file-system"
+    ],
+    "database": [
+      "rds:db",
+      "rds:cluster",
+      "dynamodb:table",
+      "elasticache:cluster",
+      "es:domain",
+      "opensearch:domain"
+    ],
+    "ai_ml": [
+      "bedrock:agent",
+      "bedrock:agent-alias",
+      "bedrock:knowledge-base",
+      "bedrock:guardrail",
+      "bedrock:custom-model",
+      "sagemaker:endpoint",
+      "sagemaker:notebook-instance"
+    ],
+    "networking": [
+      "ec2:vpc",
+      "ec2:subnet",
+      "ec2:security-group",
+      "elasticloadbalancing:loadbalancer"
+    ],
+    "messaging": [
+      "sns:topic",
+      "sqs:queue",
+      "kinesis:stream"
+    ],
+    "other": [
+      "secretsmanager:secret",
+      "kms:key",
+      "cloudwatch:alarm",
+      "states:stateMachine"
+    ]
+  },
   "tag_naming_rules": {
     "case_sensitivity": false,
     "allow_special_characters": false,

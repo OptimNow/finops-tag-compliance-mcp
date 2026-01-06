@@ -67,14 +67,13 @@ class TestPolicyServiceLoading:
         assert "invalid json" in str(exc_info.value).lower()
 
     def test_load_policy_invalid_structure(self, tmp_path):
-        """Test loading a file with invalid policy structure."""
+        """Test loading a file with invalid policy structure (missing required name field)."""
         policy_data = {
             "version": "1.0",
             "required_tags": [
                 {
-                    "name": "CostCenter",
+                    # Missing required 'name' field
                     "description": "Cost center",
-                    # Missing required 'applies_to' field
                 }
             ],
         }
@@ -302,14 +301,13 @@ class TestPolicyServiceValidation:
         assert error is None
 
     def test_validate_policy_structure_invalid(self):
-        """Test validating an invalid policy structure."""
+        """Test validating an invalid policy structure (missing required name field)."""
         policy_data = {
             "version": "1.0",
             "required_tags": [
                 {
-                    "name": "CostCenter",
+                    # Missing required 'name' field
                     "description": "Cost center",
-                    # Missing required 'applies_to' field
                 }
             ],
         }
@@ -319,7 +317,7 @@ class TestPolicyServiceValidation:
         
         assert is_valid is False
         assert error is not None
-        assert "applies_to" in error.lower()
+        assert "name" in error.lower()
 
 
 class TestPolicyServiceReload:
