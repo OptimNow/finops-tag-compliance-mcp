@@ -35,7 +35,7 @@ Resources:
   MCPServerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'MCP-tagging-role-${EnvironmentName}'
+      RoleName: !Sub 'mcp-tagging-role-${EnvironmentName}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -48,7 +48,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Tags:
         - Key: Application
-          Value: MCP-tagging
+          Value: mcp-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -56,7 +56,7 @@ Resources:
   MCPServerPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub 'MCP-tagging-policy-${EnvironmentName}'
+      PolicyName: !Sub 'mcp-tagging-policy-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
       PolicyDocument:
@@ -135,7 +135,7 @@ Resources:
   MCPServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub 'MCP-tagging-profile-${EnvironmentName}'
+      InstanceProfileName: !Sub 'mcp-tagging-profile-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
 
@@ -143,7 +143,7 @@ Resources:
   MCPServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub 'MCP-tagging-sg-${EnvironmentName}'
+      GroupName: !Sub 'mcp-tagging-sg-${EnvironmentName}'
       GroupDescription: Security group for MCP Tagging Server
       VpcId: !Ref VpcId
       SecurityGroupIngress:
@@ -174,7 +174,7 @@ Resources:
           Description: HTTP for updates
       Tags:
         - Key: Application
-          Value: MCP-tagging
+          Value: mcp-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -224,9 +224,9 @@ Resources:
           echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
       Tags:
         - Key: Name
-          Value: !Sub 'MCP-tagging-server-${EnvironmentName}'
+          Value: !Sub 'mcp-tagging-server-${EnvironmentName}'
         - Key: Application
-          Value: MCP-tagging
+          Value: mcp-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -234,11 +234,11 @@ Resources:
   MCPServerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/MCP-tagging/${EnvironmentName}'
+      LogGroupName: !Sub '/mcp-tagging/${EnvironmentName}'
       RetentionInDays: 30
       Tags:
         - Key: Application
-          Value: MCP-tagging
+          Value: mcp-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -249,9 +249,9 @@ Resources:
       Domain: vpc
       Tags:
         - Key: Name
-          Value: !Sub 'MCP-tagging-eip-${EnvironmentName}'
+          Value: !Sub 'mcp-tagging-eip-${EnvironmentName}'
         - Key: Application
-          Value: MCP-tagging
+          Value: mcp-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
