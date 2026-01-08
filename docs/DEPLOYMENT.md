@@ -220,44 +220,45 @@ INSTANCE_IP=$(aws cloudformation describe-stacks \
 
 # SSH into the instance
 ssh -i your-key.pem ec2-user@$INSTANCE_IP
+```
 
-# Clone the repository into home directory
+Once connected to EC2, run these commands:
+
+```bash
+# Clone the repository
 cd ~
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-
-# Go into the cloned repo folder
 cd finops-tag-compliance-mcp
-
-# Create the .env file (no AWS credentials mount needed on EC2 - uses IAM role)
-cat > .env << 'EOF'
-ENVIRONMENT=production
-LOG_LEVEL=INFO
-REDIS_URL=redis://redis:6379/0
-REDIS_TTL=3600
-AWS_REGION=us-east-1
-EOF
 
 # Build the Docker image
 docker build -t tagging-mcp-server .
 
-# Start the services (need to remove the AWS credentials mount for EC2)
-# First, create a docker-compose override to remove the local credentials mount
-cat > docker-compose.override.yml << 'EOF'
-services:
-  mcp-server:
-    volumes:
-      - ./policies:/app/policies:ro
-      - ./data:/app/data
-      - ./logs:/app/logs
-EOF
+# Start Redis container
+docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
 
-# Start the services
-docker-compose up -d
+# Start the MCP server
+# Note: We use docker run instead of docker-compose because Amazon Linux's
+# docker-compose version doesn't support the buildx features, and the
+# docker-compose.yml has Windows-specific volume mounts that don't work on EC2.
+# On EC2, the server uses the IAM instance profile for AWS credentials automatically.
+docker run -d --name tagging-mcp-server \
+  -p 8080:8080 \
+  -e REDIS_URL=redis://172.17.0.1:6379/0 \
+  -e AWS_REGION=us-east-1 \
+  -e ENVIRONMENT=production \
+  -e LOG_LEVEL=INFO \
+  -v $(pwd)/policies:/app/policies:ro \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  tagging-mcp-server
 
-# Verify it's running
+# Wait for startup and verify
+sleep 5
+docker ps
 curl http://localhost:8080/health
-
 ```
+
+> **Why not docker-compose on EC2?** The `docker-compose.yml` is designed for local development on Windows/Mac where it mounts your `~/.aws` credentials folder. On EC2, credentials come from the IAM instance profile automatically, and Amazon Linux's docker-compose has compatibility issues with buildx. Using `docker run` directly is simpler and more reliable.
 
 #### Step 3: Verify Deployment
 
@@ -637,17 +638,24 @@ curl http://SERVER_ADDRESS:8080/health
 ### View Logs
 
 ```bash
-# Docker logs
+# Local (docker-compose)
 docker-compose logs -f mcp-server
 
+# EC2 (docker run)
+docker logs -f tagging-mcp-server
+
 # CloudWatch (EC2 deployment)
-aws logs tail /tagging-mcp-server/dev --follow
+aws logs tail /mcp-tagging/dev --follow
 ```
 
 ### Check Container Status
 
 ```bash
+# Local
 docker-compose ps
+
+# EC2
+docker ps
 ```
 
 ---
@@ -658,13 +666,16 @@ docker-compose ps
 
 ```bash
 # Check if containers are running
-docker-compose ps
+docker ps
 
-# Check logs for errors
+# Check logs for errors (EC2)
+docker logs tagging-mcp-server
+
+# Check logs for errors (Local)
 docker-compose logs mcp-server
 
-# Restart services
-docker-compose restart
+# Restart on EC2
+docker restart tagging-mcp-server tagging-redis
 ```
 
 ### AWS API Errors
@@ -721,30 +732,30 @@ docker-compose up -d
 
 ```bash
 ssh -i your-key.pem ec2-user@$INSTANCE_IP
-cd /opt/tagging-mcp
+cd ~/finops-tag-compliance-mcp
 git pull origin main
-docker-compose down
+
+# Stop and remove existing containers
+docker stop tagging-mcp-server tagging-redis
+docker rm tagging-mcp-server tagging-redis
+
+# Rebuild and restart
 docker build -t tagging-mcp-server .
-docker-compose up -d
+docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
+docker run -d --name tagging-mcp-server \
+  -p 8080:8080 \
+  -e REDIS_URL=redis://172.17.0.1:6379/0 \
+  -e AWS_REGION=us-east-1 \
+  -e ENVIRONMENT=production \
+  -e LOG_LEVEL=INFO \
+  -v $(pwd)/policies:/app/policies:ro \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  tagging-mcp-server
+
+# Verify
+curl http://localhost:8080/health
 ```
-
-### Quick Start Command (EC2)
-
-For convenience, we provide a script that handles the full restart process:
-
-```bash
-# First time setup: make the script executable and create an alias
-chmod +x /opt/tagging-mcp/scripts/start-tagging-mcp.sh
-
-# Add to your .bashrc for easy access
-echo 'alias start-tagging-mcp="/opt/tagging-mcp/scripts/start-tagging-mcp.sh"' >> ~/.bashrc
-source ~/.bashrc
-
-# Now you can restart the server anytime with:
-start-tagging-mcp
-```
-
-The script stops existing containers, rebuilds the Docker image, starts the services, and runs a health check.
 
 ---
 
@@ -756,9 +767,14 @@ The script stops existing containers, rebuilds the Docker image, starts the serv
 docker-compose down -v  # -v removes volumes
 ```
 
-### AWS
+### EC2
 
 ```bash
+# Stop and remove containers
+docker stop tagging-mcp-server tagging-redis
+docker rm tagging-mcp-server tagging-redis
+
+# Delete CloudFormation stack (removes EC2, security group, IAM role, etc.)
 aws cloudformation delete-stack --stack-name tagging-mcp-server
 aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 ```
