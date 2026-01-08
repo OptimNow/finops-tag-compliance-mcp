@@ -212,20 +212,23 @@ aws cloudformation describe-stacks --stack-name tagging-mcp-server \
 #### Step 2: Deploy Application
 
 ```bash
-# Get the instance IP
+# Get the Elastic IP (from your local machine)
 INSTANCE_IP=$(aws cloudformation describe-stacks \
   --stack-name tagging-mcp-server \
-  --query 'Stacks[0].Outputs[?OutputKey==`InstancePublicIP`].OutputValue' \
+  --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' \
   --output text)
 
 # SSH into the instance
 ssh -i your-key.pem ec2-user@$INSTANCE_IP
 
-# Clone the repository
-cd /opt/tagging-mcp
-git clone https://github.com/YOUR_ORG/tagging-mcp-server.git .
+# Clone the repository into home directory
+cd ~
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
 
-# Create environment file
+# Go into the cloned repo folder
+cd finops-tag-compliance-mcp
+
+# Create the .env file (no AWS credentials mount needed on EC2 - uses IAM role)
 cat > .env << 'EOF'
 ENVIRONMENT=production
 LOG_LEVEL=INFO
@@ -235,14 +238,25 @@ AWS_REGION=us-east-1
 EOF
 
 # Build the Docker image
-# Note: Use docker build instead of docker-compose build to avoid buildx version issues on Amazon Linux
 docker build -t tagging-mcp-server .
+
+# Start the services (need to remove the AWS credentials mount for EC2)
+# First, create a docker-compose override to remove the local credentials mount
+cat > docker-compose.override.yml << 'EOF'
+services:
+  mcp-server:
+    volumes:
+      - ./policies:/app/policies:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+EOF
 
 # Start the services
 docker-compose up -d
 
 # Verify it's running
 curl http://localhost:8080/health
+
 ```
 
 #### Step 3: Verify Deployment
