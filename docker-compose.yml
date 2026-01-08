@@ -61,7 +61,9 @@ services:
       # Mount AWS credentials for local development (read-only)
       # This shares your ~/.aws folder with the container so it can authenticate with AWS
       # On EC2, remove this line - the instance profile provides credentials automatically
-      - ~/.aws:/root/.aws:ro
+      # Windows: Use full path like C:/Users/YourName/.aws:/root/.aws:ro
+      # Linux/Mac: Use ~/.aws:/root/.aws:ro
+      - ${USERPROFILE}/.aws:/root/.aws:ro
     networks:
       - tagging-network
     healthcheck:
