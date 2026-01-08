@@ -233,6 +233,10 @@ cd finops-tag-compliance-mcp
 # Build the Docker image
 docker build -t tagging-mcp-server .
 
+# Clean up any existing containers (safe to run even if none exist)
+docker stop tagging-redis tagging-mcp-server 2>/dev/null
+docker rm tagging-redis tagging-mcp-server 2>/dev/null
+
 # Start Redis container
 docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
 
