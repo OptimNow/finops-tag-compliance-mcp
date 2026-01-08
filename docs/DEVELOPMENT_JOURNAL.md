@@ -598,7 +598,7 @@ Started the day ready for UAT testing, but discovered the MCP server was complet
 **Final Verification:**
 ✅ Python import successful: `from mcp_server.utils.loop_detection import LoopDetector`
 ✅ Docker build successful (112.6s clean build)
-✅ Containers running: `finops-mcp-server` and `finops-redis`
+✅ Containers running: `tagging-mcp-server` and `tagging-redis`
 ✅ Health endpoint responding: HTTP 200 with full status
 ✅ Redis and SQLite connections working
 ✅ All safety features enabled (budget tracking, loop detection)
@@ -762,14 +762,14 @@ Successfully deployed the MCP server to AWS EC2 and verified all tools working t
 - CloudFormation stack: `tagging-mcp-server`
 - EC2 Instance: `i-0dc314272ccf812db`
 - Elastic IP: `100.50.91.35`
-- IAM Role: `arn:aws:iam::382598791951:role/finops-mcp-server-role-dev`
-- CloudWatch Log Group: `/finops-mcp-server/dev`
-- App directory: `/opt/finops-mcp`
+- IAM Role: `arn:aws:iam::382598791951:role/tagging-mcp-server-role-dev`
+- CloudWatch Log Group: `/tagging-mcp-server/dev`
+- App directory: `/opt/tagging-mcp`
 
 **Docker Build Workaround:**
 Encountered `compose build requires buildx 0.17 or later` error on EC2. Solution was to use direct Docker build instead:
 ```bash
-docker build -t finops-mcp-mcp-server .
+docker build -t tagging-mcp-server .
 docker-compose up -d
 ```
 
@@ -860,4 +860,83 @@ Discovered that Claude Desktop expects stdio-based MCP, not HTTP. The solution i
 3. Validate compliance workflows end-to-end
 4. Complete Task 29 (Deployment Complete Checkpoint)
 5. Complete Task 30 (UAT Sign-off)
+
+
+---
+
+## January 8, 2026: One-Click Policy Deployment & Documentation Updates
+
+### Day 39: Streamlining Policy Updates for Remote Deployments
+
+**The Challenge:**
+With the MCP server running on EC2, updating the tagging policy required SSH access and manual file transfers. This was too complex for a FinOps practitioner who just wants to update their policy and have it take effect.
+
+**The Solution: One-Click Policy Deployment**
+
+Created a complete workflow for updating policies remotely:
+
+1. **PowerShell Script** (`scripts/deploy_policy.ps1`):
+   - Validates JSON before deployment
+   - Uploads policy to S3 as staging area
+   - Uses AWS SSM to trigger EC2 to pull new policy
+   - Restarts Docker container automatically
+   - Provides clear status feedback
+
+2. **Setup Documentation** (`scripts/POLICY_DEPLOY_SETUP.md`):
+   - Step-by-step setup instructions
+   - IAM permissions required
+   - EC2 volume mount configuration
+   - Troubleshooting guide
+
+3. **Updated Deployment Guide** (`docs/DEPLOYMENT.md`):
+   - Added "One-Click Policy Deployment" section
+   - Integrated into main deployment workflow
+   - Clear instructions for both fresh deployments and existing setups
+
+**Architecture:**
+```
+Local Machine → S3 (staging) → EC2 (pull & restart)
+```
+
+**CloudFormation Updates:**
+- Added `AmazonSSMManagedInstanceCore` managed policy to EC2 IAM role
+- Added S3 read permission for `finops-mcp-config` bucket
+- These permissions enable remote command execution via SSM
+
+**Daily Usage After Setup:**
+```powershell
+# Edit policy locally
+notepad policies/tagging_policy.json
+
+# Deploy with one command
+.\scripts\deploy_policy.ps1
+```
+
+**What I Learned:**
+- AWS SSM (Systems Manager) allows running commands on EC2 without SSH
+- S3 serves as a reliable staging area for configuration files
+- Volume mounts in Docker allow external policy updates without rebuilding images
+- Good automation reduces friction for non-developers
+
+**AWS Credentials Issue:**
+Encountered `IncompleteSignature` error when testing AWS CLI commands. Root cause was corrupted credentials file with multiple profiles mixed together. Solution: delete and recreate `~/.aws/credentials` with a single profile.
+
+**Current Status:**
+- One-click deployment scripts ready
+- Documentation complete
+- CloudFormation template updated with required permissions
+- Ready for testing once AWS credentials are fixed
+
+**Files Changed:**
+- `scripts/deploy_policy.ps1` - PowerShell deployment script
+- `scripts/deploy_policy.sh` - Bash deployment script (Mac/Linux)
+- `scripts/POLICY_DEPLOY_SETUP.md` - Setup instructions
+- `docs/DEPLOYMENT.md` - Added one-click deployment section
+- `infrastructure/cloudformation.yaml` - Added SSM and S3 permissions
+
+**Next Steps:**
+1. Fix AWS credentials
+2. Create S3 bucket for policy staging
+3. Test one-click deployment workflow
+4. Complete UAT testing
 

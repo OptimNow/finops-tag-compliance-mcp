@@ -9,7 +9,7 @@
 version: 1
 
 suite:
-  name: finops-tag-compliance-uat
+  name: tagging-mcp-uat
   owner: finops-team
   tags: [uat, mcp, phase-1, aws]
 

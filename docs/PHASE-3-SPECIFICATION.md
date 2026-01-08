@@ -35,7 +35,7 @@ Phase 3 extends the proven AWS-only MCP server to support Azure and Google Cloud
 ```
                         ┌──────────────────────────┐
                         │   Route 53 (DNS)         │
-                        │   mcp.finops.company.com │
+                        │   mcp.tagging.company.com│
                         └────────────┬─────────────┘
                                      │
                                      ▼
@@ -519,7 +519,7 @@ async def check_tag_compliance(
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:*:*:secret:finops/mcp/*"
+      "Resource": "arn:aws:secretsmanager:*:*:secret:tagging-mcp/*"
     }
   ]
 }
@@ -535,14 +535,14 @@ az login
 
 # Create service principal
 az ad sp create-for-rbac \
-  --name "finops-tag-compliance-mcp" \
+  --name "tagging-mcp-server" \
   --role "Tag Contributor" \
   --scopes /subscriptions/YOUR_SUBSCRIPTION_ID
 
 # Output:
 {
   "appId": "12345678-1234-1234-1234-123456789012",
-  "displayName": "finops-tag-compliance-mcp",
+  "displayName": "tagging-mcp-server",
   "password": "generated-password-here",
   "tenant": "87654321-4321-4321-4321-210987654321"
 }
@@ -568,7 +568,7 @@ az role assignment create \
 
 ```bash
 aws secretsmanager create-secret \
-  --name finops/mcp/azure-credentials \
+  --name tagging-mcp/azure-credentials \
   --description "Azure service principal credentials for tag compliance MCP" \
   --secret-string '{
     "client_id": "12345678-1234-1234-1234-123456789012",

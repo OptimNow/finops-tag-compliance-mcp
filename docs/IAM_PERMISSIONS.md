@@ -48,7 +48,7 @@ For production or security-conscious environments, use a custom policy with only
 
 **Ready-to-use policy file**: [`policies/iam/MCP_Tagging_Policy.json`](../policies/iam/MCP_Tagging_Policy.json)
 
-This is the complete, production-ready IAM policy for the MCP server. You can use it directly or create your own `finops-mcp-policy.json`:
+This is the complete, production-ready IAM policy for the MCP server. You can use it directly or create your own `tagging-mcp-policy.json`:
 
 ```json
 {
@@ -369,7 +369,7 @@ aws ce get-cost-and-usage \
 1. **Local Docker**: Verify `~/.aws/credentials` exists and contains valid credentials
 2. **EC2 Instance**: Verify IAM instance profile is attached to the EC2 instance
 3. Restart Docker containers after configuring credentials: `docker-compose restart`
-4. Check Docker logs: `docker logs finops-mcp-server --tail 50`
+4. Check Docker logs: `docker logs tagging-mcp-server --tail 50`
 
 ### Cost Explorer Not Enabled
 
@@ -434,10 +434,10 @@ Monitor all API calls made by the MCP server:
 
 ```bash
 aws cloudtrail create-trail \
-  --name finops-mcp-audit \
+  --name tagging-mcp-audit \
   --s3-bucket-name your-cloudtrail-bucket
 
-aws cloudtrail start-logging --name finops-mcp-audit
+aws cloudtrail start-logging --name tagging-mcp-audit
 ```
 
 ### 5. Use AWS Organizations SCPs (Optional)

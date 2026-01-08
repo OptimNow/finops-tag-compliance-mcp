@@ -509,7 +509,7 @@ MIT License - See LICENSE file for details
 
 ## Related Projects
 
-- [FinOps Tag Compliance MCP Server](https://github.com/OptimNow/finops-tag-compliance-mcp)
+- [Tagging MCP Server](https://github.com/OptimNow/tagging-mcp-server)
 ```
 
 ---

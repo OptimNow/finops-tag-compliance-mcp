@@ -644,7 +644,7 @@ MCP Server: Executes bulk tagging
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:*:*:secret:finops/mcp/*"
+      "Resource": "arn:aws:secretsmanager:*:*:secret:tagging-mcp/*"
     },
     {
       "Sid": "CloudWatchAccess",
@@ -670,7 +670,7 @@ MCP Server: Executes bulk tagging
 aws secretsmanager create-secret \
   --name finops/mcp/oauth-credentials \
   --secret-string '{
-    "client_id": "finops-mcp-prod",
+    "client_id": "tagging-mcp-prod",
     "client_secret": "...generated...",
     "issuer_url": "https://login.company.com"
   }'
@@ -681,7 +681,7 @@ aws secretsmanager create-secret \
   --secret-string '{
     "username": "mcp_admin",
     "password": "...generated...",
-    "host": "finops-mcp-db.xxxxx.us-east-1.rds.amazonaws.com",
+    "host": "tagging-mcp-db.xxxxx.us-east-1.rds.amazonaws.com",
     "port": 5432,
     "database": "finops_mcp"
   }'
@@ -744,7 +744,7 @@ terraform/
 ```hcl
 # terraform/modules/ecs/main.tf
 resource "aws_ecs_cluster" "main" {
-  name = "finops-mcp-cluster"
+  name = "tagging-mcp-cluster"
 
   setting {
     name  = "containerInsights"
@@ -753,7 +753,7 @@ resource "aws_ecs_cluster" "main" {
 }
 
 resource "aws_ecs_task_definition" "mcp_server" {
-  family                   = "finops-mcp-server"
+  family                   = "tagging-mcp-server"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
   cpu                      = "2048"  # 2 vCPU
@@ -796,7 +796,7 @@ resource "aws_ecs_task_definition" "mcp_server" {
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/finops-mcp-server"
+          "awslogs-group"         = "/ecs/tagging-mcp-server"
           "awslogs-region"        = var.aws_region
           "awslogs-stream-prefix" = "ecs"
         }
@@ -814,7 +814,7 @@ resource "aws_ecs_task_definition" "mcp_server" {
 }
 
 resource "aws_ecs_service" "mcp_server" {
-  name            = "finops-mcp-server"
+  name            = "tagging-mcp-server"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.mcp_server.arn
   desired_count   = 2
@@ -846,7 +846,7 @@ resource "aws_appautoscaling_target" "ecs_target" {
 }
 
 resource "aws_appautoscaling_policy" "ecs_cpu_policy" {
-  name               = "finops-mcp-cpu-scaling"
+  name               = "tagging-mcp-cpu-scaling"
   policy_type        = "TargetTrackingScaling"
   resource_id        = aws_appautoscaling_target.ecs_target.resource_id
   scalable_dimension = aws_appautoscaling_target.ecs_target.scalable_dimension
@@ -912,7 +912,7 @@ Create custom dashboard with these widgets:
 # terraform/modules/monitoring/alarms.tf
 
 resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
-  alarm_name          = "finops-mcp-high-error-rate"
+  alarm_name          = "tagging-mcp-high-error-rate"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "5XXError"
@@ -925,7 +925,7 @@ resource "aws_cloudwatch_metric_alarm" "high_error_rate" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "high_cpu" {
-  alarm_name          = "finops-mcp-high-cpu"
+  alarm_name          = "tagging-mcp-high-cpu"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 2
   metric_name         = "CPUUtilization"
@@ -938,7 +938,7 @@ resource "aws_cloudwatch_metric_alarm" "high_cpu" {
 }
 
 resource "aws_cloudwatch_metric_alarm" "database_connections" {
-  alarm_name          = "finops-mcp-db-connections-high"
+  alarm_name          = "tagging-mcp-db-connections-high"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "DatabaseConnections"
@@ -997,7 +997,7 @@ from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.ext.flask.middleware import XRayMiddleware
 
 # Enable X-Ray tracing
-xray_recorder.configure(service='finops-mcp-server')
+xray_recorder.configure(service='tagging-mcp-server')
 XRayMiddleware(app, xray_recorder)
 
 # Trace tool invocations
@@ -1078,8 +1078,8 @@ jobs:
       - name: Deploy to ECS
         run: |
           aws ecs update-service \
-            --cluster finops-mcp-cluster \
-            --service finops-mcp-server \
+            --cluster tagging-mcp-cluster \
+            --service tagging-mcp-server \
             --force-new-deployment
 ```
 

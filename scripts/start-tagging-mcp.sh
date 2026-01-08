@@ -4,13 +4,13 @@
 
 set -e
 
-cd /opt/finops-mcp
+cd /opt/tagging-mcp
 
 echo "=== Stopping existing containers ==="
 docker-compose down
 
 echo "=== Building Docker image ==="
-docker build -t finops-mcp-mcp-server .
+docker build -t tagging-mcp-server .
 
 echo "=== Starting containers ==="
 docker-compose up -d

@@ -1,15 +1,15 @@
-# FinOps Tag Compliance MCP Server - Specification Overview
+# Tagging MCP Server - Specification Overview
 
 **Version**: 3.0  
 **Last Updated**: January 2026  
 **Status**: Phase 1 Complete, Phase 2 Planned  
-**Repository**: https://github.com/OptimNow/finops-tag-compliance-mcp
+**Repository**: https://github.com/OptimNow/tagging-mcp-server
 
 ---
 
 ## What This Is
 
-The FinOps Tag Compliance MCP Server is a purpose-built remote MCP server that solves the cloud tagging problem. While generic cloud MCP servers provide raw tag data access, this server adds intelligence: policy validation, cost attribution analysis, violation tracking, and tag suggestions.
+The Tagging MCP Server is a purpose-built remote MCP server that solves the cloud tagging problem. While generic cloud MCP servers provide raw tag data access, this server adds intelligence: policy validation, cost attribution analysis, violation tracking, and tag suggestions.
 
 **The Problem**: 30-50% of cloud resources are untagged or incorrectly tagged in typical enterprises, making cost allocation impossible and compliance reporting a nightmare.
 
@@ -135,8 +135,8 @@ See **[DIFFERENTIATION-FROM-AWS-NATIVE.md](./DIFFERENTIATION-FROM-AWS-NATIVE.md)
 
 ```bash
 # Clone and start
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+git clone https://github.com/OptimNow/tagging-mcp-server.git
+cd tagging-mcp-server
 docker-compose up -d
 
 # Test health

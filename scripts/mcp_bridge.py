@@ -7,7 +7,7 @@
 MCP Bridge Script for Claude Desktop
 
 This script bridges Claude Desktop's stdio-based MCP protocol to the
-FinOps Tag Compliance MCP Server's REST API.
+Tagging MCP Server's REST API.
 
 Usage:
     Configure in Claude Desktop's config file:
@@ -17,7 +17,7 @@ Usage:
     
     {
       "mcpServers": {
-        "finops-tag-compliance": {
+        "tagging-mcp": {
           "command": "python",
           "args": ["<path-to-repo>/scripts/mcp_bridge.py"],
           "env": {
@@ -42,7 +42,7 @@ TIMEOUT = 30
 
 def log(msg: str) -> None:
     """Log to stderr (shows in Claude Desktop MCP logs)."""
-    print(f"[finops-bridge] {msg}", file=sys.stderr, flush=True)
+    print(f"[tagging-bridge] {msg}", file=sys.stderr, flush=True)
 
 
 def send_response(response: dict) -> None:
@@ -69,7 +69,7 @@ def handle_initialize(request: dict) -> dict:
             "protocolVersion": "2024-11-05",
             "capabilities": {"tools": {}},
             "serverInfo": {
-                "name": "finops-tag-compliance",
+                "name": "tagging-mcp",
                 "version": "0.1.0"
             }
         }

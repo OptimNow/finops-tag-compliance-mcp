@@ -2,7 +2,7 @@ services:
   # Redis cache service
   redis:
     image: redis:7-alpine
-    container_name: finops-redis
+    container_name: tagging-redis
     ports:
       - "6379:6379"
     volumes:
@@ -14,7 +14,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - finops-network
+      - tagging-network
     environment:
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
 
@@ -23,7 +23,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: finops-mcp-server
+    container_name: tagging-mcp-server
     ports:
       - "8080:8080"
     depends_on:
@@ -63,7 +63,7 @@ services:
       # On EC2, remove this line - the instance profile provides credentials automatically
       - ~/.aws:/root/.aws:ro
     networks:
-      - finops-network
+      - tagging-network
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 30s
@@ -77,5 +77,5 @@ volumes:
     driver: local
 
 networks:
-  finops-network:
+  tagging-network:
     driver: bridge

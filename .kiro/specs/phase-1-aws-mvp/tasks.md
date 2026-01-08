@@ -383,9 +383,9 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
     - Wait for stack creation to complete
     - Stack name: `tagging-mcp-server`
     - Instance ID: `i-0dc314272ccf812db`
-    - IAM Role: `arn:aws:iam::382598791951:role/finops-mcp-server-role-dev`
+    - IAM Role: `arn:aws:iam::382598791951:role/tagging-mcp-server-role-dev`
     - Security Group: `sg-0bd742e0695eb6d5d`
-    - CloudWatch Log Group: `/finops-mcp-server/dev`
+    - CloudWatch Log Group: `/tagging-mcp-server/dev`
     - _Requirements: 14.1, 14.4, 10.1_
 
   - [x] 27.1.1 Attach Elastic IP to EC2 instance `[Manual]`
@@ -397,7 +397,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
 
   - [x] 27.2 Configure EC2 instance `[Haiku]`
     - SSH into instance and verify Docker is installed
-    - Clone repository to /opt/finops-mcp
+    - Clone repository to /opt/tagging-mcp
     - Create .env file with production settings
     - _Requirements: 14.2_
 
@@ -405,7 +405,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
     - Run docker-compose up -d
     - Verify containers are running
     - Test health endpoint responds
-    - Note: Use `docker build -t finops-mcp-mcp-server .` instead of `docker-compose build` (buildx version issue on Amazon Linux)
+    - Note: Use `docker build -t tagging-mcp-server .` instead of `docker-compose build` (buildx version issue on Amazon Linux)
     - _Requirements: 14.1, 14.5_
 
 - [ ] 28. Production Verification
@@ -805,23 +805,23 @@ Based on code assessment report (Quality Score: 7.5/10)
 
 ## Documentation and Naming Standardization
 
-- [ ] 55. Standardize Naming to "tagging-mcp-server" (Post-UAT)
+- [-] 55. Standardize Naming to "tagging-mcp-server" (Post-UAT)
   - **Prerequisite**: Complete UAT first, then do this rename before Phase 2
   - **Scope**: Rename all `finops-mcp-server` references to `tagging-mcp-server` across codebase and AWS
   
-  - [ ] 55.1 Update CloudFormation template naming `[Haiku]`
+  - [x] 55.1 Update CloudFormation template naming `[Haiku]`
     - Rename all resources from `finops-mcp-server` to `tagging-mcp-server`
     - Update IAM role name, security group name, CloudWatch log group
     - Update stack name references in documentation
     - _Files: infrastructure/cloudformation.yaml_
 
-  - [ ] 55.2 Update all code and config files `[Haiku]`
+  - [x] 55.2 Update all code and config files `[Haiku]`
     - Update container names in docker-compose.yml
     - Update any hardcoded references in .env.example
     - Update Phase 2 spec references
     - _Files: docker-compose.yml, .env.example, docs/PHASE-2-SPECIFICATION.md_
 
-  - [ ] 55.3 Update all documentation `[Haiku]`
+  - [x] 55.3 Update all documentation `[Haiku]`
     - Update `docs/DEPLOYMENT.md` with new naming convention
     - Update `docs/PHASE-1-SPECIFICATION.md` references
     - Update `docs/IAM_PERMISSIONS.md` references
@@ -933,6 +933,45 @@ Based on code assessment report (Quality Score: 7.5/10)
       - `test_property_19_tagging_api_vs_specific_types_consistency` - Property 19 consistency
     - _Files: tests/integration/test_check_tag_compliance.py_
     - _Requirements: 17.2, 17.3_
+
+- [ ] 58.5 Clean Slate - Delete All AWS Resources for Fresh Redeploy `[Manual]`
+  - **Purpose**: Remove all existing AWS resources to do a clean redeployment
+  - **Resources to Delete**:
+    1. **Elastic IP**: Release `tagging-mcp` EIP (100.50.91.35) - $3.60/month if not attached
+    2. **CloudFormation Stack**: Delete `tagging-mcp-server` stack (this deletes EC2, IAM role, security group, CloudWatch log group)
+    3. **Local Docker**: Stop and remove containers if running locally
+  
+  - **Step-by-step Commands**:
+    ```bash
+    # 1. Release Elastic IP (from AWS Console or CLI)
+    aws ec2 describe-addresses --filters "Name=tag:Name,Values=tagging-mcp"
+    aws ec2 release-address --allocation-id <allocation-id-from-above>
+    
+    # 2. Delete CloudFormation stack (this deletes EC2, IAM, SG, CloudWatch)
+    aws cloudformation delete-stack --stack-name tagging-mcp-server --region us-east-1
+    
+    # 3. Wait for stack deletion to complete
+    aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server --region us-east-1
+    
+    # 4. Verify deletion
+    aws cloudformation describe-stacks --stack-name tagging-mcp-server --region us-east-1
+    # Should return "Stack with id tagging-mcp-server does not exist"
+    
+    # 5. (Optional) Stop local Docker containers
+    docker-compose down
+    docker system prune -f
+    ```
+  
+  - **What Gets Deleted**:
+    - EC2 Instance: `i-0dc314272ccf812db`
+    - IAM Role: `tagging-mcp-server-role-dev`
+    - IAM Policy: `tagging-mcp-server-policy-dev`
+    - Instance Profile: `tagging-mcp-server-profile-dev`
+    - Security Group: `tagging-mcp-server-sg-dev`
+    - CloudWatch Log Group: `/tagging-mcp-server/dev`
+    - EBS Volume (20GB) - auto-deleted with instance
+  
+  - **After Cleanup**: Proceed to Task 59 to redeploy fresh
 
 - [ ] 59. Phase 1.7 Checkpoint - Expanded Resource Coverage Complete
   - [ ] 59.1 Verify Resource Groups Tagging API integration `[Manual]`

@@ -51,7 +51,7 @@ Phase 1 delivers a minimum viable product (MVP) focused exclusively on AWS tag c
 │  └──────────────────────────────────────┘  │
 │                                             │
 │  IAM Instance Profile:                     │
-│  "finops-mcp-server-role-dev"              │
+│  "tagging-mcp-server-role-dev"              │
 └─────────────────┬───────────────────────────┘
                   │
                   │ AWS API Calls
@@ -74,7 +74,7 @@ Phase 1 delivers a minimum viable product (MVP) focused exclusively on AWS tag c
 | Elastic IP | 100.50.91.35 | Stable endpoint |
 | Storage | 20GB gp3 EBS | Logs, databases |
 | Security Group | Port 8080 (HTTP) | MCP endpoint |
-| IAM Role | finops-mcp-server-role-dev | Read-only AWS access |
+| IAM Role | tagging-mcp-server-role-dev | Read-only AWS access |
 
 ---
 
@@ -446,7 +446,7 @@ To scan ALL taggable resources at once:
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/finops-mcp-server/*"
+      "Resource": "arn:aws:logs:*:*:log-group:/tagging-mcp-server/*"
     }
   ]
 }
@@ -460,8 +460,8 @@ To scan ALL taggable resources at once:
 
 ```bash
 # Clone repository
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+git clone https://github.com/OptimNow/tagging-mcp-server.git
+cd tagging-mcp-server
 
 # Start with Docker Compose
 docker-compose up -d
@@ -482,7 +482,7 @@ See **[DEPLOYMENT.md](./DEPLOYMENT.md)** for complete instructions including:
 
 - **Elastic IP**: 100.50.91.35
 - **MCP Endpoint**: http://100.50.91.35:8080
-- **CloudWatch Logs**: /finops-mcp-server/dev
+- **CloudWatch Logs**: /tagging-mcp-server/dev
 - **Stack Name**: tagging-mcp-server
 
 ---

@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'FinOps Tag Compliance MCP Server - Phase 1 Infrastructure'
+Description: 'Tagging MCP Server - AWS Tag Compliance Infrastructure'
 
 Parameters:
   EnvironmentName:
@@ -35,7 +35,7 @@ Resources:
   MCPServerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'finops-mcp-server-role-${EnvironmentName}'
+      RoleName: !Sub 'tagging-mcp-server-role-${EnvironmentName}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -45,9 +45,10 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Tags:
         - Key: Application
-          Value: finops-tag-compliance
+          Value: tagging-mcp
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -55,7 +56,7 @@ Resources:
   MCPServerPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub 'finops-mcp-server-policy-${EnvironmentName}'
+      PolicyName: !Sub 'tagging-mcp-server-policy-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
       PolicyDocument:
@@ -66,12 +67,14 @@ Resources:
             Action:
               - ec2:DescribeInstances
               - ec2:DescribeTags
+              - ec2:DescribeVolumes
               - ec2:DescribeRegions
             Resource: '*'
           # RDS Read Access
           - Effect: Allow
             Action:
               - rds:DescribeDBInstances
+              - rds:DescribeDBClusters
               - rds:ListTagsForResource
             Resource: '*'
           # S3 Read Access
@@ -95,18 +98,44 @@ Resources:
               - ecs:DescribeServices
               - ecs:ListTagsForResource
             Resource: '*'
+          # OpenSearch Read Access
+          - Effect: Allow
+            Action:
+              - es:ListDomainNames
+              - es:DescribeDomain
+              - es:DescribeDomains
+              - es:ListTags
+            Resource: '*'
           # Cost Explorer Access
           - Effect: Allow
             Action:
               - ce:GetCostAndUsage
               - ce:GetCostForecast
+              - ce:GetTags
             Resource: '*'
+          # Resource Groups Tagging API (for expanded resource coverage)
+          - Effect: Allow
+            Action:
+              - tag:GetResources
+              - tag:GetTagKeys
+              - tag:GetTagValues
+            Resource: '*'
+          # STS for account ID lookup
+          - Effect: Allow
+            Action:
+              - sts:GetCallerIdentity
+            Resource: '*'
+          # S3 access for policy config bucket
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+            Resource: 'arn:aws:s3:::finops-mcp-config/*'
 
   # Instance Profile
   MCPServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub 'finops-mcp-server-profile-${EnvironmentName}'
+      InstanceProfileName: !Sub 'tagging-mcp-server-profile-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
 
@@ -114,8 +143,8 @@ Resources:
   MCPServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub 'finops-mcp-server-sg-${EnvironmentName}'
-      GroupDescription: Security group for FinOps MCP Server
+      GroupName: !Sub 'tagging-mcp-server-sg-${EnvironmentName}'
+      GroupDescription: Security group for Tagging MCP Server
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         # MCP Protocol
@@ -145,7 +174,7 @@ Resources:
           Description: HTTP for updates
       Tags:
         - Key: Application
-          Value: finops-tag-compliance
+          Value: tagging-mcp
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -188,16 +217,16 @@ Resources:
           yum install -y git
           
           # Create app directory
-          mkdir -p /opt/finops-mcp
-          chown ec2-user:ec2-user /opt/finops-mcp
+          mkdir -p /opt/tagging-mcp
+          chown ec2-user:ec2-user /opt/tagging-mcp
           
           # Signal completion
-          echo "Setup complete" > /opt/finops-mcp/setup-complete.txt
+          echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
       Tags:
         - Key: Name
-          Value: !Sub 'finops-mcp-server-${EnvironmentName}'
+          Value: !Sub 'tagging-mcp-server-${EnvironmentName}'
         - Key: Application
-          Value: finops-tag-compliance
+          Value: tagging-mcp
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -205,11 +234,11 @@ Resources:
   MCPServerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/finops-mcp-server/${EnvironmentName}'
+      LogGroupName: !Sub '/tagging-mcp-server/${EnvironmentName}'
       RetentionInDays: 30
       Tags:
         - Key: Application
-          Value: finops-tag-compliance
+          Value: tagging-mcp
         - Key: Environment
           Value: !Ref EnvironmentName
 

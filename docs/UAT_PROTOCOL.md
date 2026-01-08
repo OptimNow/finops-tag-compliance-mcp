@@ -102,7 +102,7 @@ aws iam attach-user-policy \
 
 **Option B: Create Custom Policy (Recommended - Least Privilege)**
 
-Create a file `finops-mcp-uat-policy.json`:
+Create a file `tagging-mcp-uat-policy.json`:
 
 ```json
 {
@@ -145,7 +145,7 @@ Apply the policy:
 # Create the IAM policy
 aws iam create-policy \
   --policy-name FinOpsMCPUATPolicy \
-  --policy-document file://finops-mcp-uat-policy.json
+  --policy-document file://tagging-mcp-uat-policy.json
 
 # Attach to your IAM user
 aws iam attach-user-policy \
@@ -178,7 +178,7 @@ No credential setup needed - the EC2 instance uses an IAM Instance Profile with 
 **"Unable to locate credentials" error:**
 - Verify `aws sts get-caller-identity` works on your machine
 - Restart Docker containers after configuring AWS CLI
-- Check Docker logs: `docker logs finops-mcp-server --tail 20`
+- Check Docker logs: `docker logs tagging-mcp-server --tail 20`
 
 **"0 resources found" or "Access Denied" errors:**
 - Verify IAM permissions: `aws ec2 describe-instances --region us-east-1`

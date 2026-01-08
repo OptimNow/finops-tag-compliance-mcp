@@ -6,10 +6,11 @@ This guide covers deploying the MCP server locally for development/testing and t
 
 1. [Local Deployment](#local-deployment) - Quick start for testing
 2. [AWS Deployment](#aws-deployment) - Production deployment to EC2
-3. [Connecting Claude Desktop](#connecting-claude-desktop)
-4. [Configuration](#configuration)
-5. [Monitoring](#monitoring)
-6. [Troubleshooting](#troubleshooting)
+3. [One-Click Policy Deployment](#one-click-policy-deployment-remote-ec2) - Update policies remotely
+4. [Connecting Claude Desktop](#connecting-claude-desktop)
+5. [Configuration](#configuration)
+6. [Monitoring](#monitoring)
+7. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -28,8 +29,8 @@ Deploy the MCP server on your local machine for development, testing, or persona
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/YOUR_ORG/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+git clone https://github.com/YOUR_ORG/tagging-mcp-server.git
+cd tagging-mcp-server
 
 # 2. Create environment file
 cp .env.example .env
@@ -47,8 +48,8 @@ curl http://localhost:8080/health
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_ORG/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+git clone https://github.com/YOUR_ORG/tagging-mcp-server.git
+cd tagging-mcp-server
 
 # Create your environment file
 cp .env.example .env
@@ -220,8 +221,8 @@ INSTANCE_IP=$(aws cloudformation describe-stacks \
 ssh -i your-key.pem ec2-user@$INSTANCE_IP
 
 # Clone the repository
-cd /opt/finops-mcp
-git clone https://github.com/YOUR_ORG/finops-tag-compliance-mcp.git .
+cd /opt/tagging-mcp
+git clone https://github.com/YOUR_ORG/tagging-mcp-server.git .
 
 # Create environment file
 cat > .env << 'EOF'
@@ -234,7 +235,7 @@ EOF
 
 # Build the Docker image
 # Note: Use docker build instead of docker-compose build to avoid buildx version issues on Amazon Linux
-docker build -t finops-mcp-mcp-server .
+docker build -t tagging-mcp-server .
 
 # Start the services
 docker-compose up -d
@@ -316,8 +317,8 @@ usermod -aG docker ec2-user
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
 
-mkdir -p /opt/finops-mcp
-chown ec2-user:ec2-user /opt/finops-mcp
+mkdir -p /opt/tagging-mcp
+chown ec2-user:ec2-user /opt/tagging-mcp
 ```
 
 #### Step 3: Deploy Application
@@ -332,6 +333,158 @@ SSH into the instance and follow Step 2 from Option 1.
 | 20GB gp3 EBS | ~$2 |
 | CloudWatch Logs | ~$1-5 |
 | **Total** | **~$35-40/month** |
+
+---
+
+## One-Click Policy Deployment (Remote EC2)
+
+After deploying to EC2, you can set up a one-click workflow to update your tagging policy from your local machine. This lets you edit the policy locally and deploy it to EC2 with a single command.
+
+### How It Works
+
+```
+┌─────────────────┐     ┌─────────────┐     ┌─────────────┐
+│ Local Machine   │────▶│    S3       │────▶│    EC2      │
+│ Edit policy     │     │ (staging)   │     │ Pull & restart
+└─────────────────┘     └─────────────┘     └─────────────┘
+```
+
+1. You edit `policies/tagging_policy.json` locally
+2. Run `.\scripts\deploy_policy.ps1` (Windows) or `./scripts/deploy_policy.sh` (Mac/Linux)
+3. Script uploads to S3, tells EC2 to pull it, and restarts Docker
+
+### Setup Steps
+
+#### Step 1: Create S3 Bucket for Policy Staging
+
+```bash
+aws s3 mb s3://finops-mcp-config --region us-east-1
+```
+
+#### Step 2: Add SSM and S3 Permissions to EC2 IAM Role
+
+The CloudFormation template already includes these permissions. If you deployed manually, add them:
+
+```bash
+# Add SSM permissions (allows running commands on EC2 remotely)
+aws iam attach-role-policy \
+  --role-name tagging-mcp-server-role-dev \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+# Add S3 read permission for the config bucket
+aws iam put-role-policy \
+  --role-name tagging-mcp-server-role-dev \
+  --policy-name S3ConfigAccess \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": ["s3:GetObject"],
+      "Resource": "arn:aws:s3:::finops-mcp-config/*"
+    }]
+  }'
+```
+
+#### Step 3: Set Up EC2 for External Policy Files
+
+SSH into your EC2 instance and run these commands once:
+
+```bash
+# SSH to EC2
+ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+
+# Create policies folder on EC2
+mkdir -p /home/ec2-user/mcp-policies
+
+# Copy current policy from the running container
+docker cp finops-mcp-server:/app/policies/tagging_policy.json /home/ec2-user/mcp-policies/
+
+# Stop and remove the old container
+docker rm -f finops-mcp-server
+
+# Restart with mounted volume so policy changes take effect
+docker run -d -p 8080:8080 --name finops-mcp-server \
+  -v /home/ec2-user/mcp-policies:/app/policies \
+  tagging-mcp-server
+
+# Verify it's working
+curl http://localhost:8080/health
+```
+
+#### Step 4: Update the Deployment Script with Your Values
+
+Edit `scripts/deploy_policy.ps1` (Windows) or `scripts/deploy_policy.sh` (Mac/Linux):
+
+```powershell
+# In deploy_policy.ps1, update these values:
+$S3Bucket = "finops-mcp-config"        # Your S3 bucket name
+$EC2InstanceId = "i-0dc314272ccf812db" # Your EC2 instance ID (from CloudFormation outputs)
+$Region = "us-east-1"                   # Your AWS region
+```
+
+To get your EC2 instance ID:
+```bash
+aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' --output text
+```
+
+#### Step 5: Test the Deployment
+
+```powershell
+# Windows
+.\scripts\deploy_policy.ps1
+
+# Mac/Linux
+./scripts/deploy_policy.sh
+```
+
+You should see:
+```
+========================================
+  FinOps MCP Policy Deployment
+========================================
+
+[1/4] Validating policy JSON...
+      OK - Valid JSON
+[2/4] Uploading to S3...
+      OK - Uploaded to s3://finops-mcp-config/policies/
+[3/4] Updating EC2 instance...
+      OK - Command sent (ID: xxx)
+[4/4] Waiting for deployment to complete...
+      OK - Policy deployed successfully!
+
+========================================
+  Deployment Complete!
+========================================
+```
+
+### Daily Usage
+
+After setup, updating your policy is just:
+
+```powershell
+# 1. Edit your policy locally
+notepad policies/tagging_policy.json
+
+# 2. Deploy with one command
+.\scripts\deploy_policy.ps1
+```
+
+### Troubleshooting
+
+**"Could not send command to EC2"**
+- Verify SSM agent is running on EC2: `sudo systemctl status amazon-ssm-agent`
+- Check IAM role has `AmazonSSMManagedInstanceCore` policy attached
+- Verify instance ID is correct
+
+**"Could not upload to S3"**
+- Check S3 bucket exists: `aws s3 ls s3://finops-mcp-config`
+- Check your local AWS credentials have `s3:PutObject` permission
+
+**Policy not updating on EC2**
+- SSH to EC2 and check: `cat /home/ec2-user/mcp-policies/tagging_policy.json`
+- Check Docker logs: `docker logs finops-mcp-server`
+- Verify the volume mount: `docker inspect finops-mcp-server | grep Mounts -A 10`
 
 ---
 
@@ -473,7 +626,7 @@ curl http://SERVER_ADDRESS:8080/health
 docker-compose logs -f mcp-server
 
 # CloudWatch (EC2 deployment)
-aws logs tail /finops-mcp-server/dev --follow
+aws logs tail /tagging-mcp-server/dev --follow
 ```
 
 ### Check Container Status
@@ -516,7 +669,7 @@ curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
 docker-compose logs redis
 
 # Test Redis connectivity
-docker exec -it finops-redis redis-cli ping
+docker exec -it tagging-redis redis-cli ping
 ```
 
 ### Claude Desktop Not Connecting
@@ -532,7 +685,7 @@ If you see `compose build requires buildx 0.17 or later`:
 
 ```bash
 # Use docker build instead of docker-compose build
-docker build -t finops-mcp-mcp-server .
+docker build -t tagging-mcp-server .
 docker-compose up -d
 ```
 
@@ -553,10 +706,10 @@ docker-compose up -d
 
 ```bash
 ssh -i your-key.pem ec2-user@$INSTANCE_IP
-cd /opt/finops-mcp
+cd /opt/tagging-mcp
 git pull origin main
 docker-compose down
-docker build -t finops-mcp-mcp-server .
+docker build -t tagging-mcp-server .
 docker-compose up -d
 ```
 
@@ -566,10 +719,10 @@ For convenience, we provide a script that handles the full restart process:
 
 ```bash
 # First time setup: make the script executable and create an alias
-chmod +x /opt/finops-mcp/scripts/start-tagging-mcp.sh
+chmod +x /opt/tagging-mcp/scripts/start-tagging-mcp.sh
 
 # Add to your .bashrc for easy access
-echo 'alias start-tagging-mcp="/opt/finops-mcp/scripts/start-tagging-mcp.sh"' >> ~/.bashrc
+echo 'alias start-tagging-mcp="/opt/tagging-mcp/scripts/start-tagging-mcp.sh"' >> ~/.bashrc
 source ~/.bashrc
 
 # Now you can restart the server anytime with:

@@ -1,4 +1,4 @@
-# FinOps Tag Compliance MCP Server
+# Tagging MCP Server
 
 **Status**: Phase 1 MVP Complete  
 **Type**: Remote MCP Server  
@@ -12,8 +12,8 @@
 
 ```bash
 # Clone and start locally
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+git clone https://github.com/OptimNow/tagging-mcp-server.git
+cd tagging-mcp-server
 docker-compose up -d
 ```
 
@@ -40,7 +40,7 @@ pip install requests
 ```json
 {
   "mcpServers": {
-    "finops-tag-compliance": {
+    "tagging-mcp": {
       "command": "python",
       "args": ["C:\\tools\\mcp_bridge.py"],
       "env": {
@@ -86,7 +86,7 @@ If you see these errors, the server can't authenticate with AWS or lacks permiss
 
 ## Overview
 
-The FinOps Tag Compliance MCP Server is a multi-cloud tag governance solution that goes beyond basic tag reading to provide intelligent schema validation, cost attribution analysis, and automated bulk tagging workflows across AWS, Azure, and GCP.
+The Tagging MCP Server is a multi-cloud tag governance solution that goes beyond basic tag reading to provide intelligent schema validation, cost attribution analysis, and automated bulk tagging workflows across AWS, Azure, and GCP.
 
 ### Automatic Compliance History Tracking
 

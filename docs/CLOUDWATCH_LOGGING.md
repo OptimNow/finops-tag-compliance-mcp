@@ -30,7 +30,7 @@ CloudWatch logging is configured via environment variables:
 ```bash
 # Enable CloudWatch logging with custom log group
 export CLOUDWATCH_LOGGING_ENABLED=true
-export CLOUDWATCH_LOG_GROUP=/production/finops-mcp
+export CLOUDWATCH_LOG_GROUP=/production/tagging-mcp
 export CLOUDWATCH_LOG_STREAM=mcp-server-01
 export AWS_REGION=us-east-1
 ```

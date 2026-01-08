@@ -222,7 +222,7 @@ The audit service can be configured via environment variables:
 
 ```bash
 # Custom database path
-AUDIT_DB_PATH=/var/log/finops-mcp/audit_logs.db
+AUDIT_DB_PATH=/var/log/tagging-mcp/audit_logs.db
 
 # Enable/disable audit logging
 AUDIT_LOGGING_ENABLED=true

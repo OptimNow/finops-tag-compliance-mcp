@@ -3,9 +3,9 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "finops-tag-compliance-mcp"
+name = "tagging-mcp-server"
 version = "0.1.0"
-description = "FinOps Tag Compliance MCP Server - AWS resource tagging validation and compliance checking"
+description = "Tagging MCP Server - AWS resource tagging validation and compliance checking"
 readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
@@ -46,9 +46,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/OptimNow/finops-tag-compliance-mcp"
-Repository = "https://github.com/OptimNow/finops-tag-compliance-mcp.git"
-Issues = "https://github.com/OptimNow/finops-tag-compliance-mcp/issues"
+Homepage = "https://github.com/OptimNow/tagging-mcp-server"
+Repository = "https://github.com/OptimNow/tagging-mcp-server.git"
+Issues = "https://github.com/OptimNow/tagging-mcp-server/issues"
 
 [tool.setuptools]
 packages = ["mcp_server"]
