@@ -553,7 +553,7 @@ Add to your Claude Desktop config:
 }
 ```
 
-**Remote deployment (Windows)**:
+**Remote EC2 deployment (Windows)**:
 ```json
 {
   "mcpServers": {
@@ -561,11 +561,18 @@ Add to your Claude Desktop config:
       "command": "python",
       "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "http://YOUR_EC2_IP:8080"
+        "MCP_SERVER_URL": "http://YOUR_EC2_ELASTIC_IP:8080"
       }
     }
   }
 }
+```
+
+> **Note**: Use the Elastic IP from CloudFormation outputs, not the instance's public IP. The Elastic IP stays the same even if you stop/start the EC2 instance. Get it with:
+> ```bash
+> aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+>   --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' --output text
+> ```
 ```
 
 **macOS/Linux**:
