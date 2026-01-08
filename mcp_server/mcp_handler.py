@@ -206,6 +206,15 @@ class MCPHandler:
                             "from affecting historical averages."
                         ),
                     },
+                    "force_refresh": {
+                        "type": "boolean",
+                        "default": False,
+                        "description": (
+                            "If true, bypass cache and force a fresh scan from AWS. "
+                            "Use this when you need real-time data or suspect the cache "
+                            "is stale. Defaults to false to use cached results when available."
+                        ),
+                    },
                 },
                 "required": ["resource_types"],
                 "additionalProperties": False,
@@ -590,6 +599,11 @@ class MCPHandler:
                 InputValidator.validate_boolean(
                     arguments.get("store_snapshot", False),
                     field_name="store_snapshot",
+                    required=False,
+                )
+                InputValidator.validate_boolean(
+                    arguments.get("force_refresh", False),
+                    field_name="force_refresh",
                     required=False,
                 )
             
@@ -1039,6 +1053,7 @@ class MCPHandler:
         
         # Only pass history_service if store_snapshot is True
         store_snapshot = arguments.get("store_snapshot", False)
+        force_refresh = arguments.get("force_refresh", False)
         
         result = await check_tag_compliance(
             compliance_service=self.compliance_service,
@@ -1047,6 +1062,7 @@ class MCPHandler:
             severity=arguments.get("severity", "all"),
             history_service=self.history_service,
             store_snapshot=store_snapshot,
+            force_refresh=force_refresh,
         )
         
         return {

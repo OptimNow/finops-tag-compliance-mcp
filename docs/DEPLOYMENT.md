@@ -179,9 +179,10 @@ Deploy to AWS EC2 for production use with persistent storage and team access.
 ### Prerequisites
 
 - AWS CLI configured with appropriate credentials
-- IAM permissions configured (see [IAM Permissions Guide](IAM_PERMISSIONS.md))
 - An existing VPC and subnet
 - An EC2 key pair for SSH access
+
+> **Note**: IAM permissions are created automatically by CloudFormation. You do NOT need to manually configure IAM roles, policies, or instance profiles. The CloudFormation template creates all required IAM resources including the role, policy, and instance profile with the correct permissions.
 
 ### Option 1: CloudFormation Deployment (Recommended)
 

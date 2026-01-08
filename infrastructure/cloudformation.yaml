@@ -35,7 +35,7 @@ Resources:
   MCPServerRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub 'tagging-mcp-server-role-${EnvironmentName}'
+      RoleName: !Sub 'MCP-tagging-role-${EnvironmentName}'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -48,7 +48,7 @@ Resources:
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Tags:
         - Key: Application
-          Value: tagging-mcp
+          Value: MCP-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -56,7 +56,7 @@ Resources:
   MCPServerPolicy:
     Type: AWS::IAM::Policy
     Properties:
-      PolicyName: !Sub 'tagging-mcp-server-policy-${EnvironmentName}'
+      PolicyName: !Sub 'MCP-tagging-policy-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
       PolicyDocument:
@@ -135,7 +135,7 @@ Resources:
   MCPServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
     Properties:
-      InstanceProfileName: !Sub 'tagging-mcp-server-profile-${EnvironmentName}'
+      InstanceProfileName: !Sub 'MCP-tagging-profile-${EnvironmentName}'
       Roles:
         - !Ref MCPServerRole
 
@@ -143,8 +143,8 @@ Resources:
   MCPServerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupName: !Sub 'tagging-mcp-server-sg-${EnvironmentName}'
-      GroupDescription: Security group for Tagging MCP Server
+      GroupName: !Sub 'MCP-tagging-sg-${EnvironmentName}'
+      GroupDescription: Security group for MCP Tagging Server
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         # MCP Protocol
@@ -174,7 +174,7 @@ Resources:
           Description: HTTP for updates
       Tags:
         - Key: Application
-          Value: tagging-mcp
+          Value: MCP-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -224,9 +224,9 @@ Resources:
           echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
       Tags:
         - Key: Name
-          Value: !Sub 'tagging-mcp-server-${EnvironmentName}'
+          Value: !Sub 'MCP-tagging-server-${EnvironmentName}'
         - Key: Application
-          Value: tagging-mcp
+          Value: MCP-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
 
@@ -234,13 +234,33 @@ Resources:
   MCPServerLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: !Sub '/tagging-mcp-server/${EnvironmentName}'
+      LogGroupName: !Sub '/MCP-tagging/${EnvironmentName}'
       RetentionInDays: 30
       Tags:
         - Key: Application
-          Value: tagging-mcp
+          Value: MCP-tagging
         - Key: Environment
           Value: !Ref EnvironmentName
+
+  # Elastic IP for stable public address
+  MCPServerElasticIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub 'MCP-tagging-eip-${EnvironmentName}'
+        - Key: Application
+          Value: MCP-tagging
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
+  # Associate Elastic IP with EC2 Instance
+  MCPServerEIPAssociation:
+    Type: AWS::EC2::EIPAssociation
+    Properties:
+      AllocationId: !GetAtt MCPServerElasticIP.AllocationId
+      InstanceId: !Ref MCPServerInstance
 
 Outputs:
   InstanceId:
@@ -249,15 +269,15 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-InstanceId'
 
-  InstancePublicIP:
-    Description: Public IP of the MCP Server
-    Value: !GetAtt MCPServerInstance.PublicIp
+  ElasticIP:
+    Description: Elastic IP address (stable, persists across stop/start)
+    Value: !Ref MCPServerElasticIP
     Export:
-      Name: !Sub '${AWS::StackName}-PublicIP'
+      Name: !Sub '${AWS::StackName}-ElasticIP'
 
   MCPServerEndpoint:
     Description: MCP Server endpoint URL
-    Value: !Sub 'http://${MCPServerInstance.PublicIp}:8080'
+    Value: !Sub 'http://${MCPServerElasticIP}:8080'
     Export:
       Name: !Sub '${AWS::StackName}-Endpoint'
 

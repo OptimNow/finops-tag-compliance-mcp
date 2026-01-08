@@ -6,6 +6,24 @@ This guide covers the IAM permissions required for the MCP server to scan AWS re
 
 ---
 
+> ⚠️ **IMPORTANT: This guide is for MANUAL IAM setup only.**
+>
+> **If you're using CloudFormation deployment (recommended), you do NOT need to follow this guide.**
+>
+> The CloudFormation template (`infrastructure/cloudformation.yaml`) automatically creates all required IAM resources:
+> - `MCPServerRole` - IAM role with all required permissions
+> - `MCPServerPolicy` - Inline policy with EC2, RDS, S3, Lambda, ECS, OpenSearch, Cost Explorer, and Resource Groups Tagging API access
+> - `MCPServerInstanceProfile` - Instance profile attached to the EC2 instance
+>
+> **Only use this guide if you are:**
+> - Deploying manually without CloudFormation
+> - Setting up IAM for local development with an IAM user
+> - Customizing permissions beyond what CloudFormation provides
+>
+> For CloudFormation deployment, see the [Deployment Guide](DEPLOYMENT.md).
+
+---
+
 ## Overview
 
 The MCP server requires **read-only** access to AWS resources in Phase 1. The principle of least privilege is followed - the server can only read resource metadata and tags, not modify anything.

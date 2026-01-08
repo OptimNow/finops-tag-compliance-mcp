@@ -21,7 +21,8 @@ async def check_tag_compliance(
     filters: Optional[dict] = None,
     severity: str = "all",
     history_service: Optional[HistoryService] = None,
-    store_snapshot: bool = False
+    store_snapshot: bool = False,
+    force_refresh: bool = False
 ) -> ComplianceResult:
     """
     Check tag compliance for AWS resources.
@@ -53,6 +54,8 @@ async def check_tag_compliance(
         store_snapshot: If True, store the result in history database for
                        trend tracking. Defaults to False to prevent partial
                        scans from affecting historical averages.
+        force_refresh: If True, bypass cache and force a fresh scan from AWS.
+                      Useful when you need real-time data or suspect cache is stale.
     
     Returns:
         ComplianceResult containing:
@@ -125,7 +128,8 @@ async def check_tag_compliance(
     result = await compliance_service.check_compliance(
         resource_types=resource_types,
         filters=filters,
-        severity=severity
+        severity=severity,
+        force_refresh=force_refresh
     )
     
     logger.info(
