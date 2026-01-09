@@ -1005,6 +1005,60 @@ Based on code assessment report (Quality Score: 7.5/10)
     - _Files: docs/UAT_PROTOCOL.md_
     - _Requirements: 17.1, 17.2, 17.3, All user stories (1-8)_
 
+## Phase 1.8: Cost Attribution Gap "All" Resource Type Support
+
+**Goal**: Extend `get_cost_attribution_gap` tool to support `resource_types: ["all"]` for comprehensive cost attribution analysis
+
+**Background**: The `check_tag_compliance` and `find_untagged_resources` tools now support `resource_types: ["all"]` via the Resource Groups Tagging API, but `get_cost_attribution_gap` still only supports the original 5 resource types (ec2:instance, rds:db, s3:bucket, lambda:function, ecs:service). This causes Claude to fall back to listing specific types, missing costs from services like Bedrock, CloudWatch, OpenSearch, etc.
+
+**Issue Discovered**: When user asks "What's my cost attribution gap?", Claude sends `resource_types: ["all"]` which is rejected with:
+```
+Invalid resource types: ['all']. Valid types are: ['ec2:instance', 'ecs:service', 'lambda:function', 'rds:db', 's3:bucket']
+```
+
+- [ ] 60. Add "all" Resource Type Support to get_cost_attribution_gap
+  - [ ] 60.1 Update input validation to allow "all" for cost attribution `[Sonnet]`
+    - Update `InputValidator.VALID_RESOURCE_TYPES` to include "all" (already done in Task 57)
+    - Update `get_cost_attribution_gap` tool validation to accept "all"
+    - _Files: mcp_server/tools/get_cost_attribution_gap.py_
+    - _Requirements: 4.1, 17.3_
+
+  - [ ] 60.2 Implement total account spend retrieval in CostService `[Sonnet]`
+    - Add `get_total_account_spend()` method to AWSClient
+    - Query Cost Explorer without service filter to get total account spend
+    - This captures ALL services including Bedrock, CloudWatch, Data Transfer, etc.
+    - _Files: mcp_server/clients/aws_client.py_
+    - _Requirements: 4.1, 4.4_
+
+  - [ ] 60.3 Update CostService.calculate_attribution_gap() for "all" mode `[Sonnet]`
+    - When `resource_types` includes "all":
+      1. Get total account spend from Cost Explorer (all services)
+      2. Use Resource Groups Tagging API to get all tagged resources
+      3. Calculate attributable spend from properly tagged resources
+      4. Gap = Total Account Spend - Attributable Spend
+    - This captures costs from ALL services, not just the 5 we scan
+    - _Files: mcp_server/services/cost_service.py_
+    - _Requirements: 4.1, 4.2, 4.3, 17.3_
+
+  - [ ] 60.4 Add unit tests for "all" resource type cost attribution `[Haiku]`
+    - Test `get_cost_attribution_gap` with `resource_types: ["all"]`
+    - Test that total account spend includes all services
+    - Test gap calculation with mixed tagged/untagged resources
+    - _Files: tests/unit/test_get_cost_attribution_gap.py, tests/unit/test_cost_service.py_
+    - _Requirements: 4.1, 4.2_
+
+  - [ ] 60.5 Update documentation for "all" cost attribution `[Haiku]`
+    - Update `docs/USER_MANUAL.md` with new capability
+    - Add example: "What's my total cost attribution gap across all services?"
+    - _Files: docs/USER_MANUAL.md_
+
+- [ ] 61. Phase 1.8 Checkpoint - Cost Attribution "All" Support Complete
+  - Test `get_cost_attribution_gap` with `resource_types: ["all"]`
+  - Verify total account spend includes all AWS services
+  - Verify gap calculation captures costs from Bedrock, CloudWatch, etc.
+  - Run full regression test suite
+  - Rebuild Docker container and verify fix
+
 ## Notes
 
 - Tasks marked with `*` are optional test tasks that can be skipped for faster MVP delivery

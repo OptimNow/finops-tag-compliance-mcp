@@ -1036,3 +1036,100 @@ Integrated the online Tagging Policy Generator (https://tagpolgenerator.optimnow
 - Policy generator integrated as primary tool
 - Ready for UAT testing with streamlined workflow
 
+
+---
+
+## January 9, 2026 (Afternoon): Severity Array Fix & Cost Attribution "All" Support
+
+### Day 40 (Continued): Agent-Friendly Input Handling & Comprehensive Cost Analysis
+
+**Issue 1: Severity Array Validation**
+User reported Claude had to retry 3 times when asking "Show me only critical tagging errors". Claude sent `severity: ["errors_only"]` (array) instead of `severity: "errors_only"` (string).
+
+**Root Cause:**
+AI agents sometimes wrap single values in arrays. The validation correctly rejected it, but we can be more forgiving.
+
+**Fix Applied:**
+Updated `validate_severity()` in `mcp_server/utils/input_validation.py` to auto-unwrap single-element string arrays:
+```python
+# Handle case where AI agent wraps value in array (common mistake)
+if isinstance(severity, list):
+    if len(severity) == 1 and isinstance(severity[0], str):
+        logger.debug(f"Auto-unwrapping single-element array for {field_name}: {severity}")
+        severity = severity[0]
+```
+
+Added property test `test_property_17_severity_array_unwrapping` to verify this behavior.
+
+---
+
+**Issue 2: Cost Attribution Gap Missing "all" Resource Type Support**
+
+User asked "What's my cost attribution gap?" and Claude sent `resource_types: ["all"]` which was rejected:
+```
+Invalid resource types: ['all']. Valid types are: ['ec2:instance', 'ecs:service', 'lambda:function', 'rds:db', 's3:bucket']
+```
+
+Claude fell back to listing 5 specific types, missing costs from services like Bedrock, CloudWatch, Data Transfer, etc.
+
+**The Problem:**
+- `check_tag_compliance` and `find_untagged_resources` already support `"all"` via Resource Groups Tagging API
+- `get_cost_attribution_gap` was NOT updated to support `"all"`
+- This meant cost analysis only covered 5 resource types, missing significant spend
+
+**Fix Applied:**
+
+1. **Updated tool validation** (`mcp_server/tools/get_cost_attribution_gap.py`):
+   - Added `"all"` and `"opensearch:domain"` to valid resource types
+
+2. **Added `get_total_account_spend()` method** (`mcp_server/clients/aws_client.py`):
+   - Queries Cost Explorer without service filter to get total account spend
+   - Returns total spend + breakdown by service
+   - Captures ALL services including Bedrock, CloudWatch, Data Transfer, Support, etc.
+
+3. **Updated `CostService.calculate_attribution_gap()`** (`mcp_server/services/cost_service.py`):
+   - When `resource_types` includes `"all"`:
+     1. Gets total account spend from Cost Explorer (all services)
+     2. Uses Resource Groups Tagging API to get all tagged resources
+     3. Calculates attributable spend from properly tagged resources
+     4. Gap = Total Account Spend - Attributable Spend
+   - Refactored into two methods:
+     - `_calculate_attribution_gap_all()` - New comprehensive analysis
+     - `_calculate_attribution_gap_specific()` - Original logic for specific types
+
+4. **Updated spec file** (`.kiro/specs/phase-1-aws-mvp/tasks.md`):
+   - Added Phase 1.8 tasks (60-61) for "all" resource type support
+   - Documented the issue and fix
+
+**Why This Matters:**
+Before: "What's my cost attribution gap?" only analyzed EC2, RDS, S3, Lambda, ECS costs
+After: Analyzes ALL AWS services including Bedrock, CloudWatch, Data Transfer, Support, etc.
+
+This is critical for FinOps because:
+- Many organizations have significant spend in services without taggable resources
+- Data Transfer costs are often the biggest surprise
+- Support costs, Savings Plans, and Reserved Instances need attribution too
+
+**Tests:**
+- All 11 cost service unit tests pass
+- All 16 get_cost_attribution_gap tool tests pass
+- No regressions in existing functionality
+
+**Files Changed:**
+- `mcp_server/utils/input_validation.py` - Severity array unwrapping
+- `tests/property/test_input_validation.py` - Property test for array unwrapping
+- `mcp_server/tools/get_cost_attribution_gap.py` - Added "all" to valid types
+- `mcp_server/clients/aws_client.py` - Added `get_total_account_spend()` method
+- `mcp_server/services/cost_service.py` - Refactored for "all" support
+- `.kiro/specs/phase-1-aws-mvp/tasks.md` - Added Phase 1.8 tasks
+
+**Current Status:**
+- Severity array fix complete and tested
+- Cost attribution "all" support implemented
+- Ready for Docker rebuild and testing
+
+**Next Steps:**
+1. Rebuild Docker container with new code
+2. Test `get_cost_attribution_gap` with `resource_types: ["all"]`
+3. Verify total account spend includes all AWS services
+4. Update USER_MANUAL.md with new capability

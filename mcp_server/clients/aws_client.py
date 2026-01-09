@@ -1161,3 +1161,61 @@ class AWSClient:
         
         # Default: use service name and full resource part
         return f"{service}:resource", resource_part
+
+    async def get_total_account_spend(
+        self,
+        time_period: dict[str, str] | None = None,
+    ) -> tuple[float, dict[str, float]]:
+        """
+        Get total account spend from AWS Cost Explorer across ALL services.
+        
+        This method retrieves the total cloud spend for the account without
+        filtering by specific services, capturing costs from ALL AWS services
+        including Bedrock, CloudWatch, Data Transfer, Support, etc.
+        
+        Args:
+            time_period: Time period for cost data (e.g., {"Start": "2025-01-01", "End": "2025-01-31"})
+        
+        Returns:
+            Tuple of:
+            - total_spend: Total account spend for the period
+            - service_breakdown: Dict mapping service names to their costs
+        """
+        # Default to last 30 days if no time period specified
+        if not time_period:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=30)
+            time_period = {
+                "Start": start_date.strftime("%Y-%m-%d"),
+                "End": end_date.strftime("%Y-%m-%d")
+            }
+        
+        try:
+            # Get total cost grouped by service
+            response = await self._call_with_backoff(
+                "ce",
+                self.ce.get_cost_and_usage,
+                TimePeriod=time_period,
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"],
+                GroupBy=[
+                    {"Type": "DIMENSION", "Key": "SERVICE"}
+                ]
+            )
+            
+            total_spend = 0.0
+            service_breakdown: dict[str, float] = {}
+            
+            for result in response.get("ResultsByTime", []):
+                for group in result.get("Groups", []):
+                    service = group.get("Keys", [""])[0]
+                    amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                    service_breakdown[service] = service_breakdown.get(service, 0) + amount
+                    total_spend += amount
+            
+            return total_spend, service_breakdown
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch total account spend: {str(e)}") from e

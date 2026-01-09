@@ -77,12 +77,15 @@ async def get_cost_attribution_gap(
         raise ValueError("resource_types cannot be empty")
     
     # Validate resource types
+    # "all" uses Resource Groups Tagging API + total account spend from Cost Explorer
     valid_types = {
+        "all",
         "ec2:instance",
         "rds:db",
         "s3:bucket",
         "lambda:function",
-        "ecs:service"
+        "ecs:service",
+        "opensearch:domain"
     }
     
     invalid_types = [rt for rt in resource_types if rt not in valid_types]
