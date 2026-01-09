@@ -364,36 +364,121 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 }
 ```
 
-#### 14. cross_account_compliance_check
+#### 14. Multi-Account Support (Enhanced)
 
-**Purpose**: Check compliance across multiple AWS accounts
+**Purpose**: Check compliance across multiple AWS accounts using AssumeRole
 
-**Parameters**:
+**New Parameters** (added to all scan tools):
+- `accounts`: List of AWS account IDs to scan (defaults to current account)
+- `cross_account_role_name`: IAM role name in member accounts (default: `CrossAccountTagAuditRole`)
+- `external_id`: Optional external ID for enhanced security
+
+**Enhanced tool signature**:
+```python
+async def check_tag_compliance(
+    resource_types: Optional[List[str]] = None,
+    regions: Optional[List[str]] = None,
+    accounts: Optional[List[str]] = None  # NEW: Multi-account support
+) -> Dict
+```
+
+**Single Account Usage** (Phase 1 behavior):
 ```json
 {
-  "account_ids": ["123456789012", "234567890123"],
-  "assume_role": "arn:aws:iam::*:role/OrganizationAccountAccessRole"
+  "resource_types": ["ec2:instance"],
+  "regions": ["us-east-1"]
 }
 ```
 
-**Returns**:
+**Multi-Account Usage** (Phase 2):
 ```json
 {
-  "results": [
-    {
-      "account_id": "123456789012",
+  "resource_types": ["ec2:instance"],
+  "regions": ["us-east-1"],
+  "accounts": ["123456789012", "234567890123", "345678901234"]
+}
+```
+
+**Returns** (multi-account):
+```json
+{
+  "multi_account": true,
+  "accounts_scanned": 3,
+  "results_by_account": {
+    "123456789012": {
+      "account_name": "Production",
       "compliance_score": 0.72,
-      "violations": 127
+      "violations": 127,
+      "total_resources": 1250,
+      "cost_attribution_gap": 45200.00
     },
-    {
-      "account_id": "234567890123",
+    "234567890123": {
+      "account_name": "Staging",
       "compliance_score": 0.65,
-      "violations": 203
+      "violations": 203,
+      "total_resources": 890,
+      "cost_attribution_gap": 28900.00
+    },
+    "345678901234": {
+      "account_name": "Development",
+      "compliance_score": 0.83,
+      "violations": 45,
+      "total_resources": 350,
+      "cost_attribution_gap": 12100.00
     }
-  ],
-  "overall_compliance": 0.68
+  },
+  "aggregated_summary": {
+    "overall_compliance": 0.71,
+    "total_violations": 375,
+    "total_resources": 2490,
+    "total_cost_attribution_gap": 86200.00
+  }
 }
 ```
+
+**Implementation Details**:
+
+See `docs/DEPLOY_MULTI_ACCOUNT.md` for complete multi-account deployment guide.
+
+**Key Features**:
+1. **AssumeRole Integration**: MCP server assumes IAM roles in member accounts
+2. **Parallel Scanning**: Accounts scanned in parallel for performance
+3. **Error Handling**: Continues if one account fails (reports error in results)
+4. **Session Caching**: Assumed role credentials cached for 1 hour
+5. **Aggregated Reporting**: Cross-account summaries and comparisons
+
+**IAM Setup Required**:
+
+Management Account (where MCP runs):
+```json
+{
+  "Sid": "AssumeRoleInMemberAccounts",
+  "Effect": "Allow",
+  "Action": "sts:AssumeRole",
+  "Resource": "arn:aws:iam::*:role/CrossAccountTagAuditRole"
+}
+```
+
+Member Accounts (each account to scan):
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::111111111111:role/MCPServerRole"
+    },
+    "Action": "sts:AssumeRole",
+    "Condition": {
+      "StringEquals": {
+        "sts:ExternalId": "finops-mcp-cross-account-v1"
+      }
+    }
+  }]
+}
+```
+
+**Development Estimate**: 2-3 weeks (includes testing with 10+ accounts)
 
 #### 15. export_violations_csv
 

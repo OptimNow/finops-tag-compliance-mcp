@@ -242,6 +242,86 @@ scheduled_compliance:
 - No pollution from ad-hoc partial scans
 - Users can distinguish scheduled vs ad-hoc scans in history
 
+### Phase 2.4: Multi-Account Support via AssumeRole (Week 7-8)
+
+**Goal**: Enable enterprise customers to scan multiple AWS accounts within an organization
+
+**Problem Statement**:
+Enterprise customers typically manage 10-100+ AWS accounts within an AWS Organization. Phase 1 only supports scanning a single account. Customers need consolidated compliance reporting across all accounts without deploying separate MCP instances per account.
+
+**Solution**:
+Implement cross-account access using AWS AssumeRole pattern. The MCP server assumes a role in each target account to perform compliance scans.
+
+**Deliverables**:
+- Enhanced `aws_client.py` with `MultiAccountAWSClient` class
+- AssumeRole session management with automatic token refresh
+- Session caching (15-minute TTL) to avoid repeated STS calls
+- Multi-account parameters added to all scan tools: `accounts: Optional[List[str]]`
+- IAM trust relationship automation for cross-account roles
+- Aggregated compliance reporting across accounts
+- Per-account violation breakdown in reports
+
+**Architecture**:
+```
+┌──────────────────┐
+│  MCP Server      │
+│  (Main Account)  │
+│                  │
+│  IAM Role:       │
+│  mcp-server-role │
+└────────┬─────────┘
+         │ AssumeRole
+         ├────────────────────────────┐
+         │                            │
+         ▼                            ▼
+┌─────────────────┐          ┌─────────────────┐
+│  Account 1      │          │  Account 2      │
+│                 │          │                 │
+│  IAM Role:      │          │  IAM Role:      │
+│  mcp-cross-     │          │  mcp-cross-     │
+│  account-role   │          │  account-role   │
+│                 │          │                 │
+│  Trust Policy:  │          │  Trust Policy:  │
+│  Main Account   │          │  Main Account   │
+└─────────────────┘          └─────────────────┘
+```
+
+**Tool Updates**:
+All compliance scanning tools will support the new `accounts` parameter:
+```python
+async def check_tag_compliance(
+    resource_types: Optional[List[str]] = None,
+    regions: Optional[List[str]] = None,
+    accounts: Optional[List[str]] = None  # NEW
+) -> Dict
+```
+
+**IAM Requirements**:
+- Main account role needs `sts:AssumeRole` permission
+- Target account roles need trust relationship with main account
+- Target account roles need read permissions for Resource Groups Tagging API
+
+**Configuration**:
+```yaml
+# config.yaml
+multi_account:
+  enabled: true
+  cross_account_role_name: "mcp-cross-account-role"  # Role name in target accounts
+  session_duration_seconds: 3600  # 1 hour
+  session_cache_ttl_seconds: 900  # 15 minutes
+  max_parallel_accounts: 5  # Scan 5 accounts concurrently
+```
+
+**Success Metrics**:
+- Successfully scan 10+ accounts in a single compliance check
+- Aggregated reporting shows per-account and total compliance scores
+- AssumeRole session caching reduces STS API calls by 80%
+- Documentation enables self-service setup for enterprise customers
+
+**Timeline**: Week 7-8 of Phase 2 (2 weeks development + testing)
+
+**Documentation**: See [DEPLOY_MULTI_ACCOUNT.md](./DEPLOY_MULTI_ACCOUNT.md) for complete deployment guide and three deployment options.
+
 ---
 
 ## Phase 3: Multi-Cloud - Azure + GCP (Months 5-6)
