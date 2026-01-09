@@ -1031,3 +1031,145 @@ class TestArnPatternComprehensive:
         ]
         result = InputValidator.validate_resource_arns(arns)
         assert result == arns
+
+
+# =============================================================================
+# Array Unwrapping Tests (AI Agent Compatibility)
+# =============================================================================
+
+class TestArrayUnwrapping:
+    """Test automatic array unwrapping for AI agent compatibility.
+    
+    AI agents often wrap single values in arrays (e.g., ["resource_type"] instead
+    of "resource_type"). These tests verify that validators handle this gracefully.
+    """
+    
+    def test_validate_severity_unwraps_single_element_array(self):
+        """Test that severity validator unwraps single-element arrays."""
+        result = InputValidator.validate_severity(["all"])
+        assert result == "all"
+        
+        result = InputValidator.validate_severity(["errors_only"])
+        assert result == "errors_only"
+    
+    def test_validate_severity_rejects_multi_element_array(self):
+        """Test that severity validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_severity(["all", "errors_only"])
+        assert "Must be a string" in str(exc_info.value)
+    
+    def test_validate_group_by_unwraps_single_element_array(self):
+        """Test that group_by validator unwraps single-element arrays."""
+        result = InputValidator.validate_group_by(["resource_type"])
+        assert result == "resource_type"
+        
+        result = InputValidator.validate_group_by(["region"])
+        assert result == "region"
+    
+    def test_validate_group_by_rejects_multi_element_array(self):
+        """Test that group_by validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_group_by(["resource_type", "region"])
+        assert "Must be a string" in str(exc_info.value)
+    
+    def test_validate_format_unwraps_single_element_array(self):
+        """Test that format validator unwraps single-element arrays."""
+        result = InputValidator.validate_format(["json"])
+        assert result == "json"
+        
+        result = InputValidator.validate_format(["markdown"])
+        assert result == "markdown"
+    
+    def test_validate_format_rejects_multi_element_array(self):
+        """Test that format validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_format(["json", "csv"])
+        assert "Must be a string" in str(exc_info.value)
+    
+    def test_validate_string_unwraps_single_element_array(self):
+        """Test that string validator unwraps single-element arrays."""
+        result = InputValidator.validate_string(["test_value"], "test_field")
+        assert result == "test_value"
+    
+    def test_validate_string_rejects_multi_element_array(self):
+        """Test that string validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_string(["value1", "value2"], "test_field")
+        assert "Must be a string" in str(exc_info.value)
+    
+    def test_validate_integer_unwraps_single_element_array(self):
+        """Test that integer validator unwraps single-element arrays."""
+        result = InputValidator.validate_integer([30], "days_back")
+        assert result == 30
+        
+        result = InputValidator.validate_integer([90], "days_back", maximum=90)
+        assert result == 90
+    
+    def test_validate_integer_rejects_multi_element_array(self):
+        """Test that integer validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_integer([30, 60], "days_back")
+        assert "Must be an integer" in str(exc_info.value)
+    
+    def test_validate_integer_rejects_array_of_non_integers(self):
+        """Test that integer validator rejects arrays of non-integers."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_integer(["30"], "days_back")
+        assert "Must be an integer" in str(exc_info.value)
+    
+    def test_validate_boolean_unwraps_single_element_array(self):
+        """Test that boolean validator unwraps single-element arrays."""
+        result = InputValidator.validate_boolean([True], "include_costs")
+        assert result is True
+        
+        result = InputValidator.validate_boolean([False], "include_costs")
+        assert result is False
+    
+    def test_validate_boolean_rejects_multi_element_array(self):
+        """Test that boolean validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_boolean([True, False], "include_costs")
+        assert "Must be a boolean" in str(exc_info.value)
+    
+    def test_validate_boolean_rejects_array_of_non_booleans(self):
+        """Test that boolean validator rejects arrays of non-booleans."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_boolean(["true"], "include_costs")
+        assert "Must be a boolean" in str(exc_info.value)
+    
+    def test_validate_min_cost_threshold_unwraps_single_element_array(self):
+        """Test that min_cost_threshold validator unwraps single-element arrays."""
+        result = InputValidator.validate_min_cost_threshold([100.0])
+        assert result == 100.0
+        
+        result = InputValidator.validate_min_cost_threshold([50])
+        assert result == 50.0
+    
+    def test_validate_min_cost_threshold_rejects_multi_element_array(self):
+        """Test that min_cost_threshold validator rejects multi-element arrays."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_min_cost_threshold([100.0, 200.0])
+        assert "Must be a number" in str(exc_info.value)
+    
+    def test_validate_min_cost_threshold_rejects_array_of_non_numbers(self):
+        """Test that min_cost_threshold validator rejects arrays of non-numbers."""
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_min_cost_threshold(["100"])
+        assert "Must be a number" in str(exc_info.value)
+    
+    def test_unwrapped_values_still_validated(self):
+        """Test that unwrapped values are still validated against allowed values."""
+        # Invalid severity value should still fail after unwrapping
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_severity(["invalid_severity"])
+        assert "Invalid severity" in str(exc_info.value)
+        
+        # Invalid group_by value should still fail after unwrapping
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_group_by(["invalid_group"])
+        assert "Invalid value" in str(exc_info.value)
+        
+        # Invalid format value should still fail after unwrapping
+        with pytest.raises(ValidationError) as exc_info:
+            InputValidator.validate_format(["invalid_format"])
+        assert "Invalid format" in str(exc_info.value)

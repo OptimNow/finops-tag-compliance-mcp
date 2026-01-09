@@ -780,6 +780,18 @@ class InputValidator:
                 raise ValidationError(field_name, "Field is required")
             return None
         
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of numbers
+        if isinstance(min_cost_threshold, list):
+            if len(min_cost_threshold) == 1 and isinstance(min_cost_threshold[0], (int, float)) and not isinstance(min_cost_threshold[0], bool):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {min_cost_threshold}")
+                min_cost_threshold = min_cost_threshold[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a number, got {type(min_cost_threshold).__name__}",
+                )
+        
         if not isinstance(min_cost_threshold, (int, float)):
             raise ValidationError(
                 field_name,
@@ -1053,6 +1065,18 @@ class InputValidator:
                 raise ValidationError(field_name, "Field is required")
             return default
         
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of booleans
+        if isinstance(value, list):
+            if len(value) == 1 and isinstance(value[0], bool):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {value}")
+                value = value[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a boolean, got {type(value).__name__}",
+                )
+        
         if not isinstance(value, bool):
             raise ValidationError(
                 field_name,
@@ -1092,6 +1116,18 @@ class InputValidator:
             if required:
                 raise ValidationError(field_name, "Field is required")
             return default
+        
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of integers
+        if isinstance(value, list):
+            if len(value) == 1 and isinstance(value[0], int) and not isinstance(value[0], bool):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {value}")
+                value = value[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be an integer, got {type(value).__name__}",
+                )
         
         if not isinstance(value, int) or isinstance(value, bool):
             raise ValidationError(
