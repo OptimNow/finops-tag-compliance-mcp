@@ -377,11 +377,16 @@ After deploying to EC2, you can set up a one-click workflow to update your taggi
 
 #### Step 1: Create S3 Bucket for Policy Staging
 
+> **Note**: If you deployed using CloudFormation, the S3 bucket is already created! Skip to Step 3.
+
+If you deployed manually without CloudFormation:
 ```bash
 aws s3 mb s3://finops-mcp-config --region us-east-1
 ```
 
 #### Step 2: Add SSM and S3 Permissions to EC2 IAM Role
+
+> **Note**: If you deployed using CloudFormation, these permissions are already configured! Skip to Step 3.
 
 The CloudFormation template already includes these permissions. If you deployed manually, add them:
 
@@ -406,6 +411,8 @@ aws iam put-role-policy \
 ```
 
 #### Step 3: Set Up EC2 for External Policy Files
+
+> **Note**: If you deployed using CloudFormation, the `/home/ec2-user/mcp-policies` folder is already created with a default policy! You just need to restart the container with the volume mount.
 
 SSH into your EC2 instance and run these commands once:
 
@@ -492,10 +499,40 @@ notepad policies/tagging_policy.json
 
 ### Troubleshooting
 
-**"Could not send command to EC2"**
-- Verify SSM agent is running on EC2: `sudo systemctl status amazon-ssm-agent`
-- Check IAM role has `AmazonSSMManagedInstanceCore` policy attached
-- Verify instance ID is correct
+**"Could not send command to EC2" / "Instances not in a valid state for account"**
+
+This error means the SSM agent on your EC2 instance isn't registered with AWS Systems Manager. 
+
+**Option A: Fix SSM (recommended for future one-click deploys)**
+
+SSH to EC2 and run:
+```bash
+# Check if SSM agent is installed and running
+sudo systemctl status amazon-ssm-agent
+
+# If not running, start it
+sudo systemctl start amazon-ssm-agent
+sudo systemctl enable amazon-ssm-agent
+
+# If not installed (unlikely on Amazon Linux 2023)
+sudo yum install -y amazon-ssm-agent
+sudo systemctl start amazon-ssm-agent
+sudo systemctl enable amazon-ssm-agent
+```
+
+After starting the SSM agent, wait 2-3 minutes for it to register with AWS, then the deploy script should work.
+
+**Option B: Manual workaround (quick fix)**
+
+If you just need to update the policy now, SSH to EC2 and pull from S3 directly (since the S3 upload already succeeded):
+
+```bash
+ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+
+# Pull the policy from S3 and restart
+aws s3 cp s3://finops-mcp-config/policies/tagging_policy.json /home/ec2-user/mcp-policies/tagging_policy.json
+docker restart tagging-mcp-server
+```
 
 **"Could not upload to S3"**
 - Check S3 bucket exists: `aws s3 ls s3://finops-mcp-config`
@@ -503,8 +540,8 @@ notepad policies/tagging_policy.json
 
 **Policy not updating on EC2**
 - SSH to EC2 and check: `cat /home/ec2-user/mcp-policies/tagging_policy.json`
-- Check Docker logs: `docker logs finops-mcp-server`
-- Verify the volume mount: `docker inspect finops-mcp-server | grep Mounts -A 10`
+- Check Docker logs: `docker logs tagging-mcp-server`
+- Verify the volume mount: `docker inspect tagging-mcp-server | grep Mounts -A 10`
 
 ---
 

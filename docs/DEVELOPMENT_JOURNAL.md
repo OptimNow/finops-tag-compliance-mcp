@@ -940,3 +940,99 @@ Encountered `IncompleteSignature` error when testing AWS CLI commands. Root caus
 3. Test one-click deployment workflow
 4. Complete UAT testing
 
+
+---
+
+## January 8, 2026 (Evening): S3 Bucket Setup & Deploy Script Testing
+
+### Day 39 (Continued): Policy Deployment Infrastructure Complete
+
+**S3 Bucket Created:**
+- Created `finops-mcp-config` bucket for policy staging
+- Verified CloudFormation stack has correct S3 permissions
+
+**Deploy Script Testing:**
+Tested `scripts/deploy_policy.ps1` and encountered SSM error:
+```
+An error occurred (InvalidInstanceId) when calling the SendCommand operation: 
+Instances not in a valid state for account
+```
+
+**Root Cause:**
+The SSM agent on EC2 wasn't registered with AWS Systems Manager. This is required for remote command execution.
+
+**Workaround Documented:**
+Added troubleshooting section to `docs/DEPLOYMENT.md` with two options:
+1. **Option A**: Fix SSM agent on EC2 (recommended for future one-click deploys)
+2. **Option B**: Manual workaround via SSH (quick fix)
+
+Manual workaround:
+```bash
+ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+aws s3 cp s3://finops-mcp-config/policies/tagging_policy.json /home/ec2-user/mcp-policies/tagging_policy.json
+docker restart tagging-mcp-server
+```
+
+**Policy Update Verified:**
+- Updated tagging policy from 4 required tags to 3 required tags
+- Confirmed container restart is required after policy changes
+- Verified Redis flush is SAFE - violation history stored in SQLite, not Redis
+
+**Container Name Fix:**
+Updated `scripts/deploy_policy.ps1` to use correct container name `tagging-mcp-server` (was `finops-mcp-server`).
+
+**Current Status:**
+- S3 bucket `finops-mcp-config` created and working
+- Policy upload to S3 working
+- Manual policy deployment workflow documented
+- SSM-based one-click deployment pending SSM agent fix
+
+---
+
+## January 9, 2026: Documentation Simplification & Tagging Policy Generator Integration
+
+### Day 40: Streamlining Documentation for FinOps Practitioners
+
+**The Insight:**
+Going through UAT protocol, realized the documentation was too developer-focused. FinOps practitioners don't need to understand JSON schemas or write regex patterns - they need a simple tool to create policies.
+
+**Tagging Policy Generator Integration:**
+Integrated the online Tagging Policy Generator (https://tagpolgenerator.optimnow.io/) as THE primary tool for policy management:
+
+1. **Updated `docs/UAT_PROTOCOL.md`:**
+   - Simplified prerequisites from 6 detailed sections to 3 concise ones
+   - Added link to Deployment Guide instead of duplicating instructions
+   - Added Tagging Policy Configuration section pointing to the generator
+   - Separate instructions for local vs remote EC2 deployment
+   - AWS Organizations policy conversion now uses generator's import feature
+
+2. **Rewrote `docs/TAGGING_POLICY_GUIDE.md`:**
+   - Reduced from ~500 lines to ~120 lines
+   - Starts with the online generator as the primary tool
+   - Points to GitHub repo for technical details
+   - Removed manual JSON schema documentation (now in generator repo)
+   - Removed manual conversion script instructions (generator handles this)
+   - Kept deployment instructions for both local and remote
+   - Kept troubleshooting and best practices sections
+
+**Key Changes:**
+- Generator URL: https://tagpolgenerator.optimnow.io/
+- Technical details: https://github.com/OptimNow/tagging-policy-generator
+- Local deployment: Save to `policies/tagging_policy.json`, restart Docker
+- Remote deployment: Save locally, run `.\scripts\deploy_policy.ps1`, verify in S3
+
+**What I Learned:**
+- Documentation should match the audience's skill level
+- External tools (like the policy generator) reduce friction for non-developers
+- Linking to detailed docs is better than duplicating content
+- Simple workflows beat comprehensive but complex ones
+
+**Files Changed:**
+- `docs/UAT_PROTOCOL.md` - Simplified prerequisites, added generator integration
+- `docs/TAGGING_POLICY_GUIDE.md` - Complete rewrite focusing on generator
+
+**Current Status:**
+- Documentation simplified and user-friendly
+- Policy generator integrated as primary tool
+- Ready for UAT testing with streamlined workflow
+

@@ -17,6 +17,8 @@ This guide sets up a simple workflow where you edit your tagging policy locally 
 
 ## One-Time Setup
 
+> **If you deployed using CloudFormation**: Steps 1-2 are already done! The S3 bucket and IAM permissions are created automatically. Skip to Step 3.
+
 ### Step 1: Create S3 Bucket
 
 ```powershell
@@ -54,6 +56,8 @@ Your EC2 instance needs the SSM agent and IAM permissions. Add this to your IAM 
 ```
 
 ### Step 3: Set Up EC2 Policies Folder
+
+> **If you deployed using CloudFormation**: The `/home/ec2-user/mcp-policies` folder is already created with a default policy! You just need to restart the container with the volume mount.
 
 SSH into your EC2 and run once:
 

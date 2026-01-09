@@ -8,6 +8,11 @@ Parameters:
     AllowedValues: [dev, staging, prod]
     Description: Environment name for resource tagging
 
+  PolicyBucketName:
+    Type: String
+    Default: finops-mcp-config
+    Description: S3 bucket name for policy configuration files
+
   InstanceType:
     Type: String
     Default: t3.medium
@@ -31,6 +36,28 @@ Parameters:
     Description: CIDR block allowed to access MCP server (restrict in production)
 
 Resources:
+  # S3 Bucket for Policy Configuration
+  PolicyConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref PolicyBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: mcp-tagging
+        - Key: Environment
+          Value: !Ref EnvironmentName
+
   # IAM Role for EC2 Instance
   MCPServerRole:
     Type: AWS::IAM::Role
@@ -129,7 +156,7 @@ Resources:
           - Effect: Allow
             Action:
               - s3:GetObject
-            Resource: 'arn:aws:s3:::finops-mcp-config/*'
+            Resource: !Sub 'arn:aws:s3:::${PolicyBucketName}/*'
 
   # Instance Profile
   MCPServerInstanceProfile:
@@ -220,6 +247,39 @@ Resources:
           mkdir -p /opt/tagging-mcp
           chown ec2-user:ec2-user /opt/tagging-mcp
           
+          # Create policies folder for external policy mounting
+          mkdir -p /home/ec2-user/mcp-policies
+          chown ec2-user:ec2-user /home/ec2-user/mcp-policies
+          
+          # Create a default tagging policy (will be overwritten when app is deployed)
+          cat > /home/ec2-user/mcp-policies/tagging_policy.json << 'POLICY'
+          {
+            "version": "1.0",
+            "policy_name": "Default Tagging Policy",
+            "description": "Default policy - update via deploy_policy.ps1",
+            "required_tags": [
+              {
+                "name": "Environment",
+                "description": "Deployment environment",
+                "required": true,
+                "allowed_values": ["dev", "staging", "prod"]
+              },
+              {
+                "name": "Owner",
+                "description": "Team or person responsible",
+                "required": true
+              },
+              {
+                "name": "CostCenter",
+                "description": "Cost allocation code",
+                "required": true
+              }
+            ],
+            "resource_types": ["ec2:instance", "rds:db", "s3:bucket", "lambda:function"]
+          }
+          POLICY
+          chown ec2-user:ec2-user /home/ec2-user/mcp-policies/tagging_policy.json
+          
           # Signal completion
           echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
       Tags:
@@ -280,6 +340,12 @@ Outputs:
     Value: !Sub 'http://${MCPServerElasticIP}:8080'
     Export:
       Name: !Sub '${AWS::StackName}-Endpoint'
+
+  PolicyBucket:
+    Description: S3 bucket for policy configuration
+    Value: !Ref PolicyConfigBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-PolicyBucket'
 
   SecurityGroupId:
     Description: Security Group ID

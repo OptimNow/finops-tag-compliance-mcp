@@ -36,7 +36,7 @@ Write-Host "      OK - Uploaded to s3://$S3Bucket/policies/" -ForegroundColor Gr
 # Step 3: Trigger EC2 to pull new policy and restart
 Write-Host "[3/4] Updating EC2 instance..." -ForegroundColor Yellow
 $command = @"
-aws s3 cp s3://$S3Bucket/policies/tagging_policy.json /home/ec2-user/mcp-policies/tagging_policy.json && docker restart finops-mcp-server
+aws s3 cp s3://$S3Bucket/policies/tagging_policy.json /home/ec2-user/mcp-policies/tagging_policy.json && docker restart tagging-mcp-server
 "@
 
 $result = aws ssm send-command `

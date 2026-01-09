@@ -12,234 +12,63 @@
 
 Complete these steps before starting UAT:
 
-### 1. Install Python Dependencies
+### 1. Deploy and Configure the MCP Server
 
-The bridge script requires the `requests` library:
-```bash
-pip install requests
-```
+Follow the [Deployment Guide](DEPLOYMENT.md) to:
+- Deploy the MCP server (locally or on EC2)
+- Configure AWS credentials and IAM permissions
+- Connect Claude Desktop to the server
 
-### 2. Start the MCP Server
+**Quick verification:** In Claude Desktop, ask "Show me our tagging policy" - you should get a response with your policy details.
 
-```bash
-# Start Docker containers
-docker-compose up -d
-
-# Verify server is running
-python scripts/local_test.py
-```
-
-Health endpoint should return `{"status": "healthy"}` at http://localhost:8080/health
-
-### 3. Configure Claude Desktop
-
-Add the MCP server to Claude Desktop's config file:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "finops-tag-compliance": {
-      "command": "python",
-      "args": ["C:\\path\\to\\repo\\scripts\\mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://localhost:8080"
-      }
-    }
-  }
-}
-```
-
-Replace `C:\\path\\to\\repo` with your actual repository path.
-
-### 4. Restart Claude Desktop
-
-After updating the config, restart Claude Desktop to load the MCP server.
-
-### 5. Verify Connection
-
-In Claude Desktop, you should see the FinOps tools available. Test with:
-> "Show me our tagging policy"
-
-### 6. AWS Credentials and IAM Permissions
-
-The server needs AWS credentials with specific IAM permissions to scan your resources.
-
-#### Required IAM Permissions
-
-The MCP server requires **read-only** access to AWS resources. 
-
-**Recommended: Use the Complete Policy File**
-
-We provide a ready-to-use IAM policy with all required permissions:
-
-```bash
-# Create the IAM policy
-aws iam create-policy \
-  --policy-name MCP_Tagging_Policy \
-  --policy-document file://policies/iam/MCP_Tagging_Policy.json \
-  --description "Complete permissions for FinOps Tag Compliance MCP Server"
-
-# Attach to your IAM user
-aws iam attach-user-policy \
-  --user-name YOUR_IAM_USERNAME \
-  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/MCP_Tagging_Policy
-```
-
-See [`policies/iam/README.md`](../policies/iam/README.md) for detailed instructions.
-
-**Alternative Options:**
-
-**Option A: Use AWS Managed Policy (Quick Start)**
-```bash
-# Attach ReadOnlyAccess managed policy (broad permissions)
-aws iam attach-user-policy \
-  --user-name mcp-test-user \
-  --policy-arn arn:aws:iam::aws:policy/ReadOnlyAccess
-```
-
-**Option B: Create Custom Policy (Recommended - Least Privilege)**
-
-Create a file `tagging-mcp-uat-policy.json`:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "TagComplianceReadAccess",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeTags",
-        "ec2:DescribeVolumes",
-        "ec2:DescribeRegions",
-        "rds:DescribeDBInstances",
-        "rds:ListTagsForResource",
-        "s3:ListAllMyBuckets",
-        "s3:GetBucketTagging",
-        "s3:GetBucketLocation",
-        "lambda:ListFunctions",
-        "lambda:ListTags",
-        "ecs:ListClusters",
-        "ecs:ListServices",
-        "ecs:DescribeServices",
-        "ecs:ListTagsForResource",
-        "ce:GetCostAndUsage",
-        "ce:GetTags",
-        "tag:GetResources",
-        "tag:GetTagKeys",
-        "tag:GetTagValues"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-Apply the policy:
-
-```bash
-# Create the IAM policy
-aws iam create-policy \
-  --policy-name FinOpsMCPUATPolicy \
-  --policy-document file://tagging-mcp-uat-policy.json
-
-# Attach to your IAM user
-aws iam attach-user-policy \
-  --user-name YOUR_IAM_USERNAME \
-  --policy-arn arn:aws:iam::YOUR_ACCOUNT_ID:policy/FinOpsMCPUATPolicy
-```
-
-#### Credential Setup by Environment
-
-**Local Development (Docker on your machine):**
-```bash
-# 1. Configure AWS CLI (if not already done)
-aws configure
-
-# 2. Verify credentials work
-aws sts get-caller-identity
-aws ec2 describe-instances --region us-east-1
-
-# 3. Restart containers to pick up credentials
-docker-compose down && docker-compose up -d
-```
-
-The `docker-compose.yml` mounts your `~/.aws` folder into the container automatically.
-
-**Remote Server (EC2):**
-No credential setup needed - the EC2 instance uses an IAM Instance Profile with the policy above attached to the role.
-
-#### Troubleshooting Permission Issues
-
-**"Unable to locate credentials" error:**
-- Verify `aws sts get-caller-identity` works on your machine
-- Restart Docker containers after configuring AWS CLI
-- Check Docker logs: `docker logs tagging-mcp-server --tail 20`
-
-**"0 resources found" or "Access Denied" errors:**
-- Verify IAM permissions: `aws ec2 describe-instances --region us-east-1`
-- Check if you have resources in the region you're testing
-- Ensure Cost Explorer is enabled: `aws ce get-cost-and-usage --time-period Start=2024-01-01,End=2024-01-02 --granularity MONTHLY --metrics BlendedCost`
-- Review CloudTrail logs for specific permission denials
-
-**Testing IAM Permissions:**
-```bash
-# Test EC2 access
-aws ec2 describe-instances --region us-east-1 --max-results 5
-
-# Test RDS access
-aws rds describe-db-instances --region us-east-1 --max-results 5
-
-# Test S3 access
-aws s3api list-buckets
-
-# Test Lambda access
-aws lambda list-functions --region us-east-1 --max-items 5
-
-# Test Cost Explorer access
-aws ce get-cost-and-usage \
-  --time-period Start=2024-01-01,End=2024-01-02 \
-  --granularity MONTHLY \
-  --metrics BlendedCost
-```
-
-If any of these commands fail, you're missing required permissions.
-
-### 7. AWS Resources
+### 2. AWS Resources
 
 Ensure you have:
 - [ ] Some EC2 instances, RDS databases, S3 buckets, or Lambda functions to test against
 - [ ] Mix of tagged and untagged resources for realistic testing
 
-### 8. Tagging Policy Configuration
+### 3. Tagging Policy Configuration
 
 The MCP server requires a tagging policy to determine what "compliant" means for your organization.
 
-**Quick Setup:**
-- [ ] Ensure `policies/tagging_policy.json` exists in the repository
-- [ ] Verify policy is valid JSON
-- [ ] Restart Docker containers: `docker-compose restart`
-- [ ] Test: "Show me our tagging policy" in Claude Desktop
+**Create or Edit Your Policy:**
+
+Use the online policy generator to create or modify your tagging policy:
+👉 **https://tagpolgenerator.optimnow.io/**
+
+The generator lets you:
+- Define required and optional tags
+- Set allowed values and validation rules
+- Specify which resource types each tag applies to
+- Export the policy as JSON
 
 **If you have an existing AWS Organizations tag policy:**
-```bash
-# Convert it to our format
-python scripts/convert_aws_policy.py path/to/aws_policy.json
-```
 
-**For detailed information on tagging policies, see:** [Tagging Policy Configuration Guide](TAGGING_POLICY_GUIDE.md)
+Go to https://tagpolgenerator.optimnow.io/ and use the import feature to convert your AWS policy to the MCP format. You can then edit it and export the result.
 
-The guide covers:
-- What tagging policies are and why they matter
-- **Converting from AWS Organizations tag policies** (recommended if you already have one)
-- Policy file format and field definitions
-- Common tagging patterns (CostCenter, Owner, Environment, etc.)
-- How to customize the policy for your organization
-- Troubleshooting and validation
+**Deploy Your Policy:**
+
+**Local deployment:**
+- Save the policy JSON to `policies/tagging_policy.json` in your repository
+- Restart Docker: `docker-compose restart`
+- Test: Ask Claude "Show me my tagging policy"
+
+**Remote EC2 deployment:**
+1. Save the policy JSON to `policies/tagging_policy.json` in your local repository
+2. Run the deploy script:
+   ```powershell
+   # Windows
+   .\scripts\deploy_policy.ps1
+   ```
+3. Verify the policy is in S3:
+   ```bash
+   aws s3 ls s3://finops-mcp-config/policies/
+   ```
+4. Test in Claude Desktop: "Show me my tagging policy"
+
+> **Note:** If the deploy script fails with SSM errors, see the [Deployment Guide troubleshooting section](DEPLOYMENT.md#troubleshooting) for manual workarounds.
+
+**For detailed policy configuration options, see:** [Tagging Policy Configuration Guide](TAGGING_POLICY_GUIDE.md)
 
 ---
 
