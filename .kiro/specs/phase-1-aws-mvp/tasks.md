@@ -376,7 +376,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
   - Verify Redis container is running and healthy
   - _Requirements: 14.1, 14.3_
 
-- [ ] 27. AWS Infrastructure Provisioning
+- [x] 27. AWS Infrastructure Provisioning
   - [x] 27.1 Deploy CloudFormation stack `[Haiku]`
     - Deploy infrastructure/cloudformation.yaml
     - Provision EC2 instance (t3.medium), IAM role, security group
@@ -408,7 +408,7 @@ For detailed code examples and infrastructure setup, see [PHASE-1-SPECIFICATION.
     - Note: Use `docker build -t tagging-mcp-server .` instead of `docker-compose build` (buildx version issue on Amazon Linux)
     - _Requirements: 14.1, 14.5_
 
-- [ ] 28. Production Verification
+- [x] 28. Production Verification
   - [x] 28.1 Verify MCP server is accessible `[Haiku]`
     - Test health endpoint from external IP: `curl http://100.50.91.35:8080/health`
     - Health check confirmed: status=healthy, redis_connected=true, sqlite_connected=true
@@ -934,7 +934,7 @@ Based on code assessment report (Quality Score: 7.5/10)
     - _Files: tests/integration/test_check_tag_compliance.py_
     - _Requirements: 17.2, 17.3_
 
-- [ ] 58.5 Clean Slate - Delete All AWS Resources for Fresh Redeploy `[Manual]`
+- [x] 58.5 Clean Slate - Delete All AWS Resources for Fresh Redeploy `[Manual]`
   - **Purpose**: Remove all existing AWS resources to do a clean redeployment
   - **Resources to Delete**:
     1. **Elastic IP**: Release `tagging-mcp` EIP (100.50.91.35) - $3.60/month if not attached
@@ -973,26 +973,26 @@ Based on code assessment report (Quality Score: 7.5/10)
   
   - **After Cleanup**: Proceed to Task 59 to redeploy fresh
 
-- [ ] 59. Phase 1.7 Checkpoint - Expanded Resource Coverage Complete
-  - [ ] 59.1 Verify Resource Groups Tagging API integration `[Manual]`
+- [x] 59. Phase 1.7 Checkpoint - Expanded Resource Coverage Complete
+  - [x] 59.1 Verify Resource Groups Tagging API integration `[Manual]`
     - Test `check_tag_compliance` with `resource_types: ["all"]`
     - Verify resources from 10+ different AWS services are discovered
     - Confirm pagination works for accounts with 1000+ resources
     - _Requirements: 17.1, 17.2, 17.5_
 
-  - [ ] 59.2 Update documentation `[Haiku]`
+  - [x] 59.2 Update documentation `[Haiku]`
     - Update `docs/PHASE-1-SPECIFICATION.md` with expanded resource coverage
     - Update `docs/USER_MANUAL.md` with new `resource_types: ["all"]` option
     - Update `docs/ROADMAP.md` to mark Phase 1.7 as truly complete
     - _Files: docs/PHASE-1-SPECIFICATION.md, docs/USER_MANUAL.md, docs/ROADMAP.md_
 
-  - [ ] 59.3 Redeploy and verify `[Manual]`
+  - [x] 59.3 Redeploy and verify `[Manual]`
     - Rebuild Docker container with new code
     - Deploy to EC2 instance
     - Run quick smoke test with expanded resource coverage
     - Verify all 8 MCP tools respond correctly
 
-  - [ ] 59.4 Full UAT with Expanded Resource Coverage `[Manual]`
+  - [x] 59.4 Full UAT with Expanded Resource Coverage `[Manual]`
     - Update `docs/UAT_PROTOCOL.md` with new test scenarios:
       - Test `check_tag_compliance` with `resource_types: ["all"]`
       - Test `find_untagged_resources` with `resource_types: ["all"]`
@@ -1016,21 +1016,21 @@ Based on code assessment report (Quality Score: 7.5/10)
 Invalid resource types: ['all']. Valid types are: ['ec2:instance', 'ecs:service', 'lambda:function', 'rds:db', 's3:bucket']
 ```
 
-- [ ] 60. Add "all" Resource Type Support to get_cost_attribution_gap
-  - [ ] 60.1 Update input validation to allow "all" for cost attribution `[Sonnet]`
+- [x] 60. Add "all" Resource Type Support to get_cost_attribution_gap
+  - [x] 60.1 Update input validation to allow "all" for cost attribution `[Sonnet]`
     - Update `InputValidator.VALID_RESOURCE_TYPES` to include "all" (already done in Task 57)
     - Update `get_cost_attribution_gap` tool validation to accept "all"
     - _Files: mcp_server/tools/get_cost_attribution_gap.py_
     - _Requirements: 4.1, 17.3_
 
-  - [ ] 60.2 Implement total account spend retrieval in CostService `[Sonnet]`
+  - [x] 60.2 Implement total account spend retrieval in CostService `[Sonnet]`
     - Add `get_total_account_spend()` method to AWSClient
     - Query Cost Explorer without service filter to get total account spend
     - This captures ALL services including Bedrock, CloudWatch, Data Transfer, etc.
     - _Files: mcp_server/clients/aws_client.py_
     - _Requirements: 4.1, 4.4_
 
-  - [ ] 60.3 Update CostService.calculate_attribution_gap() for "all" mode `[Sonnet]`
+  - [x] 60.3 Update CostService.calculate_attribution_gap() for "all" mode `[Sonnet]`
     - When `resource_types` includes "all":
       1. Get total account spend from Cost Explorer (all services)
       2. Use Resource Groups Tagging API to get all tagged resources
@@ -1040,19 +1040,19 @@ Invalid resource types: ['all']. Valid types are: ['ec2:instance', 'ecs:service'
     - _Files: mcp_server/services/cost_service.py_
     - _Requirements: 4.1, 4.2, 4.3, 17.3_
 
-  - [ ] 60.4 Add unit tests for "all" resource type cost attribution `[Haiku]`
+  - [x] 60.4 Add unit tests for "all" resource type cost attribution `[Haiku]`
     - Test `get_cost_attribution_gap` with `resource_types: ["all"]`
     - Test that total account spend includes all services
     - Test gap calculation with mixed tagged/untagged resources
     - _Files: tests/unit/test_get_cost_attribution_gap.py, tests/unit/test_cost_service.py_
     - _Requirements: 4.1, 4.2_
 
-  - [ ] 60.5 Update documentation for "all" cost attribution `[Haiku]`
+  - [x] 60.5 Update documentation for "all" cost attribution `[Haiku]`
     - Update `docs/USER_MANUAL.md` with new capability
     - Add example: "What's my total cost attribution gap across all services?"
     - _Files: docs/USER_MANUAL.md_
 
-- [ ] 61. Phase 1.8 Checkpoint - Cost Attribution "All" Support Complete
+- [x] 61. Phase 1.8 Checkpoint - Cost Attribution "All" Support Complete
   - Test `get_cost_attribution_gap` with `resource_types: ["all"]`
   - Verify total account spend includes all AWS services
   - Verify gap calculation captures costs from Bedrock, CloudWatch, etc.
