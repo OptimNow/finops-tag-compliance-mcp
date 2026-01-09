@@ -393,6 +393,90 @@ async def test_calculate_attribution_gap_with_grouping_by_account(
 
 
 @pytest.mark.asyncio
+async def test_calculate_attribution_gap_with_grouping_by_service(
+    cost_service, mock_aws_client, mock_policy_service
+):
+    """Test cost attribution gap with grouping by service."""
+    # Setup: 2 EC2 instances, 1 RDS instance
+    ec2_resources = [
+        {
+            "resource_id": "i-123",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {"CostCenter": "Engineering"},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+        },
+        {
+            "resource_id": "i-456",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # Missing tags
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-456"
+        }
+    ]
+    
+    rds_resources = [
+        {
+            "resource_id": "db-789",
+            "resource_type": "rds:db",
+            "region": "us-east-1",
+            "tags": {"CostCenter": "Data"},  # Compliant
+            "arn": "arn:aws:rds:us-east-1:123456789012:db:db-789"
+        }
+    ]
+    
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=ec2_resources)
+    mock_aws_client.get_rds_instances = AsyncMock(return_value=rds_resources)
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-123": 300.0, "i-456": 300.0, "db-789": 400.0},
+        {
+            "Amazon Elastic Compute Cloud - Compute": 600.0,
+            "Amazon Relational Database Service": 400.0
+        },
+        "actual"
+    ))
+    
+    # Mock validation: i-123 and db-789 compliant, i-456 non-compliant
+    def mock_validate(resource_id, resource_type, region, tags, cost_impact):
+        if resource_id in ["i-123", "db-789"]:
+            return []
+        else:
+            return [
+                Violation(
+                    resource_id=resource_id,
+                    resource_type=resource_type,
+                    region=region,
+                    violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                    tag_name="CostCenter",
+                    severity=Severity.ERROR
+                )
+            ]
+    
+    mock_policy_service.validate_resource_tags = mock_validate
+    
+    result = await cost_service.calculate_attribution_gap(
+        resource_types=["ec2:instance", "rds:db"],
+        group_by="service"
+    )
+    
+    assert result.breakdown is not None
+    assert "ec2" in result.breakdown
+    assert "rds" in result.breakdown
+    
+    # EC2: 2 resources, 1 compliant ($300), 1 non-compliant ($300)
+    ec2_breakdown = result.breakdown["ec2"]
+    assert ec2_breakdown["total"] == 600.0
+    assert ec2_breakdown["attributable"] == 300.0
+    assert ec2_breakdown["gap"] == 300.0
+    
+    # RDS: 1 resource, compliant ($400)
+    rds_breakdown = result.breakdown["rds"]
+    assert rds_breakdown["total"] == 400.0
+    assert rds_breakdown["attributable"] == 400.0
+    assert rds_breakdown["gap"] == 0.0
+
+
+@pytest.mark.asyncio
 async def test_calculate_attribution_gap_with_custom_time_period(
     cost_service, mock_aws_client, mock_policy_service
 ):

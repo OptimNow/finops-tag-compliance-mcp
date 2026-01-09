@@ -759,9 +759,26 @@ If you see `compose build requires buildx 0.17 or later`:
 
 ```bash
 # Use docker build instead of docker-compose build
-docker build -t tagging-mcp-server .
-docker-compose up -d
+docker build -t tagging-mcp-server . --no-cache
 ```
+
+Then start containers manually (see EC2 update section below).
+
+### Container Name Conflict
+
+If you see `The container name "/tagging-redis" is already in use`:
+
+```bash
+# Remove the old containers first
+docker stop tagging-redis tagging-mcp-server 2>/dev/null
+docker rm tagging-redis tagging-mcp-server 2>/dev/null
+
+# Then start fresh
+docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
+docker run -d --name tagging-mcp-server ...
+```
+
+This happens when containers weren't properly removed before redeploying. The `docker-compose down` command may not remove containers that were started with `docker run`.
 
 ---
 
@@ -776,6 +793,14 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
+> **Note**: If you see `compose build requires buildx 0.17 or later`, use plain docker build instead:
+> ```bash
+> git pull origin main
+> docker-compose down
+> docker build -t finops-tag-compliance-mcp-mcp-server . --no-cache
+> docker-compose up -d
+> ```
+
 ### EC2
 
 ```bash
@@ -783,13 +808,18 @@ ssh -i your-key.pem ec2-user@$INSTANCE_IP
 cd ~/finops-tag-compliance-mcp
 git pull origin main
 
-# Stop and remove existing containers
-docker stop tagging-mcp-server tagging-redis
-docker rm tagging-mcp-server tagging-redis
+# Stop and remove existing containers (handles both docker-compose and docker run containers)
+docker stop tagging-mcp-server tagging-redis 2>/dev/null
+docker rm tagging-mcp-server tagging-redis 2>/dev/null
 
-# Rebuild and restart
-docker build -t tagging-mcp-server .
+# Rebuild the image
+# Note: Use docker build directly - Amazon Linux's docker-compose may have buildx version issues
+docker build -t tagging-mcp-server . --no-cache
+
+# Start Redis
 docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
+
+# Start MCP server
 docker run -d --name tagging-mcp-server \
   -p 8080:8080 \
   -e REDIS_URL=redis://172.17.0.1:6379/0 \
@@ -802,7 +832,13 @@ docker run -d --name tagging-mcp-server \
   tagging-mcp-server
 
 # Verify
+docker ps
 curl http://localhost:8080/health
+```
+
+**Quick one-liner for updates** (after initial setup):
+```bash
+git pull && docker stop tagging-mcp-server tagging-redis && docker rm tagging-mcp-server tagging-redis && docker build -t tagging-mcp-server . --no-cache && docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine && docker run -d --name tagging-mcp-server -p 8080:8080 -e REDIS_URL=redis://172.17.0.1:6379/0 -e AWS_REGION=us-east-1 -e ENVIRONMENT=production -v $(pwd)/policies:/app/policies:ro -v $(pwd)/data:/app/data -v $(pwd)/logs:/app/logs tagging-mcp-server && sleep 3 && curl http://localhost:8080/health
 ```
 
 ---

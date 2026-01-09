@@ -85,7 +85,7 @@ class InputValidator:
     VALID_REPORT_FORMATS = {"json", "csv", "markdown"}
     
     # Valid grouping options
-    VALID_GROUP_BY_OPTIONS = {"resource_type", "region", "account"}
+    VALID_GROUP_BY_OPTIONS = {"resource_type", "region", "account", "service"}
     
     # Valid history grouping options
     VALID_HISTORY_GROUP_BY = {"day", "week", "month"}

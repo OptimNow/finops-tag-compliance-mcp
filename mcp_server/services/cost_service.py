@@ -107,7 +107,7 @@ class CostService:
             resource_types: List of resource types to analyze (e.g., ["ec2:instance"])
                            Use ["all"] to analyze all services and resources
             time_period: Time period for cost data (e.g., {"Start": "2025-01-01", "End": "2025-01-31"})
-            group_by: Optional grouping dimension ("resource_type", "region", "account")
+            group_by: Optional grouping dimension ("resource_type", "region", "account", "service")
             filters: Optional filters for region, account_id
         
         Returns:
@@ -573,7 +573,7 @@ class CostService:
         
         Args:
             resource: Resource dictionary
-            group_by: Grouping dimension ("resource_type", "region", "account")
+            group_by: Grouping dimension ("resource_type", "region", "account", "service")
         
         Returns:
             Group key string
@@ -586,6 +586,12 @@ class CostService:
             # Extract account from ARN
             arn = resource.get("arn", "")
             return extract_account_from_arn(arn)
+        elif group_by == "service":
+            # Extract service from resource_type (e.g., "ec2:instance" -> "ec2")
+            resource_type = resource.get("resource_type", "unknown")
+            if ":" in resource_type:
+                return resource_type.split(":")[0]
+            return resource_type
         else:
             return "unknown"
     
