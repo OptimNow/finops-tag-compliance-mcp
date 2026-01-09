@@ -1272,9 +1272,14 @@ class MCPHandler:
         # Get actual cost attribution gap from cost service
         # The compliance service doesn't have per-resource cost data, so we need
         # to call the cost service to get the real cost attribution gap
-        if self.cost_service:
+        if self.aws_client and self.policy_service:
             try:
-                cost_result = await self.cost_service.calculate_attribution_gap(
+                from .services.cost_service import CostService
+                cost_service = CostService(
+                    aws_client=self.aws_client,
+                    policy_service=self.policy_service
+                )
+                cost_result = await cost_service.calculate_attribution_gap(
                     resource_types=arguments["resource_types"],
                     filters=arguments.get("filters"),
                 )
