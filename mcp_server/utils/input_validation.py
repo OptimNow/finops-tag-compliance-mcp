@@ -996,6 +996,19 @@ class InputValidator:
                 raise ValidationError(field_name, "Field is required")
             return default
         
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of strings
+        if isinstance(format, list):
+            if len(format) == 1 and isinstance(format[0], str):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {format}")
+                format = format[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a string, got {type(format).__name__}. "
+                    f"Valid formats: {sorted(cls.VALID_REPORT_FORMATS)}",
+                )
+        
         if not isinstance(format, str):
             raise ValidationError(
                 field_name,
@@ -1132,6 +1145,18 @@ class InputValidator:
             if required:
                 raise ValidationError(field_name, "Field is required")
             return None
+        
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of strings
+        if isinstance(value, list):
+            if len(value) == 1 and isinstance(value[0], str):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {value}")
+                value = value[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a string, got {type(value).__name__}",
+                )
         
         if not isinstance(value, str):
             raise ValidationError(
