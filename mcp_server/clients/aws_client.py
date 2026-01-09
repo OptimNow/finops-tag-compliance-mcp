@@ -743,12 +743,38 @@ class AWSClient:
             AWS service name as it appears in Cost Explorer
         """
         service_map = {
+            # Compute
             "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
-            "rds:db": "Amazon Relational Database Service",
-            "s3:bucket": "Amazon Simple Storage Service",
             "lambda:function": "AWS Lambda",
             "ecs:service": "Amazon Elastic Container Service",
+            # Database
+            "rds:db": "Amazon Relational Database Service",
+            "dynamodb:table": "Amazon DynamoDB",
+            # Storage
+            "s3:bucket": "Amazon Simple Storage Service",
+            # Analytics & AI/ML
             "opensearch:domain": "Amazon OpenSearch Service",
+            "glue:crawler": "AWS Glue",
+            "glue:job": "AWS Glue",
+            "glue:database": "AWS Glue",
+            "athena:workgroup": "Amazon Athena",
+            "bedrock:agent": "Amazon Bedrock",
+            "bedrock:knowledge-base": "Amazon Bedrock",
+            # Identity & Security
+            "cognito-idp:userpool": "Amazon Cognito",
+            "secretsmanager:secret": "AWS Secrets Manager",
+            "kms:key": "AWS Key Management Service",
+            # Monitoring & Logging
+            "logs:log-group": "Amazon CloudWatch",
+            "cloudwatch:alarm": "Amazon CloudWatch",
+            # Networking
+            "elasticloadbalancing:loadbalancer": "Elastic Load Balancing",
+            "elasticloadbalancing:targetgroup": "Elastic Load Balancing",
+            # Messaging
+            "sns:topic": "Amazon Simple Notification Service",
+            "sqs:queue": "Amazon Simple Queue Service",
+            # Containers
+            "ecr:repository": "Amazon EC2 Container Registry (ECR)",
         }
         return service_map.get(resource_type, "")
 
@@ -868,31 +894,46 @@ class AWSClient:
         """
         # Mapping from our format to AWS Resource Groups Tagging API format
         type_mapping = {
+            # Compute
             "ec2:instance": "ec2:instance",
-            "rds:db": "rds:db",
-            "s3:bucket": "s3",  # S3 uses just "s3" in the API
             "lambda:function": "lambda:function",
             "ecs:service": "ecs:service",
-            "opensearch:domain": "es:domain",  # OpenSearch uses "es" prefix
-            # Additional common resource types
+            # Database
+            "rds:db": "rds:db",
             "dynamodb:table": "dynamodb:table",
-            "sns:topic": "sns",
-            "sqs:queue": "sqs",
-            "elasticache:cluster": "elasticache:cluster",
-            "cloudwatch:alarm": "cloudwatch:alarm",
+            # Storage
+            "s3:bucket": "s3",  # S3 uses just "s3" in the API
+            # Analytics & AI/ML
+            "opensearch:domain": "es:domain",  # OpenSearch uses "es" prefix
+            "glue:crawler": "glue:crawler",
+            "glue:job": "glue:job",
+            "glue:database": "glue:database",
+            "athena:workgroup": "athena:workgroup",
+            "bedrock:agent": "bedrock:agent",
+            "bedrock:knowledge-base": "bedrock:knowledge-base",
+            # Identity & Security
+            "cognito-idp:userpool": "cognito-idp:userpool",
             "secretsmanager:secret": "secretsmanager:secret",
             "kms:key": "kms:key",
-            "ecr:repository": "ecr:repository",
-            "efs:file-system": "elasticfilesystem:file-system",
+            # Monitoring & Logging
+            "logs:log-group": "logs:log-group",
+            "cloudwatch:alarm": "cloudwatch:alarm",
+            # Networking
             "elasticloadbalancing:loadbalancer": "elasticloadbalancing:loadbalancer",
             "elasticloadbalancing:targetgroup": "elasticloadbalancing:targetgroup",
+            # Messaging
+            "sns:topic": "sns",
+            "sqs:queue": "sqs",
+            # Containers
+            "ecr:repository": "ecr:repository",
+            # Additional common resource types
+            "elasticache:cluster": "elasticache:cluster",
+            "efs:file-system": "elasticfilesystem:file-system",
             "apigateway:restapi": "apigateway",
             "cloudfront:distribution": "cloudfront:distribution",
             "route53:hostedzone": "route53:hostedzone",
             "kinesis:stream": "kinesis:stream",
-            "glue:database": "glue:database",
             "glue:table": "glue:table",
-            "athena:workgroup": "athena:workgroup",
             "redshift:cluster": "redshift:cluster",
             "emr:cluster": "elasticmapreduce:cluster",
             "stepfunctions:statemachine": "states:stateMachine",
@@ -1158,6 +1199,30 @@ class AWSClient:
                 return "cloudwatch:alarm", resource_part.split(":")[1]
             else:
                 return f"cloudwatch:{resource_part.split(':')[0]}", resource_part.split(":")[-1]
+        
+        elif service == "bedrock":
+            # Bedrock ARNs: arn:aws:bedrock:region:account:agent/agent-id
+            # or arn:aws:bedrock:region:account:knowledge-base/kb-id
+            if resource_part.startswith("agent/"):
+                return "bedrock:agent", resource_part.split("/")[1]
+            elif resource_part.startswith("knowledge-base/"):
+                return "bedrock:knowledge-base", resource_part.split("/")[1]
+            else:
+                return f"bedrock:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "cognito-idp":
+            # Cognito User Pool ARNs: arn:aws:cognito-idp:region:account:userpool/pool-id
+            if resource_part.startswith("userpool/"):
+                return "cognito-idp:userpool", resource_part.split("/")[1]
+            else:
+                return f"cognito-idp:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "cognito-identity":
+            # Cognito Identity Pool ARNs: arn:aws:cognito-identity:region:account:identitypool/pool-id
+            if resource_part.startswith("identitypool/"):
+                return "cognito-identity:identitypool", resource_part.split("/")[1]
+            else:
+                return f"cognito-identity:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
         
         # Default: use service name and full resource part
         return f"{service}:resource", resource_part

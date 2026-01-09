@@ -17,55 +17,111 @@ logger = logging.getLogger(__name__)
 
 # Resource types supported by individual service APIs
 SUPPORTED_RESOURCE_TYPES = [
+    # Compute
     "ec2:instance",
-    "rds:db",
-    "s3:bucket",
     "lambda:function",
     "ecs:service",
+    # Database
+    "rds:db",
+    "dynamodb:table",
+    # Storage
+    "s3:bucket",
+    # Analytics & AI/ML
     "opensearch:domain",
+    "glue:crawler",
+    "glue:job",
+    "glue:database",
+    "athena:workgroup",
+    "bedrock:agent",
+    "bedrock:knowledge-base",
+    # Identity & Security
+    "cognito-idp:userpool",
+    "secretsmanager:secret",
+    "kms:key",
+    # Monitoring & Logging
+    "logs:log-group",
+    "cloudwatch:alarm",
+    # Networking
+    "elasticloadbalancing:loadbalancer",
+    "elasticloadbalancing:targetgroup",
+    # Messaging
+    "sns:topic",
+    "sqs:queue",
+    # Containers
+    "ecr:repository",
 ]
 
 # Resource types that can be discovered via Resource Groups Tagging API
 # This is a much larger set including DynamoDB, SNS, SQS, etc.
+# NOTE: This API only returns resources that have at least one tag!
 TAGGING_API_RESOURCE_TYPES = [
+    # EC2
     "ec2:instance",
     "ec2:volume",
     "ec2:vpc",
     "ec2:subnet",
     "ec2:security-group",
     "ec2:snapshot",
+    # RDS
     "rds:db",
     "rds:cluster",
+    # S3
     "s3:bucket",
+    # Lambda
     "lambda:function",
+    # ECS
     "ecs:service",
     "ecs:cluster",
+    # OpenSearch
     "opensearch:domain",
+    # DynamoDB
     "dynamodb:table",
+    # Messaging
     "sns:topic",
     "sqs:queue",
+    # Caching
     "elasticache:cluster",
     "elasticache:replicationgroup",
+    # Security
     "secretsmanager:secret",
     "kms:key",
+    # Containers
     "ecr:repository",
+    # Storage
     "efs:file-system",
+    # Load Balancing
     "elasticloadbalancing:loadbalancer",
     "elasticloadbalancing:targetgroup",
+    # API Gateway
     "apigateway:restapi",
+    # CDN
     "cloudfront:distribution",
+    # DNS
     "route53:hostedzone",
+    # Streaming
     "kinesis:stream",
+    # Analytics
     "glue:database",
     "glue:table",
+    "glue:crawler",
+    "glue:job",
     "athena:workgroup",
     "redshift:cluster",
     "emr:cluster",
+    # Orchestration
     "stepfunctions:statemachine",
+    # CI/CD
     "codebuild:project",
     "codepipeline:pipeline",
+    # Monitoring
     "logs:log-group",
     "cloudwatch:alarm",
+    # AI/ML
+    "bedrock:agent",
+    "bedrock:knowledge-base",
+    # Identity
+    "cognito-idp:userpool",
+    "cognito-identity:identitypool",
 ]
 
 

@@ -68,14 +68,42 @@ class InputValidator:
     
     # Valid resource types
     # "all" uses Resource Groups Tagging API to scan all tagged resources
+    # NOTE: "all" only discovers resources with at least one tag!
+    # For resources with ZERO tags, use specific resource types instead.
     VALID_RESOURCE_TYPES = {
         "all",
+        # Compute
         "ec2:instance",
-        "rds:db",
-        "s3:bucket",
         "lambda:function",
         "ecs:service",
+        # Database
+        "rds:db",
+        "dynamodb:table",
+        # Storage
+        "s3:bucket",
+        # Analytics & AI/ML
         "opensearch:domain",
+        "glue:crawler",
+        "glue:job",
+        "glue:database",
+        "athena:workgroup",
+        "bedrock:agent",
+        "bedrock:knowledge-base",
+        # Identity & Security
+        "cognito-idp:userpool",
+        "secretsmanager:secret",
+        "kms:key",
+        # Monitoring & Logging
+        "logs:log-group",
+        "cloudwatch:alarm",
+        # Networking
+        "elasticloadbalancing:loadbalancer",
+        "elasticloadbalancing:targetgroup",
+        # Messaging
+        "sns:topic",
+        "sqs:queue",
+        # Containers
+        "ecr:repository",
     }
     
     # Valid severity levels
