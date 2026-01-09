@@ -996,6 +996,17 @@ class InputValidator:
         
         valid_opts = valid_options or cls.VALID_GROUP_BY_OPTIONS
         
+        # Handle case where AI agent passes JSON string like '["resource_type"]'
+        if isinstance(group_by, str) and group_by.startswith("[") and group_by.endswith("]"):
+            import json
+            try:
+                parsed = json.loads(group_by)
+                if isinstance(parsed, list) and len(parsed) == 1 and isinstance(parsed[0], str):
+                    logger.debug(f"Auto-unwrapping JSON array string for {field_name}: {group_by}")
+                    group_by = parsed[0]
+            except json.JSONDecodeError:
+                pass  # Not valid JSON, continue with normal validation
+        
         # Handle case where AI agent wraps value in array (common mistake)
         # Extract first element if it's a single-element array of strings
         if isinstance(group_by, list):

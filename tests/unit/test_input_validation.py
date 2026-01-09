@@ -1066,6 +1066,21 @@ class TestArrayUnwrapping:
         result = InputValidator.validate_group_by(["region"])
         assert result == "region"
     
+    def test_validate_group_by_unwraps_json_string_array(self):
+        """Test that group_by validator unwraps JSON string arrays.
+        
+        AI agents sometimes pass '["resource_type"]' as a string instead of
+        an actual array. This test ensures we handle that case.
+        """
+        result = InputValidator.validate_group_by('["resource_type"]')
+        assert result == "resource_type"
+        
+        result = InputValidator.validate_group_by('["region"]')
+        assert result == "region"
+        
+        result = InputValidator.validate_group_by('["service"]')
+        assert result == "service"
+    
     def test_validate_group_by_rejects_multi_element_array(self):
         """Test that group_by validator rejects multi-element arrays."""
         with pytest.raises(ValidationError) as exc_info:
