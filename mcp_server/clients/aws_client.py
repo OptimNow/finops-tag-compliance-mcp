@@ -743,23 +743,43 @@ class AWSClient:
             AWS service name as it appears in Cost Explorer
         """
         service_map = {
-            # Compute
+            # Compute (40-60% of typical spend)
             "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+            "ec2:volume": "Amazon Elastic Compute Cloud - Compute",
+            "ec2:natgateway": "EC2 - Other",
+            "ec2:vpc": "Amazon Virtual Private Cloud",
+            "ec2:subnet": "Amazon Virtual Private Cloud",
+            "ec2:security-group": "Amazon Virtual Private Cloud",
             "lambda:function": "AWS Lambda",
+            "ecs:cluster": "Amazon Elastic Container Service",
             "ecs:service": "Amazon Elastic Container Service",
-            # Database
+            "ecs:task-definition": "Amazon Elastic Container Service",
+            "eks:cluster": "Amazon Elastic Kubernetes Service",
+            "eks:nodegroup": "Amazon Elastic Kubernetes Service",
+            # Storage (10-20% of typical spend)
+            "s3:bucket": "Amazon Simple Storage Service",
+            "elasticfilesystem:file-system": "Amazon Elastic File System",
+            "fsx:file-system": "Amazon FSx",
+            # Database (15-25% of typical spend)
             "rds:db": "Amazon Relational Database Service",
             "dynamodb:table": "Amazon DynamoDB",
-            # Storage
-            "s3:bucket": "Amazon Simple Storage Service",
-            # Analytics & AI/ML
-            "opensearch:domain": "Amazon OpenSearch Service",
-            "glue:crawler": "AWS Glue",
-            "glue:job": "AWS Glue",
-            "glue:database": "AWS Glue",
-            "athena:workgroup": "Amazon Athena",
+            "elasticache:cluster": "Amazon ElastiCache",
+            "redshift:cluster": "Amazon Redshift",
+            # AI/ML (Growing rapidly)
+            "sagemaker:endpoint": "Amazon SageMaker",
+            "sagemaker:notebook-instance": "Amazon SageMaker",
             "bedrock:agent": "Amazon Bedrock",
             "bedrock:knowledge-base": "Amazon Bedrock",
+            # Networking (Often overlooked)
+            "elasticloadbalancing:loadbalancer": "Elastic Load Balancing",
+            "elasticloadbalancing:targetgroup": "Elastic Load Balancing",
+            # Analytics (Data & streaming)
+            "kinesis:stream": "Amazon Kinesis",
+            "glue:job": "AWS Glue",
+            "glue:crawler": "AWS Glue",
+            "glue:database": "AWS Glue",
+            "athena:workgroup": "Amazon Athena",
+            "opensearch:domain": "Amazon OpenSearch Service",
             # Identity & Security
             "cognito-idp:userpool": "Amazon Cognito",
             "secretsmanager:secret": "AWS Secrets Manager",
@@ -767,9 +787,6 @@ class AWSClient:
             # Monitoring & Logging
             "logs:log-group": "Amazon CloudWatch",
             "cloudwatch:alarm": "Amazon CloudWatch",
-            # Networking
-            "elasticloadbalancing:loadbalancer": "Elastic Load Balancing",
-            "elasticloadbalancing:targetgroup": "Elastic Load Balancing",
             # Messaging
             "sns:topic": "Amazon Simple Notification Service",
             "sqs:queue": "Amazon Simple Queue Service",
@@ -894,23 +911,43 @@ class AWSClient:
         """
         # Mapping from our format to AWS Resource Groups Tagging API format
         type_mapping = {
-            # Compute
+            # Compute (40-60% of typical spend)
             "ec2:instance": "ec2:instance",
+            "ec2:volume": "ec2:volume",
+            "ec2:natgateway": "ec2:natgateway",
+            "ec2:vpc": "ec2:vpc",
+            "ec2:subnet": "ec2:subnet",
+            "ec2:security-group": "ec2:security-group",
             "lambda:function": "lambda:function",
+            "ecs:cluster": "ecs:cluster",
             "ecs:service": "ecs:service",
-            # Database
+            "ecs:task-definition": "ecs:task-definition",
+            "eks:cluster": "eks:cluster",
+            "eks:nodegroup": "eks:nodegroup",
+            # Storage (10-20% of typical spend)
+            "s3:bucket": "s3",  # S3 uses just "s3" in the API
+            "elasticfilesystem:file-system": "elasticfilesystem:file-system",
+            "fsx:file-system": "fsx:file-system",
+            # Database (15-25% of typical spend)
             "rds:db": "rds:db",
             "dynamodb:table": "dynamodb:table",
-            # Storage
-            "s3:bucket": "s3",  # S3 uses just "s3" in the API
-            # Analytics & AI/ML
-            "opensearch:domain": "es:domain",  # OpenSearch uses "es" prefix
-            "glue:crawler": "glue:crawler",
-            "glue:job": "glue:job",
-            "glue:database": "glue:database",
-            "athena:workgroup": "athena:workgroup",
+            "elasticache:cluster": "elasticache:cluster",
+            "redshift:cluster": "redshift:cluster",
+            # AI/ML (Growing rapidly)
+            "sagemaker:endpoint": "sagemaker:endpoint",
+            "sagemaker:notebook-instance": "sagemaker:notebook-instance",
             "bedrock:agent": "bedrock:agent",
             "bedrock:knowledge-base": "bedrock:knowledge-base",
+            # Networking (Often overlooked)
+            "elasticloadbalancing:loadbalancer": "elasticloadbalancing:loadbalancer",
+            "elasticloadbalancing:targetgroup": "elasticloadbalancing:targetgroup",
+            # Analytics (Data & streaming)
+            "kinesis:stream": "kinesis:stream",
+            "glue:job": "glue:job",
+            "glue:crawler": "glue:crawler",
+            "glue:database": "glue:database",
+            "athena:workgroup": "athena:workgroup",
+            "opensearch:domain": "es:domain",  # OpenSearch uses "es" prefix
             # Identity & Security
             "cognito-idp:userpool": "cognito-idp:userpool",
             "secretsmanager:secret": "secretsmanager:secret",
@@ -918,23 +955,17 @@ class AWSClient:
             # Monitoring & Logging
             "logs:log-group": "logs:log-group",
             "cloudwatch:alarm": "cloudwatch:alarm",
-            # Networking
-            "elasticloadbalancing:loadbalancer": "elasticloadbalancing:loadbalancer",
-            "elasticloadbalancing:targetgroup": "elasticloadbalancing:targetgroup",
             # Messaging
             "sns:topic": "sns",
             "sqs:queue": "sqs",
             # Containers
             "ecr:repository": "ecr:repository",
-            # Additional common resource types
-            "elasticache:cluster": "elasticache:cluster",
+            # Additional common resource types (legacy mappings)
             "efs:file-system": "elasticfilesystem:file-system",
             "apigateway:restapi": "apigateway",
             "cloudfront:distribution": "cloudfront:distribution",
             "route53:hostedzone": "route53:hostedzone",
-            "kinesis:stream": "kinesis:stream",
             "glue:table": "glue:table",
-            "redshift:cluster": "redshift:cluster",
             "emr:cluster": "elasticmapreduce:cluster",
             "stepfunctions:statemachine": "states:stateMachine",
             "codebuild:project": "codebuild:project",
@@ -1020,6 +1051,8 @@ class AWSClient:
                 return "ec2:subnet", resource_part.split("/")[1]
             elif resource_part.startswith("security-group/"):
                 return "ec2:security-group", resource_part.split("/")[1]
+            elif resource_part.startswith("natgateway/"):
+                return "ec2:natgateway", resource_part.split("/")[1]
             elif resource_part.startswith("snapshot/"):
                 return "ec2:snapshot", resource_part.split("/")[1]
             elif resource_part.startswith("image/"):
@@ -1060,8 +1093,40 @@ class AWSClient:
                 return "ecs:cluster", resource_part.split("/")[1]
             elif resource_part.startswith("task/"):
                 return "ecs:task", resource_part.split("/")[-1]
+            elif resource_part.startswith("task-definition/"):
+                return "ecs:task-definition", resource_part.split("/")[1].split(":")[0]
             else:
                 return f"ecs:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "eks":
+            if resource_part.startswith("cluster/"):
+                return "eks:cluster", resource_part.split("/")[1]
+            elif resource_part.startswith("nodegroup/"):
+                # Format: nodegroup/cluster-name/nodegroup-name/id
+                parts = resource_part.split("/")
+                return "eks:nodegroup", parts[2] if len(parts) > 2 else parts[-1]
+            else:
+                return f"eks:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "sagemaker":
+            if resource_part.startswith("endpoint/"):
+                return "sagemaker:endpoint", resource_part.split("/")[1]
+            elif resource_part.startswith("notebook-instance/"):
+                return "sagemaker:notebook-instance", resource_part.split("/")[1]
+            elif resource_part.startswith("training-job/"):
+                return "sagemaker:training-job", resource_part.split("/")[1]
+            elif resource_part.startswith("model/"):
+                return "sagemaker:model", resource_part.split("/")[1]
+            else:
+                return f"sagemaker:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
+        
+        elif service == "fsx":
+            if resource_part.startswith("file-system/"):
+                return "fsx:file-system", resource_part.split("/")[1]
+            elif resource_part.startswith("backup/"):
+                return "fsx:backup", resource_part.split("/")[1]
+            else:
+                return f"fsx:{resource_part.split('/')[0]}", resource_part.split("/")[-1]
         
         elif service == "es" or service == "opensearch":
             if resource_part.startswith("domain/"):

@@ -72,23 +72,43 @@ class InputValidator:
     # For resources with ZERO tags, use specific resource types instead.
     VALID_RESOURCE_TYPES = {
         "all",
-        # Compute
+        # Compute (40-60% of typical spend)
         "ec2:instance",
+        "ec2:volume",
         "lambda:function",
+        "ecs:cluster",
         "ecs:service",
-        # Database
+        "ecs:task-definition",
+        "eks:cluster",
+        "eks:nodegroup",
+        # Storage (10-20% of typical spend)
+        "s3:bucket",
+        "elasticfilesystem:file-system",  # EFS
+        "fsx:file-system",
+        # Database (15-25% of typical spend)
         "rds:db",
         "dynamodb:table",
-        # Storage
-        "s3:bucket",
-        # Analytics & AI/ML
-        "opensearch:domain",
-        "glue:crawler",
-        "glue:job",
-        "glue:database",
-        "athena:workgroup",
+        "elasticache:cluster",
+        "redshift:cluster",
+        # AI/ML (Growing rapidly)
+        "sagemaker:endpoint",
+        "sagemaker:notebook-instance",
         "bedrock:agent",
         "bedrock:knowledge-base",
+        # Networking (Often overlooked)
+        "elasticloadbalancing:loadbalancer",
+        "elasticloadbalancing:targetgroup",
+        "ec2:natgateway",
+        "ec2:vpc",
+        "ec2:subnet",
+        "ec2:security-group",
+        # Analytics (Data & streaming)
+        "kinesis:stream",
+        "glue:job",
+        "glue:crawler",
+        "glue:database",
+        "athena:workgroup",
+        "opensearch:domain",
         # Identity & Security
         "cognito-idp:userpool",
         "secretsmanager:secret",
@@ -96,9 +116,6 @@ class InputValidator:
         # Monitoring & Logging
         "logs:log-group",
         "cloudwatch:alarm",
-        # Networking
-        "elasticloadbalancing:loadbalancer",
-        "elasticloadbalancing:targetgroup",
         # Messaging
         "sns:topic",
         "sqs:queue",

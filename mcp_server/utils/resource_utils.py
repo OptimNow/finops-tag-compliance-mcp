@@ -17,23 +17,43 @@ logger = logging.getLogger(__name__)
 
 # Resource types supported by individual service APIs
 SUPPORTED_RESOURCE_TYPES = [
-    # Compute
+    # Compute (40-60% of typical spend)
     "ec2:instance",
+    "ec2:volume",
     "lambda:function",
+    "ecs:cluster",
     "ecs:service",
-    # Database
+    "ecs:task-definition",
+    "eks:cluster",
+    "eks:nodegroup",
+    # Storage (10-20% of typical spend)
+    "s3:bucket",
+    "elasticfilesystem:file-system",
+    "fsx:file-system",
+    # Database (15-25% of typical spend)
     "rds:db",
     "dynamodb:table",
-    # Storage
-    "s3:bucket",
-    # Analytics & AI/ML
-    "opensearch:domain",
-    "glue:crawler",
-    "glue:job",
-    "glue:database",
-    "athena:workgroup",
+    "elasticache:cluster",
+    "redshift:cluster",
+    # AI/ML (Growing rapidly)
+    "sagemaker:endpoint",
+    "sagemaker:notebook-instance",
     "bedrock:agent",
     "bedrock:knowledge-base",
+    # Networking (Often overlooked)
+    "elasticloadbalancing:loadbalancer",
+    "elasticloadbalancing:targetgroup",
+    "ec2:natgateway",
+    "ec2:vpc",
+    "ec2:subnet",
+    "ec2:security-group",
+    # Analytics (Data & streaming)
+    "kinesis:stream",
+    "glue:job",
+    "glue:crawler",
+    "glue:database",
+    "athena:workgroup",
+    "opensearch:domain",
     # Identity & Security
     "cognito-idp:userpool",
     "secretsmanager:secret",
@@ -41,9 +61,6 @@ SUPPORTED_RESOURCE_TYPES = [
     # Monitoring & Logging
     "logs:log-group",
     "cloudwatch:alarm",
-    # Networking
-    "elasticloadbalancing:loadbalancer",
-    "elasticloadbalancing:targetgroup",
     # Messaging
     "sns:topic",
     "sqs:queue",
@@ -55,73 +72,72 @@ SUPPORTED_RESOURCE_TYPES = [
 # This is a much larger set including DynamoDB, SNS, SQS, etc.
 # NOTE: This API only returns resources that have at least one tag!
 TAGGING_API_RESOURCE_TYPES = [
-    # EC2
+    # Compute (40-60% of typical spend)
     "ec2:instance",
     "ec2:volume",
     "ec2:vpc",
     "ec2:subnet",
     "ec2:security-group",
+    "ec2:natgateway",
     "ec2:snapshot",
-    # RDS
+    "lambda:function",
+    "ecs:cluster",
+    "ecs:service",
+    "ecs:task-definition",
+    "eks:cluster",
+    "eks:nodegroup",
+    # Storage (10-20% of typical spend)
+    "s3:bucket",
+    "elasticfilesystem:file-system",
+    "fsx:file-system",
+    # Database (15-25% of typical spend)
     "rds:db",
     "rds:cluster",
-    # S3
-    "s3:bucket",
-    # Lambda
-    "lambda:function",
-    # ECS
-    "ecs:service",
-    "ecs:cluster",
-    # OpenSearch
-    "opensearch:domain",
-    # DynamoDB
     "dynamodb:table",
+    "elasticache:cluster",
+    "elasticache:replicationgroup",
+    "redshift:cluster",
+    # AI/ML (Growing rapidly)
+    "sagemaker:endpoint",
+    "sagemaker:notebook-instance",
+    "bedrock:agent",
+    "bedrock:knowledge-base",
+    # Networking (Often overlooked)
+    "elasticloadbalancing:loadbalancer",
+    "elasticloadbalancing:targetgroup",
+    # Analytics (Data & streaming)
+    "kinesis:stream",
+    "glue:database",
+    "glue:table",
+    "glue:crawler",
+    "glue:job",
+    "athena:workgroup",
+    "opensearch:domain",
+    "emr:cluster",
+    # Identity & Security
+    "cognito-idp:userpool",
+    "cognito-identity:identitypool",
+    "secretsmanager:secret",
+    "kms:key",
+    # Monitoring & Logging
+    "logs:log-group",
+    "cloudwatch:alarm",
     # Messaging
     "sns:topic",
     "sqs:queue",
-    # Caching
-    "elasticache:cluster",
-    "elasticache:replicationgroup",
-    # Security
-    "secretsmanager:secret",
-    "kms:key",
     # Containers
     "ecr:repository",
-    # Storage
-    "efs:file-system",
-    # Load Balancing
-    "elasticloadbalancing:loadbalancer",
-    "elasticloadbalancing:targetgroup",
     # API Gateway
     "apigateway:restapi",
     # CDN
     "cloudfront:distribution",
     # DNS
     "route53:hostedzone",
-    # Streaming
-    "kinesis:stream",
-    # Analytics
-    "glue:database",
-    "glue:table",
-    "glue:crawler",
-    "glue:job",
-    "athena:workgroup",
-    "redshift:cluster",
-    "emr:cluster",
     # Orchestration
     "stepfunctions:statemachine",
     # CI/CD
     "codebuild:project",
     "codepipeline:pipeline",
-    # Monitoring
-    "logs:log-group",
-    "cloudwatch:alarm",
-    # AI/ML
-    "bedrock:agent",
-    "bedrock:knowledge-base",
-    # Identity
-    "cognito-idp:userpool",
-    "cognito-identity:identitypool",
 ]
 
 
