@@ -263,6 +263,20 @@ class TestInputSchemaValidationProperty:
         assert "invalid" in error.message.lower()
         assert severity in error.message
 
+    @given(severity=valid_severity)
+    @settings(max_examples=100, deadline=None)
+    def test_property_17_severity_array_unwrapping(self, severity: str):
+        """
+        Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
+        Validates: Requirements 16.3
+        
+        For any valid severity value wrapped in a single-element array,
+        validation SHALL auto-unwrap and accept it (AI agent tolerance).
+        """
+        # AI agents sometimes wrap values in arrays - we should be forgiving
+        result = InputValidator.validate_severity([severity])
+        assert result == severity
+
     @given(arns=st.lists(valid_arn, min_size=1, max_size=10, unique=True))
     @settings(max_examples=100, deadline=None)
     def test_property_17_valid_arns_accepted(self, arns: list[str]):

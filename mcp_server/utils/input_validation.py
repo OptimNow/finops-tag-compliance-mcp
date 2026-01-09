@@ -725,6 +725,19 @@ class InputValidator:
                 raise ValidationError(field_name, "Field is required")
             return default
         
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of strings
+        if isinstance(severity, list):
+            if len(severity) == 1 and isinstance(severity[0], str):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {severity}")
+                severity = severity[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a string, got {type(severity).__name__}. "
+                    f"Valid values: {sorted(cls.VALID_SEVERITIES)}",
+                )
+        
         if not isinstance(severity, str):
             raise ValidationError(
                 field_name,
