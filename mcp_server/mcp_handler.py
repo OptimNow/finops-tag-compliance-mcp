@@ -1028,19 +1028,39 @@ class MCPHandler:
             )
         
         except Exception as e:
-            logger.error(f"Error invoking tool {name}: {str(e)}")
+            # Sanitize error before returning to client (Requirement 16.5)
+            from .utils.error_sanitization import sanitize_exception, log_error_safely
             
-            # Log failure
+            # Log full error internally
+            log_error_safely(
+                e,
+                context={
+                    "tool_name": name,
+                    "session_id": session_id,
+                },
+                logger_instance=logger,
+            )
+            
+            # Sanitize for client response
+            sanitized = sanitize_exception(e)
+            
+            # Log failure with sanitized message
             if self.audit_service:
                 self.audit_service.log_invocation(
                     tool_name=name,
                     parameters=arguments,
                     status=AuditStatus.FAILURE,
-                    error_message=str(e),
+                    error_message=sanitized.internal_message,  # Use internal message for audit
                 )
             
             return MCPToolResult(
-                content=[{"type": "text", "text": f"Error: {str(e)}"}],
+                content=[{
+                    "type": "text",
+                    "text": json.dumps({
+                        "error": sanitized.error_code,
+                        "message": sanitized.user_message,
+                    }),
+                }],
                 is_error=True,
             )
     

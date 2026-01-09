@@ -282,11 +282,13 @@ app = FastAPI(
 
 # Add CORS middleware for cross-origin requests
 # This allows AI assistants like Claude Desktop to communicate with the server
+# NOTE: In production, restrict allow_origins to specific trusted domains
+# Using allow_credentials=False since MCP protocol doesn't use cookies/auth headers
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for MCP protocol
-    allow_credentials=True,
-    allow_methods=["*"],
+    allow_origins=["*"],  # Allow all origins for MCP protocol (stateless API)
+    allow_credentials=False,  # Disabled - MCP doesn't use cookies/credentials
+    allow_methods=["GET", "POST"],  # Only methods we actually use
     allow_headers=["*"],
 )
 

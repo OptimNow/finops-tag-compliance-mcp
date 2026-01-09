@@ -414,7 +414,11 @@ class TestMCPErrorHandling:
     
     @pytest.mark.asyncio
     async def test_service_not_initialized_error(self):
-        """Test error when service is not initialized."""
+        """Test error when service is not initialized.
+        
+        Errors are now sanitized to prevent information leakage.
+        The raw error message is logged internally but not exposed to clients.
+        """
         # Create handler without compliance service
         handler = MCPHandler(
             aws_client=None,
@@ -430,7 +434,13 @@ class TestMCPErrorHandling:
         )
         
         assert result.is_error
-        assert "not initialized" in result.content[0]["text"]
+        # Error is now sanitized - should return generic error message
+        # instead of exposing internal details like "not initialized"
+        error_data = json.loads(result.content[0]["text"])
+        assert "error" in error_data
+        assert "message" in error_data
+        # Should NOT contain internal details
+        assert "not initialized" not in result.content[0]["text"]
     
     @pytest.mark.asyncio
     async def test_validation_error_returns_meaningful_message(self, mcp_handler):
