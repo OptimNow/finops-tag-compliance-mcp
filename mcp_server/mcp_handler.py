@@ -1269,6 +1269,22 @@ class MCPHandler:
             history_service=self.history_service,
         )
         
+        # Get actual cost attribution gap from cost service
+        # The compliance service doesn't have per-resource cost data, so we need
+        # to call the cost service to get the real cost attribution gap
+        if self.cost_service:
+            try:
+                cost_result = await self.cost_service.calculate_attribution_gap(
+                    resource_types=arguments["resource_types"],
+                    filters=arguments.get("filters"),
+                )
+                # Update the compliance result with the actual cost attribution gap
+                compliance_result.cost_attribution_gap = cost_result.attribution_gap
+                logger.info(f"Updated cost_attribution_gap from cost service: ${cost_result.attribution_gap:.2f}")
+            except Exception as e:
+                # Log but don't fail - report can still be generated without cost data
+                logger.warning(f"Failed to get cost attribution gap: {str(e)}")
+        
         # Then generate the report
         result = await generate_compliance_report(
             compliance_result=compliance_result,
