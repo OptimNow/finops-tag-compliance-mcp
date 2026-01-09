@@ -510,7 +510,8 @@ async def test_calculate_attribution_gap_with_custom_time_period(
     )
     
     # Verify cost data was called with custom time period
-    mock_aws_client.get_cost_data_by_resource.assert_called_once()
+    # The comprehensive method calls get_cost_data_by_resource for per-resource costs
+    assert mock_aws_client.get_cost_data_by_resource.called
     call_args = mock_aws_client.get_cost_data_by_resource.call_args
     assert call_args[1]["time_period"] == custom_period
 

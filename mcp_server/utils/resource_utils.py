@@ -16,6 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 # Resource types supported by individual service APIs
+# These are the HIGH-VALUE resource types that typically drive cloud costs
+# When "all" is specified, we scan ALL of these types individually
 SUPPORTED_RESOURCE_TYPES = [
     # Compute (40-60% of typical spend)
     "ec2:instance",
@@ -67,6 +69,34 @@ SUPPORTED_RESOURCE_TYPES = [
     # Containers
     "ecr:repository",
 ]
+
+
+def expand_all_to_supported_types(resource_types: list[str]) -> list[str]:
+    """
+    Expand "all" to the full list of supported resource types.
+    
+    When users specify "all", we expand it to scan all supported resource types
+    individually. This catches resources with ZERO tags (unlike the Tagging API
+    which only returns resources with at least one tag).
+    
+    Args:
+        resource_types: List of resource types, may contain "all"
+    
+    Returns:
+        Expanded list with "all" replaced by all supported types
+    """
+    if "all" not in resource_types:
+        return resource_types
+    
+    # Start with all supported types
+    expanded = set(SUPPORTED_RESOURCE_TYPES)
+    
+    # Add any other specific types that were requested alongside "all"
+    for rt in resource_types:
+        if rt != "all":
+            expanded.add(rt)
+    
+    return list(expanded)
 
 # Resource types that can be discovered via Resource Groups Tagging API
 # This is a much larger set including DynamoDB, SNS, SQS, etc.
@@ -151,20 +181,19 @@ async def fetch_resources_by_type(
     
     Supports two modes:
     1. Individual service APIs (ec2:instance, rds:db, etc.) - more detailed info
-    2. Resource Groups Tagging API ("all") - discovers 50+ resource types
+    2. Resource Groups Tagging API (fallback for unsupported types)
+    
+    NOTE: "all" should be expanded BEFORE calling this function using
+    expand_all_to_supported_types(). This function handles individual types.
     
     Args:
         aws_client: AWS client instance with resource fetching methods
-        resource_type: Type of resource (e.g., "ec2:instance", "rds:db", "all")
+        resource_type: Type of resource (e.g., "ec2:instance", "rds:db")
         filters: Optional filters for the query
     
     Returns:
         List of resource dictionaries with tags
     """
-    # Special case: "all" uses Resource Groups Tagging API
-    if resource_type == "all":
-        return await fetch_all_resources_via_tagging_api(aws_client, filters)
-    
     # Map resource types to AWS client methods
     resource_fetchers = {
         "ec2:instance": aws_client.get_ec2_instances,
@@ -177,7 +206,7 @@ async def fetch_resources_by_type(
     
     fetcher = resource_fetchers.get(resource_type)
     if not fetcher:
-        # Try Resource Groups Tagging API for unknown types
+        # Try Resource Groups Tagging API for types without direct fetchers
         logger.info(f"Resource type {resource_type} not in direct fetchers, trying Tagging API")
         return await fetch_resources_via_tagging_api(aws_client, [resource_type], filters)
     

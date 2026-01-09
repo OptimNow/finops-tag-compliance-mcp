@@ -67,11 +67,10 @@ class InputValidator:
     """
     
     # Valid resource types
-    # "all" uses Resource Groups Tagging API to scan all tagged resources
-    # NOTE: "all" only discovers resources with at least one tag!
-    # For resources with ZERO tags, use specific resource types instead.
+    # "all" expands to scan all supported resource types individually
+    # This catches resources with ZERO tags (unlike the Tagging API)
     VALID_RESOURCE_TYPES = {
-        "all",
+        "all",  # Expands to all supported types below
         # Compute (40-60% of typical spend)
         "ec2:instance",
         "ec2:volume",

@@ -10,7 +10,7 @@ from typing import Optional
 
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
-from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn
+from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn, expand_all_to_supported_types
 
 logger = logging.getLogger(__name__)
 
@@ -91,21 +91,22 @@ class CostService:
         be allocated to teams/projects because resources lack proper tags.
         
         Process:
-        1. Fetch all resources of specified types
-        2. Get cost data from Cost Explorer for the time period
-        3. Map costs to resources (per-resource for EC2/RDS, service average for others)
-        4. Validate each resource's tags against policy
-        5. Calculate total spend vs. attributable spend
-        6. If grouping specified, break down gap by dimension
+        1. Expand "all" to all supported resource types (if specified)
+        2. Fetch all resources of specified types individually
+        3. Get cost data from Cost Explorer for the time period
+        4. Map costs to resources (per-resource for EC2/RDS, service average for others)
+        5. Validate each resource's tags against policy
+        6. Calculate total spend vs. attributable spend
+        7. If grouping specified, break down gap by dimension
         
         When resource_types includes "all":
-        - Uses total account spend from Cost Explorer (captures ALL services)
-        - Uses Resource Groups Tagging API to discover all tagged resources
-        - This captures costs from Bedrock, CloudWatch, Data Transfer, etc.
+        - Expands to scan ALL 30+ supported resource types individually
+        - This catches resources with ZERO tags (unlike the Tagging API)
+        - Uses total account spend from Cost Explorer for accurate gap calculation
         
         Args:
             resource_types: List of resource types to analyze (e.g., ["ec2:instance"])
-                           Use ["all"] to analyze all services and resources
+                           Use ["all"] to analyze all supported resource types
             time_period: Time period for cost data (e.g., {"Start": "2025-01-01", "End": "2025-01-31"})
             group_by: Optional grouping dimension ("resource_type", "region", "account", "service")
             filters: Optional filters for region, account_id
@@ -126,22 +127,226 @@ class CostService:
                 "End": end_date.strftime("%Y-%m-%d")
             }
         
-        # Check if we're doing "all" resource types analysis
+        # Expand "all" to all supported resource types
+        # This ensures we scan each type individually to catch resources with zero tags
+        expanded_resource_types = expand_all_to_supported_types(resource_types)
         use_all_resources = "all" in resource_types
         
         if use_all_resources:
-            return await self._calculate_attribution_gap_all(
-                time_period=time_period,
-                group_by=group_by,
-                filters=filters
-            )
+            logger.info(f"Expanded 'all' to {len(expanded_resource_types)} resource types")
         
-        # Original logic for specific resource types
-        return await self._calculate_attribution_gap_specific(
-            resource_types=resource_types,
+        # Use the comprehensive calculation that scans all types individually
+        return await self._calculate_attribution_gap_comprehensive(
+            resource_types=expanded_resource_types,
             time_period=time_period,
             group_by=group_by,
-            filters=filters
+            filters=filters,
+            use_total_account_spend=use_all_resources
+        )
+    
+    async def _calculate_attribution_gap_comprehensive(
+        self,
+        resource_types: list[str],
+        time_period: dict[str, str],
+        group_by: Optional[str] = None,
+        filters: Optional[dict] = None,
+        use_total_account_spend: bool = False
+    ) -> CostAttributionResult:
+        """
+        Calculate cost attribution gap by scanning each resource type individually.
+        
+        This method scans each resource type via its individual API, which catches
+        resources with ZERO tags (unlike the Tagging API which only returns tagged resources).
+        
+        Args:
+            resource_types: List of specific resource types to analyze
+            time_period: Time period for cost data
+            group_by: Optional grouping dimension
+            filters: Optional filters
+            use_total_account_spend: If True, use total account spend for gap calculation
+        
+        Returns:
+            CostAttributionResult with spend and gap
+        """
+        logger.info(f"Scanning {len(resource_types)} resource types individually")
+        
+        # Fetch all resources grouped by type
+        resources_by_type: dict[str, list[dict]] = {}
+        all_resources = []
+        
+        for resource_type in resource_types:
+            try:
+                resources = await self._fetch_resources_by_type(resource_type, filters)
+                resources_by_type[resource_type] = resources
+                all_resources.extend(resources)
+                if resources:
+                    logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
+            except Exception as e:
+                logger.warning(f"Failed to fetch resources of type {resource_type}: {str(e)}")
+                resources_by_type[resource_type] = []
+                continue
+        
+        logger.info(f"Total resources fetched: {len(all_resources)}")
+        
+        # Get cost data
+        if use_total_account_spend:
+            # Use total account spend for "all" - captures ALL services
+            total_spend, service_breakdown = await self.aws_client.get_total_account_spend(
+                time_period=time_period
+            )
+            logger.info(f"Total account spend: ${total_spend:.2f} across {len(service_breakdown)} services")
+            service_costs = service_breakdown
+        else:
+            # Get service-level costs only for specified types
+            _, service_costs, _ = await self.aws_client.get_cost_data_by_resource(
+                time_period=time_period
+            )
+            # Calculate total spend only for tracked services
+            total_spend = 0.0
+            for resource_type in resource_types:
+                service_name = self.aws_client.get_service_name_for_resource_type(resource_type)
+                total_spend += service_costs.get(service_name, 0.0)
+            logger.info(f"Total spend for tracked services: ${total_spend:.2f}")
+        
+        # Get per-resource costs where available
+        resource_costs, _, cost_source = await self.aws_client.get_cost_data_by_resource(
+            time_period=time_period
+        )
+        
+        # Build resource cost map - distribute service costs among resources
+        resource_cost_map: dict[str, float] = {}
+        
+        for resource_type, resources in resources_by_type.items():
+            service_name = self.aws_client.get_service_name_for_resource_type(resource_type)
+            service_total = service_costs.get(service_name, 0.0)
+            
+            if resource_type in ["ec2:instance", "rds:db"]:
+                # Use per-resource costs where available
+                for resource in resources:
+                    rid = resource["resource_id"]
+                    if rid in resource_costs:
+                        resource_cost_map[rid] = resource_costs[rid]
+                    elif resources:
+                        resources_without_costs = [r for r in resources if r["resource_id"] not in resource_costs]
+                        if resources_without_costs:
+                            known_costs = sum(resource_costs.get(r["resource_id"], 0) for r in resources)
+                            remaining = max(0, service_total - known_costs)
+                            per_resource = remaining / len(resources_without_costs)
+                            if rid not in resource_costs:
+                                resource_cost_map[rid] = per_resource
+            else:
+                # Distribute service total evenly among resources
+                if resources and service_total > 0:
+                    per_resource = service_total / len(resources)
+                    for resource in resources:
+                        resource_cost_map[resource["resource_id"]] = per_resource
+        
+        # Validate resources and calculate attributable spend
+        attributable_spend = 0.0
+        total_resources_scanned = len(all_resources)
+        total_resources_compliant = 0
+        total_resources_non_compliant = 0
+        
+        # Track breakdown by grouping dimension
+        breakdown: dict[str, dict] = {}
+        
+        # Always track by resource_type for notes generation
+        type_breakdown: dict[str, dict] = {}
+        for resource_type in resource_types:
+            type_breakdown[resource_type] = {
+                "total": 0.0,
+                "attributable": 0.0,
+                "gap": 0.0,
+                "resources_scanned": 0,
+                "resources_compliant": 0,
+                "resources_non_compliant": 0
+            }
+        
+        for resource in all_resources:
+            # Validate resource tags against policy
+            violations = self.policy_service.validate_resource_tags(
+                resource_id=resource["resource_id"],
+                resource_type=resource["resource_type"],
+                region=resource["region"],
+                tags=resource["tags"],
+                cost_impact=0.0
+            )
+            
+            resource_cost = resource_cost_map.get(resource["resource_id"], 0.0)
+            is_attributable = len(violations) == 0
+            
+            if is_attributable:
+                attributable_spend += resource_cost
+                total_resources_compliant += 1
+            else:
+                total_resources_non_compliant += 1
+            
+            # Track by resource type
+            rt = resource["resource_type"]
+            if rt in type_breakdown:
+                type_breakdown[rt]["total"] += resource_cost
+                type_breakdown[rt]["resources_scanned"] += 1
+                if is_attributable:
+                    type_breakdown[rt]["attributable"] += resource_cost
+                    type_breakdown[rt]["resources_compliant"] += 1
+                else:
+                    type_breakdown[rt]["gap"] += resource_cost
+                    type_breakdown[rt]["resources_non_compliant"] += 1
+            
+            # Track breakdown if grouping specified
+            if group_by:
+                group_key = self._get_group_key(resource, group_by)
+                
+                if group_key not in breakdown:
+                    breakdown[group_key] = {
+                        "total": 0.0,
+                        "attributable": 0.0,
+                        "gap": 0.0,
+                        "resources_scanned": 0,
+                        "resources_compliant": 0,
+                        "resources_non_compliant": 0
+                    }
+                
+                breakdown[group_key]["total"] += resource_cost
+                breakdown[group_key]["resources_scanned"] += 1
+                
+                if is_attributable:
+                    breakdown[group_key]["attributable"] += resource_cost
+                    breakdown[group_key]["resources_compliant"] += 1
+                else:
+                    breakdown[group_key]["gap"] += resource_cost
+                    breakdown[group_key]["resources_non_compliant"] += 1
+        
+        # Add notes to breakdown
+        if group_by == "resource_type":
+            for rt, data in breakdown.items():
+                data["note"] = self._generate_spend_note(data)
+        elif group_by:
+            for key, data in breakdown.items():
+                data["note"] = self._generate_spend_note(data)
+        
+        # If no group_by specified, use type_breakdown
+        if not group_by:
+            for rt, data in type_breakdown.items():
+                data["note"] = self._generate_spend_note(data)
+            breakdown = type_breakdown
+        
+        # Calculate attribution gap
+        attribution_gap = total_spend - attributable_spend
+        attribution_gap_percentage = (attribution_gap / total_spend * 100) if total_spend > 0 else 0.0
+        
+        logger.info(f"Attribution gap: ${attribution_gap:.2f} ({attribution_gap_percentage:.1f}%)")
+        logger.info(f"Resources: {total_resources_scanned} scanned, {total_resources_compliant} compliant, {total_resources_non_compliant} non-compliant")
+        
+        return CostAttributionResult(
+            total_spend=total_spend,
+            attributable_spend=attributable_spend,
+            attribution_gap=attribution_gap,
+            attribution_gap_percentage=attribution_gap_percentage,
+            breakdown=breakdown if breakdown else None,
+            total_resources_scanned=total_resources_scanned,
+            total_resources_compliant=total_resources_compliant,
+            total_resources_non_compliant=total_resources_non_compliant
         )
     
     async def _calculate_attribution_gap_all(
