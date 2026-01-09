@@ -938,13 +938,27 @@ class InputValidator:
                 raise ValidationError(field_name, "Field is required")
             return None
         
+        valid_opts = valid_options or cls.VALID_GROUP_BY_OPTIONS
+        
+        # Handle case where AI agent wraps value in array (common mistake)
+        # Extract first element if it's a single-element array of strings
+        if isinstance(group_by, list):
+            if len(group_by) == 1 and isinstance(group_by[0], str):
+                logger.debug(f"Auto-unwrapping single-element array for {field_name}: {group_by}")
+                group_by = group_by[0]
+            else:
+                raise ValidationError(
+                    field_name,
+                    f"Must be a string, got {type(group_by).__name__}. "
+                    f"Valid values: {sorted(valid_opts)}",
+                )
+        
         if not isinstance(group_by, str):
             raise ValidationError(
                 field_name,
                 f"Must be a string, got {type(group_by).__name__}",
             )
         
-        valid_opts = valid_options or cls.VALID_GROUP_BY_OPTIONS
         if group_by not in valid_opts:
             raise ValidationError(
                 field_name,
