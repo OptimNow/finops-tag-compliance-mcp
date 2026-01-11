@@ -10,26 +10,26 @@ graph TB
         subgraph "Docker Network: mcp-network"
             subgraph "App Container"
                 App[MCP Server<br/>FastAPI + Uvicorn<br/>Port 8000]
-                AppVol[/app Volume Mount]
-                DBVol[/data Volume Mount]
+                AppVol[app Volume Mount]
+                DBVol[data Volume Mount]
             end
 
             subgraph "Redis Container"
                 Redis[(Redis<br/>Port 6379)]
-                RedisVol[/data/redis Volume]
+                RedisVol[data/redis Volume]
             end
         end
 
         subgraph "File System"
-            Code[Source Code<br/>/mcp_server]
-            Policy[Policy File<br/>/policies/tagging_policy.json]
+            Code[Source Code<br/>mcp_server/]
+            Policy[Policy File<br/>policies/tagging_policy.json]
             AuditDB[(audit.db)]
             HistoryDB[(history.db)]
             Logs[Log Files]
         end
 
         subgraph "AWS Credentials"
-            Creds[~/.aws/credentials]
+            Creds[.aws/credentials]
             Profile[AWS Profile]
         end
     end
