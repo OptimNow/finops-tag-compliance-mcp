@@ -11,15 +11,19 @@ Subject: Beta testing an MCP for AWS FinOps - need your input
 
 Hey [Name],
 
-I've built an MCP server for AWS tagging compliance and I'm looking for 2-3 trusted people to test it before I launch commercially.
+I've built an MCP server for AWS tagging compliance and I'm looking for 2-3 trusted people to test it before an official launch.
 
-Quick context: It's an MCP that integrates with Claude to audit AWS tagging. Finds non-compliant resources, calculates the cost impact, suggests fixes. Phase 1 is done, internal tests look good, now I need external validation.
+Quick context: It's an MCP that integrates with Claude to audit AWS tagging. It has 7 tools, and can do, among other things:: finds non-compliant resources, calculates the cost impact -cost attribution gap-,  suggests fixes, supports reporting and trends analysis (thanks to a bit of memory and context management). The MCP can run locally, or remote - which is the recomended way to run MCP today.
+Phase 1 is done, unit and integration tests ok, UAT look good, now I need external validation and feedback from a couple or more of advisors I trust.
 
-What I'm asking: 5-10 hours of testing over 30-60 days. Structured feedback (bugs, suggestions, use cases). Simple gentleman's agreement on confidentiality (just an email confirmation).
+What I'm asking from you: 
+- 5-10 hours of testing over 15-20 days. 
+- Structured feedback (bugs, suggestions, use cases). 
+- Simple gentleman's agreement on confidentiality.
 
-What you get: Early access to an innovative FinOps tool. Direct influence on the roadmap. 50% lifetime discount if you become a customer. Potential resell/co-sell partnership opportunities for freelancers and consultants.
+What you get: Early access to an innovative FinOps tool. Direct influence on the roadmap. 100% lifetime discount if you become a customer. Potential resell/co-sell partnership opportunities for freelancers and consultants.
 
-Interested? I'll send more details and the agreement.
+Interested? Send me back the agreement completed, and i send the repo. The UAT protocol is fully document, same with deployment and user manual.
 
 Let me know,
 Jean
@@ -101,29 +105,23 @@ What do you get? Early adopter access to the first FinOps MCP on the market. Dir
 
 ### Timeline
 
-Week 1: Initial contact and confidentiality agreement signed. Week 2: Onboarding, access to repo, deployment, support available. Weeks 3-6: Functional testing and continuous feedback. Week 7: Final report and cleanup (destroy all copies).
+Week 1: Initial contact and confidentiality agreement signed. Onboarding, access to repo, deployment, support available. Weeks 3-4: Functional testing and continuous feedback. Week 5: Final report and cleanup (destroy all copies).
 
-Start date is mid-January 2025. End date is mid-March 2025.
-
-### About OptimNow
-
-Founder is Jean Latiere, with expertise in FinOps and cloud optimization. Focus on developing AI solutions for enterprises. Based in France.
-
-Contact: jean@optimnow.io
+Start date is mid-January 2025. End date is beg-March 2025.
 
 ### Common Questions
 
-Is testing free? Yes, completely. No credit card needed. Only commitment is your time (5-10 hours) and a simple gentleman's agreement on confidentiality.
+**Is testing free?**  Only commitment is your time (5-10 hours) and if you deploy on an EC2 instance, a few dollars to run the MCP remote.
 
-Do I need a big AWS account? Between 50 and 100 resources in total are enough to properly test the features. If you can manage to find an AWS account with a few hundred resources, that would be even better for comprehensive testing, but it's not required.
+**Do I need a big AWS account?** Between 50 and 100 resources in total are enough to properly test the features. If you can manage to find an AWS account with a few hundred resources, that would be even better for comprehensive testing, but it's not required.
 
-What about security? We've taken extra care with security from day one. The server scans your resources but doesn't store anything externally - everything stays in your AWS environment. You can find detailed documentation about our security posture and all the security tests we've conducted in the docs folder. We take security seriously, especially for a FinOps tool that accesses cloud infrastructure.
+**What about security?** We've taken extra care with security from day one. The server scans your resources but doesn't store anything externally - everything stays in your AWS environment. You can find detailed documentation about our security posture and all the security tests we've conducted in the docs folder. We take security seriously, especially for a FinOps tool that accesses cloud infrastructure.
 
-I don't have much time, can I still participate? I'd prefer someone who's committed. But if you're really interested and tight on time, let me know and we can adapt.
+**I don't have much time, can I still participate?** I'd prefer someone who's committed. But if you're really interested and tight on time, let me know and we can adapt.
 
-Can I become a customer after? Yes, absolutely. But it's more than that. If you're a freelancer or consultant, you could become a partner with resell or co-sell agreements. We're open to building strategic partnerships with people who see the value in the product.
+**Can I become a customer after?** Yes, absolutely. But it's more than that. If you're a freelancer or consultant, you could become a partner with resell or co-sell agreements. We're open to building strategic partnerships with people who see the value in the product.
 
-Will the code be open source? Right now, no. There's significant effort and know-how embedded in this tool, so we're keeping it under a proprietary license. We need to focus on building a sustainable business model first. We might consider an Open Core model later based on market feedback, but for now the priority is on licensing. Your feedback on this approach is welcome though.
+**Will the code be open source?** Right now, no. There's significant effort and know-how embedded in this tool, so we're keeping it under a proprietary license. We need to focus on building a sustainable business model first. We might consider an Open Core model later based on market feedback, but for now the priority is on licensing. Your feedback on this approach is welcome though.
 
 ### Interested? Get in Touch
 
