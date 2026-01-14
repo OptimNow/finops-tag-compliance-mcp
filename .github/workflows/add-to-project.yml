@@ -1,0 +1,27 @@
+name: Add Issues and PRs to Project
+
+on:
+  issues:
+    types: [opened]
+  pull_request:
+    types: [opened]
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add to project
+        uses: actions/add-to-project@v0.5.0
+        with:
+          project-url: https://github.com/orgs/OptimNow/projects/<PROJECT_NUMBER>
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          labeled: bug, enhancement, documentation, mcp-server
+          label-operator: OR
+
+      - name: Set component field
+        uses: titoportas/update-project-fields@v0.1.0
+        with:
+          project-url: https://github.com/orgs/OptimNow/projects/<PROJECT_NUMBER>
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          field-keys: |
+            Component=MCP Server
