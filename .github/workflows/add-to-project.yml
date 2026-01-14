@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Add to project
+        id: add_to_project
         uses: actions/add-to-project@v0.5.0
         with:
           project-url: https://github.com/orgs/OptimNow/projects/<PROJECT_NUMBER>
@@ -25,3 +26,4 @@ jobs:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           field-keys: |
             Component=MCP Server
+          item-id: ${{ steps.add_to_project.outputs.itemId }}
