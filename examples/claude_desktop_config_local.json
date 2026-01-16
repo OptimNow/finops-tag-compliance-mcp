@@ -1,0 +1,68 @@
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "~/.aws:/root/.aws:ro",
+        "finops-tag-compliance-mcp"
+      ]
+    }
+  },
+  "anthropic-beta": "mcp-client-2025-11-20",
+  "toolsets": {
+    "finops-tagging": {
+      "type": "mcp_toolset",
+      "mcp_server_name": "finops-tagging",
+      "default_config": {
+        "enabled": true,
+        "defer_loading": false
+      },
+      "configs": {
+        "generate_compliance_report": {
+          "enabled": true,
+          "defer_loading": true,
+          "description": "Defer loading - used after initial analysis"
+        },
+        "get_violation_history": {
+          "enabled": true,
+          "defer_loading": true,
+          "description": "Defer loading - historical queries only"
+        },
+        "get_cost_attribution_gap": {
+          "enabled": true,
+          "defer_loading": true,
+          "description": "Defer loading - specific financial analysis"
+        },
+        "suggest_tags": {
+          "enabled": true,
+          "defer_loading": true,
+          "description": "Defer loading - ML suggestions (specialized use case)"
+        },
+        "validate_resource_tags": {
+          "enabled": true,
+          "defer_loading": true,
+          "description": "Defer loading - specific resource validation"
+        },
+        "check_tag_compliance": {
+          "enabled": true,
+          "defer_loading": false,
+          "description": "Keep loaded - primary use case"
+        },
+        "find_untagged_resources": {
+          "enabled": true,
+          "defer_loading": false,
+          "description": "Keep loaded - core functionality"
+        },
+        "get_tagging_policy": {
+          "enabled": true,
+          "defer_loading": false,
+          "description": "Keep loaded - referenced frequently"
+        }
+      }
+    }
+  }
+}
