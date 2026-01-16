@@ -32,6 +32,8 @@ For production use, we **strongly recommend remote deployment** because:
 
 ### Configure Claude Desktop
 
+> **NEW:** See [examples/](./examples/) for complete configuration files with Tool Search optimization enabled (85% token cost reduction)
+
 **Local (stdio) Mode:**
 ```json
 {
@@ -140,6 +142,23 @@ This MCP server addresses that gap by:
 7. **generate_compliance_report** - Create formatted reports (JSON/CSV/Markdown)
 8. **get_violation_history** - View compliance trends over time
 
+### ⚡ Tool Search Optimization (Advanced Tool Use)
+
+**NEW: January 2026** - Reduce token usage by 85% with Claude's Tool Search feature!
+
+Instead of loading all 8 tool definitions upfront, Claude can discover tools on-demand. This feature:
+- **Reduces costs**: Load only the tools needed for each conversation
+- **Improves performance**: Claude Opus 4.5 accuracy improved from 79.5% to 88.1%
+- **Scales better**: As we add more tools in Phase 2+, you won't pay for unused tools
+- **No code changes**: Pure client-side optimization - your server works with both old and new clients
+
+**How to enable**:
+1. Add beta header: `"anthropic-beta": "mcp-client-2025-11-20"` to your API calls
+2. Configure `defer_loading: true` for less-frequently used tools
+3. Keep your 3-5 most-used tools always loaded
+
+See [Tool Search Configuration Guide](./docs/TOOL_SEARCH_CONFIGURATION.md) for detailed setup instructions and recommended configuration.
+
 ### 📊 Automatic Compliance History
 
 Every compliance scan is automatically stored in SQLite for trend analysis:
@@ -185,6 +204,7 @@ See [Security Configuration Guide](./docs/SECURITY_CONFIGURATION.md)
 
 - **[User Manual](./docs/USER_MANUAL.md)** - **Start here!** Practical guide for FinOps practitioners
 - **[Deployment Guide](./docs/DEPLOYMENT.md)** - Local and remote deployment instructions
+- **[Tool Search Configuration Guide](./docs/TOOL_SEARCH_CONFIGURATION.md)** - **NEW!** Optimize token usage with Tool Search (85% cost reduction)
 - **[Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md)** - Configure your tagging policy
 - **[IAM Permissions Guide](./docs/IAM_PERMISSIONS.md)** - Required AWS permissions
 

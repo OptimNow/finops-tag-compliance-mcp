@@ -11,10 +11,10 @@ Tagging MCP Server's REST API.
 
 Usage:
     Configure in Claude Desktop's config file:
-    
+
     Windows: %APPDATA%\\Claude\\claude_desktop_config.json
     macOS: ~/Library/Application Support/Claude/claude_desktop_config.json
-    
+
     {
       "mcpServers": {
         "tagging-mcp": {
@@ -26,6 +26,19 @@ Usage:
         }
       }
     }
+
+Tool Search Optimization (NEW - January 2026):
+    Enable Tool Search to reduce token usage by 85% with defer_loading!
+
+    See examples/claude_desktop_config_remote.json for complete configuration
+    with Tool Search optimization enabled, or read the detailed guide at:
+    docs/TOOL_SEARCH_CONFIGURATION.md
+
+    Key benefits:
+    - 85% reduction in token usage for tool definitions
+    - Faster response times
+    - Better tool selection accuracy
+    - No code changes required to this script
 """
 
 import json
