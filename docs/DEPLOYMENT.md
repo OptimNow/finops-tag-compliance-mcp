@@ -1003,6 +1003,22 @@ aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 
 ---
 
+## Video Demo
+
+Watch a 2-minute demo showing the MCP server in action with Claude Desktop:
+
+[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
+
+**[▶️ Watch the demo on Loom](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)**
+
+The demo covers:
+- Checking tag compliance across AWS resources
+- Identifying untagged resources with cost impact
+- Getting ML-powered tag suggestions
+- Viewing compliance trends over time
+
+---
+
 ## Next Steps
 
 - Read the [User Manual](USER_MANUAL.md) for tool usage and example prompts

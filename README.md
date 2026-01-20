@@ -10,6 +10,14 @@
 
 See the **[Deployment Guide](./docs/DEPLOYMENT.md)** for installation and setup instructions.
 
+### 📺 Video Demo
+
+Watch a 2-minute demo of the MCP server in action with Claude Desktop:
+
+[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
+
+**[▶️ Watch the demo](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)** - See how to check tag compliance, get cost impact, and receive ML-powered tag suggestions.
+
 ---
 
 ## Overview
