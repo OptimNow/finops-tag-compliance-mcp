@@ -39,6 +39,21 @@ After setup, try asking Claude:
 
 You should see a response listing your required and optional tags.
 
+### Tool Search Optimization (Optional)
+
+**NEW: January 2026** - Reduce your token costs by 85% with Claude's Tool Search feature!
+
+Instead of loading all 8 tool definitions upfront, Claude can discover tools on-demand. This optimization:
+- **Saves costs**: Reduces token usage from ~15K to ~3K per conversation
+- **Improves performance**: Faster response times and better tool selection accuracy
+- **No functionality changes**: All tools still work exactly the same
+
+**To enable:**
+1. See [examples/](../examples/) for ready-to-use configuration files
+2. Read the [Tool Search Configuration Guide](./TOOL_SEARCH_CONFIGURATION.md) for detailed setup
+
+This is **completely optional** - your MCP server works perfectly without it. But if you're doing many conversations, the cost savings add up quickly!
+
 ---
 
 ## Available Tools

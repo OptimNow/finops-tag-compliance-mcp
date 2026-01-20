@@ -10,7 +10,7 @@ graph TB
     end
 
     subgraph "API Gateway Layer"
-        FastAPI[FastAPI Server<br/>Port 8000]
+        FastAPI[FastAPI Server<br/>Port 8080]
         CORS[CORS Middleware]
         Sanitize[Sanitization Middleware]
         Correlate[Correlation Middleware]

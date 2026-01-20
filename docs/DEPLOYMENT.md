@@ -2,6 +2,35 @@
 
 This guide covers deploying the MCP server locally for development/testing and to AWS EC2 for production use.
 
+## Quick Start (5 minutes)
+
+Get up and running with Docker in 5 minutes:
+
+**Linux/Mac:**
+```bash
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+docker-compose up -d
+```
+
+**Windows (PowerShell):**
+```powershell
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+```
+
+Server runs on: `http://localhost:8080`
+
+Verify it's working:
+```bash
+curl http://localhost:8080/health
+```
+
+**For production deployment or detailed configuration**, continue reading below.
+
+---
+
 ## Table of Contents
 
 1. [Local Deployment](#local-deployment) - Quick start for testing
@@ -64,6 +93,10 @@ REDIS_URL=redis://redis:6379/0
 AWS_REGION=us-east-1
 ```
 
+**Note for Windows users:**
+- The `.env.example` file is hidden by default. In File Explorer, enable "Show hidden files" (View → Show → Hidden items)
+- Or use PowerShell: `Copy-Item .env.example .env` to copy it
+
 #### Step 2: Configure AWS Credentials
 
 The server needs AWS credentials to scan your resources. On your local machine, it uses your `~/.aws` credentials folder.
@@ -78,6 +111,7 @@ aws configure
 
 #### Step 3: Start the Server
 
+**Linux/Mac:**
 ```bash
 # Start all services (MCP server + Redis)
 docker-compose up -d
@@ -88,6 +122,24 @@ docker-compose ps
 # View logs
 docker-compose logs -f mcp-server
 ```
+
+**Windows (PowerShell):**
+```powershell
+# Start all services using Windows-specific configuration
+docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+
+# Check status
+docker-compose ps
+
+# View logs
+docker-compose logs -f mcp-server
+```
+
+**Important for Windows users:**
+- Docker Desktop must have file sharing enabled for your user directory
+- Go to: Docker Desktop → Settings → Resources → File Sharing
+- Add `C:\Users\YourUsername` (or wherever your `.aws` folder is located)
+- Click "Apply & Restart"
 
 #### Step 4: Verify Installation
 
@@ -780,6 +832,82 @@ docker run -d --name tagging-mcp-server ...
 
 This happens when containers weren't properly removed before redeploying. The `docker-compose down` command may not remove containers that were started with `docker run`.
 
+### Windows: Docker Mount Denied Error
+
+If you see "mounts denied" or "path is not shared from the host" on Windows:
+
+**Error message:**
+```
+The path /.aws is not shared from the host and is not known to Docker.
+You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing
+```
+
+**Solution:**
+
+1. **Enable File Sharing in Docker Desktop:**
+   - Open Docker Desktop
+   - Go to Settings → Resources → File Sharing
+   - Add `C:\Users\YourUsername` to the shared paths list
+   - Click "Apply & Restart"
+
+2. **Use the Windows-specific docker-compose file:**
+   ```powershell
+   # Stop existing containers
+   docker-compose down
+
+   # Start with Windows configuration
+   docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
+   ```
+
+3. **Verify the mount path:**
+   ```powershell
+   # Check that Docker can see your .aws folder
+   docker run --rm -v ${env:USERPROFILE}/.aws:/test alpine ls /test
+   ```
+
+### Windows: Hidden .env.example File
+
+If you cannot see the `.env.example` file on Windows:
+
+**Solution 1 - Show hidden files:**
+1. Open File Explorer
+2. Click the "View" tab
+3. Check "Hidden items" checkbox
+4. You should now see `.env.example`
+
+**Solution 2 - Use PowerShell:**
+```powershell
+# Copy the file using PowerShell
+Copy-Item .env.example .env
+
+# Or check if it exists
+Test-Path .env.example
+```
+
+### Orphan Containers Running
+
+If you see unexpected containers like `brave_hermann` or other random names:
+
+**Cause:** These are orphan containers from previous runs that weren't properly stopped.
+
+**Solution:**
+```bash
+# List all containers (running and stopped)
+docker ps -a
+
+# Stop and remove all containers
+docker stop $(docker ps -aq)
+docker rm $(docker ps -aq)
+
+# Or use docker-compose to clean up properly
+docker-compose down
+
+# Then start fresh
+docker-compose up -d
+```
+
+**Prevention:** Always use `docker-compose down` to stop services instead of stopping individual containers.
+
 ---
 
 ## Updating
@@ -872,6 +1000,22 @@ aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 3. **Enable VPC Flow Logs**: Monitor network traffic
 4. **Rotate credentials**: Use AWS Secrets Manager for any secrets
 5. **Enable CloudTrail**: Audit all API calls
+
+---
+
+## Video Demo
+
+Watch a 2-minute demo showing the MCP server in action with Claude Desktop:
+
+[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
+
+**[▶️ Watch the demo on Loom](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)**
+
+The demo covers:
+- Checking tag compliance across AWS resources
+- Identifying untagged resources with cost impact
+- Getting ML-powered tag suggestions
+- Viewing compliance trends over time
 
 ---
 

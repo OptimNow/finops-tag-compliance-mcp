@@ -1,97 +1,22 @@
 # FinOps Tag Compliance MCP Server
 
 **Status**: ✅ Phase 1 MVP Complete (January 2026)
-**Deployment**: Local (stdio) or Remote (HTTP) - **Remote recommended for production**
+**Deployment**: Local or Remote via HTTP - **Remote recommended for production**
 **Target Audience**: FinOps Practitioners, Solution Architects, DevOps Engineers
 
 ---
 
-## Quick Start
+## Getting Started
 
-### Option A: Local Development (Docker)
+See the **[Deployment Guide](./docs/DEPLOYMENT.md)** for installation and setup instructions.
 
-```bash
-# Clone and start locally
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
-docker-compose up -d
-```
+### 📺 Video Demo
 
-Server URL: `http://localhost:8000`
+Watch a 2-minute demo of the MCP server in action with Claude Desktop:
 
-### Option B: Remote Deployment (Recommended)
+[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
 
-Deploy to AWS EC2, Google Cloud Run, or any container platform. See the [Deployment Guide](./docs/DEPLOYMENT.md) for instructions.
-
-For production use, we **strongly recommend remote deployment** because:
-- Centralized credential management (IAM roles, service accounts)
-- Better security (no credentials on desktop)
-- Shared caching for multiple users
-- Centralized audit logging
-- High availability options
-
-### Configure Claude Desktop
-
-**Local (stdio) Mode:**
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm",
-               "-v", "~/.aws:/root/.aws:ro",
-               "finops-tag-compliance-mcp"]
-    }
-  }
-}
-```
-
-**Remote (HTTP) Mode (Recommended):**
-
-**Prerequisites:** Python 3.11+ with `requests` library:
-```bash
-pip install requests
-```
-
-1. Download the bridge script: [scripts/mcp_bridge.py](scripts/mcp_bridge.py)
-2. Save it locally (e.g., `~/tools/mcp_bridge.py`)
-3. Edit Claude Desktop config:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["/path/to/mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://your-server:8000"
-      }
-    }
-  }
-}
-```
-
-4. Restart Claude Desktop
-5. Test with: *"Show me our tagging policy"*
-
-### AWS Credentials Setup
-
-The server needs AWS credentials with specific IAM permissions to scan your resources. See the [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) for detailed setup.
-
-**Local Development:**
-- Mounts your `~/.aws` credentials folder
-- Requires `aws configure` to be set up
-- Your IAM user needs read-only permissions
-
-**Remote Deployment (Recommended):**
-- Uses IAM Instance Profile (EC2) or Service Account (GCP/Azure)
-- No credentials to manage manually
-- More secure and easier to maintain
-
-**Troubleshooting:** See the [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md)
+**[▶️ Watch the demo](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)** - See how to check tag compliance, get cost impact, and receive ML-powered tag suggestions.
 
 ---
 
@@ -140,6 +65,23 @@ This MCP server addresses that gap by:
 7. **generate_compliance_report** - Create formatted reports (JSON/CSV/Markdown)
 8. **get_violation_history** - View compliance trends over time
 
+### ⚡ Tool Search Optimization (Advanced Tool Use)
+
+**NEW: January 2026** - Reduce token usage by 85% with Claude's Tool Search feature!
+
+Instead of loading all 8 tool definitions upfront, Claude can discover tools on-demand. This feature:
+- **Reduces costs**: Load only the tools needed for each conversation
+- **Improves performance**: Claude Opus 4.5 accuracy improved from 79.5% to 88.1%
+- **Scales better**: As we add more tools in Phase 2+, you won't pay for unused tools
+- **No code changes**: Pure client-side optimization - your server works with both old and new clients
+
+**How to enable**:
+1. Add beta header: `"anthropic-beta": "mcp-client-2025-11-20"` to your API calls
+2. Configure `defer_loading: true` for less-frequently used tools
+3. Keep your 3-5 most-used tools always loaded
+
+See [Tool Search Configuration Guide](./docs/TOOL_SEARCH_CONFIGURATION.md) for detailed setup instructions and recommended configuration.
+
 ### 📊 Automatic Compliance History
 
 Every compliance scan is automatically stored in SQLite for trend analysis:
@@ -185,6 +127,7 @@ See [Security Configuration Guide](./docs/SECURITY_CONFIGURATION.md)
 
 - **[User Manual](./docs/USER_MANUAL.md)** - **Start here!** Practical guide for FinOps practitioners
 - **[Deployment Guide](./docs/DEPLOYMENT.md)** - Local and remote deployment instructions
+- **[Tool Search Configuration Guide](./docs/TOOL_SEARCH_CONFIGURATION.md)** - **NEW!** Optimize token usage with Tool Search (85% cost reduction)
 - **[Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md)** - Configure your tagging policy
 - **[IAM Permissions Guide](./docs/IAM_PERMISSIONS.md)** - Required AWS permissions
 
@@ -316,20 +259,24 @@ See [Roadmap](./docs/ROADMAP.md) for complete timeline and decision points.
 
 ## Architecture
 
-This MCP server supports **both local (stdio) and remote (HTTP) deployment modes**.
+This MCP server supports **local and remote deployment** with Claude Desktop connecting via HTTP bridge script.
 
-**Local Mode (Development):**
-- Claude Desktop connects directly to local Docker container
-- Uses stdio protocol for communication
-- Good for development and testing
+**Local Deployment (Development):**
+- MCP server runs locally in Docker (`localhost:8080`)
+- Claude Desktop connects via Python bridge to `http://localhost:8080`
 - Simple setup with `docker-compose up`
+- Good for development and testing
+- Uses your local AWS credentials
 
-**Remote Mode (Production - Recommended):**
-- MCP server deployed to cloud infrastructure
-- Claude Desktop connects via HTTP through bridge script
-- Centralized authentication and audit logging
+**Remote Deployment (Production - Recommended):**
+- MCP server deployed to cloud infrastructure (AWS EC2, GCP, etc.)
+- Claude Desktop connects via Python bridge to `http://your-server:8080`
+- Centralized authentication with IAM roles/service accounts
 - Better security, caching, and availability
 - Multiple users can share the same server
+- Centralized audit logging
+
+**Both modes use the same configuration approach** - just change the `MCP_SERVER_URL` from `localhost` to your server address.
 
 ### Key Architecture Features
 
