@@ -1,15 +1,11 @@
 {
   "mcpServers": {
     "finops-tagging": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "~/.aws:/root/.aws:ro",
-        "finops-tag-compliance-mcp"
-      ]
+      "command": "python",
+      "args": ["/path/to/repo/scripts/mcp_bridge.py"],
+      "env": {
+        "MCP_SERVER_URL": "http://localhost:8080"
+      }
     }
   },
   "anthropic-beta": "mcp-client-2025-11-20",

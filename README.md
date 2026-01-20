@@ -1,7 +1,7 @@
 # FinOps Tag Compliance MCP Server
 
 **Status**: ✅ Phase 1 MVP Complete (January 2026)
-**Deployment**: Local (stdio) or Remote (HTTP) - **Remote recommended for production**
+**Deployment**: Local or Remote via HTTP - **Remote recommended for production**
 **Target Audience**: FinOps Practitioners, Solution Architects, DevOps Engineers
 
 ---
@@ -259,20 +259,24 @@ See [Roadmap](./docs/ROADMAP.md) for complete timeline and decision points.
 
 ## Architecture
 
-This MCP server supports **both local (stdio) and remote (HTTP) deployment modes**.
+This MCP server supports **local and remote deployment** with Claude Desktop connecting via HTTP bridge script.
 
-**Local Mode (Development):**
-- Claude Desktop connects directly to local Docker container
-- Uses stdio protocol for communication
-- Good for development and testing
+**Local Deployment (Development):**
+- MCP server runs locally in Docker (`localhost:8080`)
+- Claude Desktop connects via Python bridge to `http://localhost:8080`
 - Simple setup with `docker-compose up`
+- Good for development and testing
+- Uses your local AWS credentials
 
-**Remote Mode (Production - Recommended):**
-- MCP server deployed to cloud infrastructure
-- Claude Desktop connects via HTTP through bridge script
-- Centralized authentication and audit logging
+**Remote Deployment (Production - Recommended):**
+- MCP server deployed to cloud infrastructure (AWS EC2, GCP, etc.)
+- Claude Desktop connects via Python bridge to `http://your-server:8080`
+- Centralized authentication with IAM roles/service accounts
 - Better security, caching, and availability
 - Multiple users can share the same server
+- Centralized audit logging
+
+**Both modes use the same configuration approach** - just change the `MCP_SERVER_URL` from `localhost` to your server address.
 
 ### Key Architecture Features
 

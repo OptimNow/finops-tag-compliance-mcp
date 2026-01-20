@@ -7,16 +7,17 @@ This directory contains example configuration files for connecting Claude Deskto
 ### `claude_desktop_config_local.json`
 **Use this for:** Local development with Docker
 
-Configuration for running the MCP server locally via Docker using stdio protocol.
+Configuration for connecting to locally-running MCP server via HTTP bridge.
 
 **Setup:**
-1. Copy the contents of this file
-2. Edit your Claude Desktop config:
+1. Start your local MCP server: `docker-compose up -d`
+2. Copy the contents of this file
+3. Edit your Claude Desktop config:
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-3. Paste the configuration (or merge with existing config)
-4. Update the Docker volume mount path if needed (`~/.aws` → your AWS credentials path)
-5. Restart Claude Desktop
+4. Paste the configuration (or merge with existing config)
+5. Update the path to `mcp_bridge.py` script (located in `scripts/mcp_bridge.py`)
+6. Restart Claude Desktop
 
 ### `claude_desktop_config_remote.json`
 **Use this for:** Production deployment with remote HTTP server (Recommended)
