@@ -2,6 +2,27 @@
 
 This guide covers deploying the MCP server locally for development/testing and to AWS EC2 for production use.
 
+## Quick Start (5 minutes)
+
+Get up and running with Docker in 5 minutes:
+
+```bash
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+docker-compose up -d
+```
+
+Server runs on: `http://localhost:8080`
+
+Verify it's working:
+```bash
+curl http://localhost:8080/health
+```
+
+**For production deployment or detailed configuration**, continue reading below.
+
+---
+
 ## Table of Contents
 
 1. [Local Deployment](#local-deployment) - Quick start for testing

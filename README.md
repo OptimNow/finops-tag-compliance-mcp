@@ -6,26 +6,9 @@
 
 ---
 
-## Quick Start
+## Getting Started
 
-Get started in 5 minutes with local Docker or deploy to AWS for production use.
-
-### Local Development (Docker)
-
-```bash
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
-docker-compose up -d
-```
-
-Server runs on: `http://localhost:8080`
-
-**Need more details?** See the complete [Deployment Guide](./docs/DEPLOYMENT.md) for:
-- Step-by-step local setup instructions
-- AWS EC2 production deployment
-- Remote deployment (recommended for teams)
-- Configuration and troubleshooting
-- Security best practices
+See the **[Deployment Guide](./docs/DEPLOYMENT.md)** for installation and setup instructions.
 
 ---
 
