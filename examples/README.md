@@ -93,7 +93,7 @@ The `"anthropic-beta": "mcp-client-2025-11-20"` header enables the Tool Search f
 1. **Check JSON syntax** - Use a JSON validator to ensure no syntax errors
 2. **Restart Claude Desktop** - Configuration only loads at startup
 3. **Check file path** - Ensure the path to `mcp_bridge.py` is correct
-4. **Verify server URL** - Test with `curl http://your-server:8000/health`
+4. **Verify server URL** - Test with `curl http://your-server:8080/health`
 
 ### Tools Not Loading
 1. **Check enabled flag** - Ensure `"enabled": true` for all tools you want to use

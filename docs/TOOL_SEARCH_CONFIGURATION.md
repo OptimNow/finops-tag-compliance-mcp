@@ -160,7 +160,7 @@ Create a new configuration file alongside your `mcp_bridge.py` script:
       "command": "python",
       "args": ["/path/to/mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "http://your-server:8000",
+        "MCP_SERVER_URL": "http://your-server:8080",
         "MCP_TOOLSET_CONFIG": "/path/to/mcp_toolset_config.json"
       }
     }

@@ -8,92 +8,24 @@
 
 ## Quick Start
 
-### Option A: Local Development (Docker)
+Get started in 5 minutes with local Docker or deploy to AWS for production use.
+
+### Local Development (Docker)
 
 ```bash
-# Clone and start locally
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
 cd finops-tag-compliance-mcp
 docker-compose up -d
 ```
 
-Server URL: `http://localhost:8000`
+Server runs on: `http://localhost:8080`
 
-### Option B: Remote Deployment (Recommended)
-
-Deploy to AWS EC2, Google Cloud Run, or any container platform. See the [Deployment Guide](./docs/DEPLOYMENT.md) for instructions.
-
-For production use, we **strongly recommend remote deployment** because:
-- Centralized credential management (IAM roles, service accounts)
-- Better security (no credentials on desktop)
-- Shared caching for multiple users
-- Centralized audit logging
-- High availability options
-
-### Configure Claude Desktop
-
-> **NEW:** See [examples/](./examples/) for complete configuration files with Tool Search optimization enabled (85% token cost reduction)
-
-**Local (stdio) Mode:**
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm",
-               "-v", "~/.aws:/root/.aws:ro",
-               "finops-tag-compliance-mcp"]
-    }
-  }
-}
-```
-
-**Remote (HTTP) Mode (Recommended):**
-
-**Prerequisites:** Python 3.11+ with `requests` library:
-```bash
-pip install requests
-```
-
-1. Download the bridge script: [scripts/mcp_bridge.py](scripts/mcp_bridge.py)
-2. Save it locally (e.g., `~/tools/mcp_bridge.py`)
-3. Edit Claude Desktop config:
-
-**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["/path/to/mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://your-server:8000"
-      }
-    }
-  }
-}
-```
-
-4. Restart Claude Desktop
-5. Test with: *"Show me our tagging policy"*
-
-### AWS Credentials Setup
-
-The server needs AWS credentials with specific IAM permissions to scan your resources. See the [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) for detailed setup.
-
-**Local Development:**
-- Mounts your `~/.aws` credentials folder
-- Requires `aws configure` to be set up
-- Your IAM user needs read-only permissions
-
-**Remote Deployment (Recommended):**
-- Uses IAM Instance Profile (EC2) or Service Account (GCP/Azure)
-- No credentials to manage manually
-- More secure and easier to maintain
-
-**Troubleshooting:** See the [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md)
+**Need more details?** See the complete [Deployment Guide](./docs/DEPLOYMENT.md) for:
+- Step-by-step local setup instructions
+- AWS EC2 production deployment
+- Remote deployment (recommended for teams)
+- Configuration and troubleshooting
+- Security best practices
 
 ---
 
