@@ -7,16 +7,17 @@ This directory contains example configuration files for connecting Claude Deskto
 ### `claude_desktop_config_local.json`
 **Use this for:** Local development with Docker
 
-Configuration for running the MCP server locally via Docker using stdio protocol.
+Configuration for connecting to locally-running MCP server via HTTP bridge.
 
 **Setup:**
-1. Copy the contents of this file
-2. Edit your Claude Desktop config:
+1. Start your local MCP server: `docker-compose up -d`
+2. Copy the contents of this file
+3. Edit your Claude Desktop config:
    - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
    - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
-3. Paste the configuration (or merge with existing config)
-4. Update the Docker volume mount path if needed (`~/.aws` → your AWS credentials path)
-5. Restart Claude Desktop
+4. Paste the configuration (or merge with existing config)
+5. Update the path to `mcp_bridge.py` script (located in `scripts/mcp_bridge.py`)
+6. Restart Claude Desktop
 
 ### `claude_desktop_config_remote.json`
 **Use this for:** Production deployment with remote HTTP server (Recommended)
@@ -93,7 +94,7 @@ The `"anthropic-beta": "mcp-client-2025-11-20"` header enables the Tool Search f
 1. **Check JSON syntax** - Use a JSON validator to ensure no syntax errors
 2. **Restart Claude Desktop** - Configuration only loads at startup
 3. **Check file path** - Ensure the path to `mcp_bridge.py` is correct
-4. **Verify server URL** - Test with `curl http://your-server:8000/health`
+4. **Verify server URL** - Test with `curl http://your-server:8080/health`
 
 ### Tools Not Loading
 1. **Check enabled flag** - Ensure `"enabled": true` for all tools you want to use

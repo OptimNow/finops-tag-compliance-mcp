@@ -9,7 +9,7 @@ graph TB
     subgraph "Developer Machine"
         subgraph "Docker Network: mcp-network"
             subgraph "App Container"
-                App[MCP Server<br/>FastAPI + Uvicorn<br/>Port 8000]
+                App[MCP Server<br/>FastAPI + Uvicorn<br/>Port 8080]
                 AppVol[app Volume Mount]
                 DBVol[data Volume Mount]
             end
@@ -44,7 +44,7 @@ graph TB
         IAM[IAM Auth]
     end
 
-    Client[Claude Desktop] -->|HTTP:8000| App
+    Client[Claude Desktop] -->|HTTP:8080| App
 
     App --> Code
     App --> Policy
@@ -81,7 +81,7 @@ services:
   mcp-server:
     build: .
     ports:
-      - "8000:8000"
+      - "8080:8080"
     volumes:
       - ./mcp_server:/app/mcp_server
       - ./policies:/app/policies
@@ -129,12 +129,12 @@ graph TB
 
             subgraph "Private Subnet - App Tier"
                 subgraph "EC2 Instance"
-                    App[MCP Server<br/>Docker Container<br/>Port 8000]
+                    App[MCP Server<br/>Docker Container<br/>Port 8080]
                     CW_Agent[CloudWatch Agent]
                 end
 
                 subgraph "EC2 Instance 2"
-                    App2[MCP Server<br/>Docker Container<br/>Port 8000]
+                    App2[MCP Server<br/>Docker Container<br/>Port 8080]
                     CW_Agent2[CloudWatch Agent]
                 end
             end
@@ -345,7 +345,7 @@ graph TB
                 Pod3[Pod 3<br/>MCP Container]
             end
 
-            Service[Service<br/>ClusterIP<br/>Port 8000]
+            Service[Service<br/>ClusterIP<br/>Port 8080]
 
             subgraph "StatefulSet: redis"
                 Redis1[(Redis Primary)]

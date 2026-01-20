@@ -4,7 +4,7 @@
       "command": "python",
       "args": ["/path/to/mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "http://your-server:8000"
+        "MCP_SERVER_URL": "http://your-server:8080"
       }
     }
   },
