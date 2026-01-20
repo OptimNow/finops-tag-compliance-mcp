@@ -2,15 +2,22 @@
 
 ## Summary
 
-This PR simplifies the README structure, fixes Windows deployment issues, and standardizes the configuration approach based on user testing feedback.
+This PR significantly improves documentation quality: simplifies README structure with engaging narrative style, fixes Windows deployment issues, adds video demo, and standardizes configuration approach based on user testing feedback.
 
 ## Key Changes
 
-### 1. 📝 README Simplification
-- **Removed** all deployment content from main README
-- **Added** simple "Getting Started" section pointing to Deployment Guide
-- **Moved** Quick Start section to DEPLOYMENT.md
-- **Added** video demo section with Loom recording
+### 1. 📝 README Complete Rewrite
+**Transformed from technical documentation to engaging narrative:**
+- **Reduced length** from ~340 to ~200 lines (-142 lines, -42%)
+- **Removed bullet points** in favor of flowing prose and storytelling
+- **Added MCP education** section "For MCP Beginners" with clear mental models
+- **Better analogies** - "phone line to infrastructure", "librarian who can only tell you which books exist"
+- **Narrative use cases** - Real scenarios with dialogue instead of bullet lists
+- **More conversational** - "Ever wished you could just ask Claude..." opening
+- **Deployment content** moved to dedicated Deployment Guide
+- **Video demo** added with Loom recording
+
+**Why**: Make README inviting for MCP beginners while maintaining technical depth. Teach through storytelling instead of documentation style.
 
 ### 2. 🪟 Windows Deployment Support
 Based on real user testing on Windows, added comprehensive support:
@@ -27,7 +34,14 @@ Based on real user testing on Windows, added comprehensive support:
 - Windows: Docker mount denied error (File Sharing configuration)
 - Orphan containers cleanup (brave_hermann issue)
 
-### 3. 🔧 Port Fixes
+### 3. 📺 Video Demo
+Added Loom video demonstration in:
+- README.md (Getting Started section)
+- docs/DEPLOYMENT.md (before Next Steps)
+
+Video shows: compliance checking, cost impact, ML suggestions, trends
+
+### 4. 🔧 Port Fixes
 Fixed all incorrect port 8000 references → 8080 in:
 - README.md
 - examples/claude_desktop_config_remote.json
@@ -36,7 +50,7 @@ Fixed all incorrect port 8000 references → 8080 in:
 - docs/diagrams/01-system-architecture.md
 - docs/diagrams/05-deployment-architecture.md
 
-### 4. 🌐 HTTP Bridge Simplification
+### 5. 🌐 HTTP Bridge Simplification
 Simplified deployment approach to use HTTP bridge for BOTH local and remote:
 
 **Before:**
@@ -54,12 +68,6 @@ Simplified deployment approach to use HTTP bridge for BOTH local and remote:
 - ✅ Simpler to switch from local to remote
 - ✅ No Docker stdio complexity
 
-### 5. 📺 Video Demo
-Added Loom video demonstration in:
-- README.md (Getting Started section)
-- docs/DEPLOYMENT.md (before Next Steps)
-
-Video shows: compliance checking, cost impact, ML suggestions, trends
 
 ## Problems Solved
 
@@ -103,6 +111,8 @@ None. Existing deployments continue to work. New approach is additive.
 ## Commits Summary
 
 ```
+7f3dbc8 Rewrite README for engagement and accessibility
+5e32f3a Add PR description document
 49068a7 Simplify documentation: use HTTP bridge for both local and remote
 a45fc85 Add video demo to README and Deployment Guide
 7643a7e Add Windows-specific deployment support and troubleshooting
