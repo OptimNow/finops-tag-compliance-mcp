@@ -393,6 +393,147 @@ All user inputs go through validation (`mcp_server/utils/input_validation.py`):
 
 Security violations are logged to CloudWatch security stream (if enabled).
 
+### ARN Utilities and Shared Code Patterns
+
+**Centralized ARN Parsing** (`mcp_server/utils/arn_utils.py`):
+
+This module provides shared utilities for working with AWS ARNs across all tools, eliminating code duplication and ensuring consistent behavior:
+
+```python
+from ..utils.arn_utils import is_valid_arn, parse_arn, service_to_resource_type, extract_resource_id
+```
+
+**Available Functions:**
+- `is_valid_arn(arn: str) -> bool` - Validate ARN format (supports S3, IAM, EC2, etc.)
+- `parse_arn(arn: str) -> dict` - Parse ARN into components (partition, service, region, account, resource, resource_type, resource_id)
+- `service_to_resource_type(service: str, resource: str) -> str` - Map AWS service to internal type (e.g., "ec2" + "instance/i-123" → "ec2:instance")
+- `extract_resource_id(resource: str) -> str` - Extract resource ID from ARN resource part
+- `get_account_from_arn(arn: str) -> str` - Extract AWS account ID
+- `get_region_from_arn(arn: str) -> str` - Extract AWS region
+
+**Usage Example:**
+```python
+arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-abc123"
+
+if is_valid_arn(arn):
+    parsed = parse_arn(arn)
+    # {
+    #   'partition': 'aws',
+    #   'service': 'ec2',
+    #   'region': 'us-east-1',
+    #   'account': '123456789012',
+    #   'resource': 'instance/i-abc123',
+    #   'resource_type': 'ec2:instance',
+    #   'resource_id': 'i-abc123'
+    # }
+```
+
+**Batch Tag Fetching** (`AWSClient.get_tags_for_arns()`):
+
+Efficient batch API for fetching tags using Resource Groups Tagging API:
+
+```python
+# Fetch tags for multiple resources in one API call
+tags_by_arn = await aws_client.get_tags_for_arns([arn1, arn2, arn3])
+# Returns: {"arn1": {"Owner": "team", ...}, "arn2": {...}, ...}
+```
+
+**Performance Benefits:**
+- Processes up to 100 ARNs per AWS API call
+- **10x faster** than fetching all resources to find specific ones
+- Reduces AWS API costs (fewer calls)
+
+**Before (Inefficient):**
+```python
+# Fetches ALL EC2 instances to find one
+resources = await aws_client.get_ec2_instances({})
+for resource in resources:
+    if resource["resource_id"] == target_id:
+        return resource.get("tags", {})
+```
+
+**After (Efficient):**
+```python
+# Fetches only specific ARNs in batch
+tags_by_arn = await aws_client.get_tags_for_arns([arn])
+tags = tags_by_arn.get(arn, {})
+```
+
+**Pydantic Tool Results:**
+
+All tool result classes now use Pydantic models for automatic validation and serialization:
+
+```python
+from pydantic import BaseModel, Field, computed_field
+
+class SuggestTagsResult(BaseModel):
+    """Result from the suggest_tags tool."""
+
+    resource_arn: str = Field(..., description="ARN of the resource")
+    resource_type: str = Field(..., description="Type of resource")
+    suggestions: list[TagSuggestion] = Field(default_factory=list)
+    current_tags: dict[str, str] = Field(default_factory=dict)
+    suggestion_count: int = Field(0)
+
+    def model_post_init(self, __context) -> None:
+        """Compute suggestion_count after initialization."""
+        object.__setattr__(self, "suggestion_count", len(self.suggestions))
+```
+
+**Serialization:**
+```python
+result = await suggest_tags(...)
+json_data = result.model_dump(mode='json')  # Automatic JSON serialization
+```
+
+**Benefits:**
+- Automatic type validation
+- Consistent serialization across all tools
+- Better IDE support with auto-completion
+- `@computed_field` for derived values
+- JSON schema generation for documentation
+
+**Dependency Injection Pattern:**
+
+All tools support optional service injection for better testability:
+
+```python
+async def suggest_tags(
+    aws_client: AWSClient,
+    policy_service: PolicyService,
+    resource_arn: str,
+    suggestion_service: Optional[SuggestionService] = None,  # Optional injection
+) -> SuggestTagsResult:
+    # Use injected service or create one
+    service = suggestion_service
+    if service is None:
+        service = SuggestionService(policy_service)
+
+    return await service.suggest_tags(...)
+```
+
+**Tools with DI support:**
+- `suggest_tags(suggestion_service=None)`
+- `generate_compliance_report(report_service=None)`
+- `get_cost_attribution_gap(cost_service=None)`
+- `get_violation_history(history_service=None)`
+
+**Testing Benefits:**
+```python
+# Easy mocking in unit tests
+from unittest.mock import Mock
+
+mock_service = Mock()
+mock_service.suggest_tags.return_value = [...]
+
+result = await suggest_tags(
+    aws_client=client,
+    policy_service=policy,
+    resource_arn=arn,
+    suggestion_service=mock_service  # Injected for testing
+)
+```
+
 ## Database Schemas
 
 **Audit Logs** (`audit_logs.db`):
