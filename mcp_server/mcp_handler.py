@@ -1374,7 +1374,7 @@ class MCPHandler:
             resource_arn=arguments["resource_arn"],
         )
         
-        return result.to_dict()
+        return result.model_dump(mode='json')
     
     async def _handle_get_tagging_policy(self, arguments: dict) -> dict:
         """Handle get_tagging_policy tool invocation."""
@@ -1385,7 +1385,7 @@ class MCPHandler:
             policy_service=self.policy_service,
         )
         
-        return result.to_dict()
+        return result.model_dump(mode='json')
     
     async def _handle_generate_compliance_report(self, arguments: dict) -> dict:
         """Handle generate_compliance_report tool invocation."""
@@ -1429,7 +1429,7 @@ class MCPHandler:
             include_recommendations=arguments.get("include_recommendations", True),
         )
         
-        return result.to_dict()
+        return result.model_dump(mode='json')
     
     async def _handle_get_violation_history(self, arguments: dict) -> dict:
         """Handle get_violation_history tool invocation."""
@@ -1449,4 +1449,4 @@ class MCPHandler:
             db_path=db_path,
         )
         
-        return result.to_dict()
+        return result.model_dump(mode='json')
