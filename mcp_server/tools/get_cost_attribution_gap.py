@@ -22,15 +22,16 @@ async def get_cost_attribution_gap(
     resource_types: list[str],
     time_period: Optional[dict[str, str]] = None,
     group_by: Optional[str] = None,
-    filters: Optional[dict] = None
+    filters: Optional[dict] = None,
+    cost_service: Optional[CostService] = None,
 ) -> CostAttributionGapResult:
     """
     Calculate the cost attribution gap - the financial impact of tagging gaps.
-    
+
     This tool analyzes cloud spend and determines how much cannot be allocated
     to teams/projects due to missing or invalid resource tags. This is critical
     for FinOps teams to quantify the business impact of poor tagging practices.
-    
+
     Args:
         aws_client: AWSClient instance for fetching resources and cost data
         policy_service: PolicyService for tag validation
@@ -44,6 +45,8 @@ async def get_cost_attribution_gap(
                  Valid values: "resource_type", "region", "account"
                  When specified, returns gap breakdown by that dimension.
         filters: Optional filters for region or account_id
+        cost_service: Optional injected CostService instance. If not provided, one will
+                     be created internally using aws_client and policy_service.
     
     Returns:
         CostAttributionGapResult containing:
@@ -131,13 +134,15 @@ async def get_cost_attribution_gap(
         f"period={time_period}, group_by={group_by}"
     )
     
-    # Create CostService and calculate attribution gap
-    cost_service = CostService(
-        aws_client=aws_client,
-        policy_service=policy_service
-    )
-    
-    result = await cost_service.calculate_attribution_gap(
+    # Use injected service or create one
+    service = cost_service
+    if service is None:
+        service = CostService(
+            aws_client=aws_client,
+            policy_service=policy_service
+        )
+
+    result = await service.calculate_attribution_gap(
         resource_types=resource_types,
         time_period=time_period,
         group_by=group_by,
