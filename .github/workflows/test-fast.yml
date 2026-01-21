@@ -2,7 +2,10 @@ name: Fast Tests
 
 on:
   push:
-    branches: [main, master]
+    branches:
+      - main
+      - master
+      - 'claude/**'
   pull_request:
 
 concurrency:
