@@ -1,0 +1,4 @@
+# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\tools\find_untagged_resources.py
+# hypothesis_version: 6.148.8
+
+[0.0, '+00:00', 'Z', 'actual', 'all', 'arn', 'created_at', 'ec2', 'ec2:instance', 'estimated', 'instance_state', 'instance_type', 'region', 'resource_id', 'resource_type', 'shutting-down', 'stopped', 'stopping', 'tags', 'terminated', 'unknown']

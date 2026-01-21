@@ -29,9 +29,10 @@ async def debug_cost_attribution():
     policy_service = PolicyService(policy_path="policies/tagging_policy.json")
     cost_service = CostService(aws_client=aws_client, policy_service=policy_service)
     
-    # Time period - last 30 days
+    # Time period - current month
     end_date = datetime.now()
-    start_date = end_date - timedelta(days=30)
+    # Use first day of current month for cleaner data
+    start_date = end_date.replace(day=1)
     time_period = {
         "Start": start_date.strftime("%Y-%m-%d"),
         "End": end_date.strftime("%Y-%m-%d")
@@ -77,20 +78,14 @@ async def debug_cost_attribution():
         if cost > 0:
             print(f"  - {service}: ${cost:.2f}")
     
-    print(f"\nCosts by Name tag:")
+    print(f"\nCosts by Name tag (RAW from Cost Explorer):")
     for name, cost in sorted(costs_by_name.items(), key=lambda x: x[1], reverse=True):
         if cost > 0:
-            print(f"  - {name}: ${cost:.2f}")
+            print(f"  - '{name}': ${cost:.2f}")
     
-    print(f"\nPer-resource costs (EC2):")
-    ec2_ids = [r["resource_id"] for r in ec2_resources]
-    for rid, cost in resource_costs.items():
-        if any(rid in ec2_id for ec2_id in ec2_ids) or "i-" in rid:
-            print(f"  - {rid}: ${cost:.2f}")
-    
-    # Step 2b: Try raw Cost Explorer call with RESOURCE_ID
+    # Step 2b: Try raw Cost Explorer call with Name tag to see exact format
     print("\n" + "-" * 40)
-    print("RAW COST EXPLORER WITH RESOURCE_ID:")
+    print("RAW COST EXPLORER WITH Name TAG:")
     print("-" * 40)
     
     try:
@@ -105,19 +100,52 @@ async def debug_cost_attribution():
                 }
             },
             GroupBy=[
-                {"Type": "DIMENSION", "Key": "RESOURCE_ID"}
+                {"Type": "TAG", "Key": "Name"}
             ]
         )
         
-        print(f"\nRaw response groups:")
+        print(f"\nRaw response groups (exact format from API):")
         for result in raw_response.get("ResultsByTime", []):
             for group in result.get("Groups", []):
-                resource_id = group.get("Keys", [""])[0]
+                keys = group.get("Keys", [])
                 amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
                 if amount > 0:
-                    print(f"  - {resource_id}: ${amount:.2f}")
+                    print(f"  - Keys: {keys}, Amount: ${amount:.2f}")
     except Exception as e:
         print(f"  Error: {e}")
+    
+    # Step 2c: Show name matching analysis
+    print("\n" + "-" * 40)
+    print("NAME MATCHING ANALYSIS:")
+    print("-" * 40)
+    
+    # Build normalized lookup
+    costs_by_name_lower = {}
+    for name, cost in costs_by_name.items():
+        normalized = name.lower().replace(" ", "-")
+        costs_by_name_lower[normalized] = costs_by_name_lower.get(normalized, 0) + cost
+    
+    print(f"\nNormalized costs_by_name_lower:")
+    for name, cost in costs_by_name_lower.items():
+        print(f"  - '{name}': ${cost:.2f}")
+    
+    print(f"\nEC2 Instance Name tags vs Cost Explorer names:")
+    for r in ec2_resources:
+        name_tag = r.get("tags", {}).get("Name", "")
+        normalized_name = name_tag.lower().replace(" ", "-") if name_tag else ""
+        matched_cost = costs_by_name_lower.get(normalized_name, None)
+        
+        print(f"  - Instance {r['resource_id']}:")
+        print(f"      Name tag: '{name_tag}'")
+        print(f"      Normalized: '{normalized_name}'")
+        print(f"      Match in costs_by_name_lower: {matched_cost is not None}")
+        if matched_cost is not None:
+            print(f"      Matched cost: ${matched_cost:.2f}")
+        else:
+            # Try to find similar names
+            similar = [k for k in costs_by_name_lower.keys() if normalized_name in k or k in normalized_name]
+            if similar:
+                print(f"      Similar names found: {similar}")
     
     # Step 3: Calculate cost distribution
     print("\n" + "=" * 80)
