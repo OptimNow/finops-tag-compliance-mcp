@@ -125,11 +125,7 @@ async def validate_resource_tags(
             try:
                 parsed = parse_arn(arn)
             except ValueError:
-                parsed = {
-                    "resource_type": "unknown",
-                    "resource_id": arn,
-                    "region": "unknown"
-                }
+                parsed = {"resource_type": "unknown", "resource_id": arn, "region": "unknown"}
 
             result = ResourceValidationResult(
                 resource_arn=arn,

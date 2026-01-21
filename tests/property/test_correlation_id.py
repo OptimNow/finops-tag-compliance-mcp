@@ -38,6 +38,7 @@ from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 # Strategies for generating test data
 # =============================================================================
 
+
 @st.composite
 def uuid4_strategy(draw):
     """Generate valid UUID4 strings."""
@@ -58,11 +59,7 @@ def uuid4_strategy(draw):
 def tool_name_strategy(draw):
     """Generate valid tool names."""
     first_char = draw(st.sampled_from("abcdefghijklmnopqrstuvwxyz_"))
-    rest = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789_",
-        min_size=0,
-        max_size=30
-    ))
+    rest = draw(st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789_", min_size=0, max_size=30))
     return first_char + rest
 
 
@@ -75,11 +72,9 @@ def parameters_strategy(draw):
         key = f"param_{i}"
         value_type = draw(st.sampled_from(["string", "int", "bool", "none"]))
         if value_type == "string":
-            params[key] = draw(st.text(
-                alphabet="abcdefghijklmnopqrstuvwxyz0123456789",
-                min_size=0,
-                max_size=20
-            ))
+            params[key] = draw(
+                st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789", min_size=0, max_size=20)
+            )
         elif value_type == "int":
             params[key] = draw(st.integers(min_value=-1000, max_value=1000))
         elif value_type == "bool":
@@ -92,6 +87,7 @@ def parameters_strategy(draw):
 # =============================================================================
 # Helper functions
 # =============================================================================
+
 
 def create_temp_db():
     """Create a temporary database file and return its path."""
@@ -109,8 +105,7 @@ def cleanup_temp_db(path):
 def is_valid_uuid4(value: str) -> bool:
     """Check if a string is a valid UUID4 format."""
     uuid4_pattern = re.compile(
-        r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$',
-        re.IGNORECASE
+        r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$", re.IGNORECASE
     )
     return bool(uuid4_pattern.match(value))
 
@@ -119,12 +114,13 @@ def is_valid_uuid4(value: str) -> bool:
 # Property 16: Correlation ID Propagation
 # =============================================================================
 
+
 class TestCorrelationIDGeneration:
     """
     Property 16: Correlation ID Propagation - Generation Tests
-    
+
     For any tool invocation, a unique correlation ID SHALL be generated.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -134,15 +130,15 @@ class TestCorrelationIDGeneration:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any number of generated correlation IDs, all IDs SHALL be unique.
         """
         ids = [generate_correlation_id() for _ in range(count)]
-        
+
         # All IDs should be unique
-        assert len(ids) == len(set(ids)), (
-            f"Generated {count} IDs but only {len(set(ids))} are unique"
-        )
+        assert len(ids) == len(
+            set(ids)
+        ), f"Generated {count} IDs but only {len(set(ids))} are unique"
 
     @given(st.data())
     @settings(max_examples=100, deadline=None)
@@ -150,26 +146,26 @@ class TestCorrelationIDGeneration:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any generated correlation ID, it SHALL be in valid UUID4 format.
         """
         correlation_id = generate_correlation_id()
-        
+
         # Must be a string
         assert isinstance(correlation_id, str), "Correlation ID must be a string"
-        
+
         # Must be valid UUID4 format
-        assert is_valid_uuid4(correlation_id), (
-            f"Correlation ID '{correlation_id}' is not valid UUID4 format"
-        )
+        assert is_valid_uuid4(
+            correlation_id
+        ), f"Correlation ID '{correlation_id}' is not valid UUID4 format"
 
 
 class TestCorrelationIDContextPropagation:
     """
     Property 16: Correlation ID Propagation - Context Tests
-    
+
     The correlation ID SHALL be propagated through the request context.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -179,15 +175,13 @@ class TestCorrelationIDContextPropagation:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any correlation ID set in context, getting it SHALL return the same value.
         """
         set_correlation_id(correlation_id)
         retrieved = get_correlation_id()
-        
-        assert retrieved == correlation_id, (
-            f"Set '{correlation_id}' but got '{retrieved}'"
-        )
+
+        assert retrieved == correlation_id, f"Set '{correlation_id}' but got '{retrieved}'"
 
     @given(correlation_id=uuid4_strategy())
     @settings(max_examples=100, deadline=None)
@@ -195,26 +189,26 @@ class TestCorrelationIDContextPropagation:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any correlation ID set in context, get_correlation_id_for_logging
         SHALL return a dict containing that ID.
         """
         set_correlation_id(correlation_id)
         result = get_correlation_id_for_logging()
-        
+
         assert isinstance(result, dict), "Result must be a dictionary"
         assert "correlation_id" in result, "Result must contain 'correlation_id' key"
-        assert result["correlation_id"] == correlation_id, (
-            f"Expected '{correlation_id}' but got '{result['correlation_id']}'"
-        )
+        assert (
+            result["correlation_id"] == correlation_id
+        ), f"Expected '{correlation_id}' but got '{result['correlation_id']}'"
 
 
 class TestCorrelationIDMiddleware:
     """
     Property 16: Correlation ID Propagation - Middleware Tests
-    
+
     The middleware SHALL generate correlation IDs and include them in responses.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -224,7 +218,7 @@ class TestCorrelationIDMiddleware:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any request without a correlation ID header, the middleware
         SHALL generate a new unique correlation ID.
         """
@@ -239,19 +233,19 @@ class TestCorrelationIDMiddleware:
         response = client.get("/test")
 
         # Response must have correlation ID header
-        assert "X-Correlation-ID" in response.headers, (
-            "Response must include X-Correlation-ID header"
-        )
-        
+        assert (
+            "X-Correlation-ID" in response.headers
+        ), "Response must include X-Correlation-ID header"
+
         correlation_id = response.headers["X-Correlation-ID"]
-        
+
         # Must be non-empty
         assert correlation_id, "Correlation ID must not be empty"
-        
+
         # Must be valid UUID4
-        assert is_valid_uuid4(correlation_id), (
-            f"Generated correlation ID '{correlation_id}' is not valid UUID4"
-        )
+        assert is_valid_uuid4(
+            correlation_id
+        ), f"Generated correlation ID '{correlation_id}' is not valid UUID4"
 
     @given(correlation_id=uuid4_strategy())
     @settings(max_examples=100, deadline=None)
@@ -259,7 +253,7 @@ class TestCorrelationIDMiddleware:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any request with an existing correlation ID header, the middleware
         SHALL preserve and return the same correlation ID.
         """
@@ -271,15 +265,12 @@ class TestCorrelationIDMiddleware:
             return {"status": "ok"}
 
         client = TestClient(app)
-        response = client.get(
-            "/test",
-            headers={"X-Correlation-ID": correlation_id}
-        )
+        response = client.get("/test", headers={"X-Correlation-ID": correlation_id})
 
         # Response must have the same correlation ID
-        assert response.headers["X-Correlation-ID"] == correlation_id, (
-            f"Expected '{correlation_id}' but got '{response.headers['X-Correlation-ID']}'"
-        )
+        assert (
+            response.headers["X-Correlation-ID"] == correlation_id
+        ), f"Expected '{correlation_id}' but got '{response.headers['X-Correlation-ID']}'"
 
     @given(st.data())
     @settings(max_examples=100, deadline=None)
@@ -287,7 +278,7 @@ class TestCorrelationIDMiddleware:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any request, the middleware SHALL set the correlation ID
         in the request context for use by handlers.
         """
@@ -307,9 +298,9 @@ class TestCorrelationIDMiddleware:
 
         # Captured ID must match response header
         assert captured_id is not None, "Correlation ID must be set in context"
-        assert captured_id == response.headers["X-Correlation-ID"], (
-            f"Context ID '{captured_id}' doesn't match header '{response.headers['X-Correlation-ID']}'"
-        )
+        assert (
+            captured_id == response.headers["X-Correlation-ID"]
+        ), f"Context ID '{captured_id}' doesn't match header '{response.headers['X-Correlation-ID']}'"
 
     @given(st.integers(min_value=2, max_value=10))
     @settings(max_examples=100, deadline=None)
@@ -317,7 +308,7 @@ class TestCorrelationIDMiddleware:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any number of requests, each SHALL receive a unique correlation ID.
         """
         app = FastAPI()
@@ -328,24 +319,24 @@ class TestCorrelationIDMiddleware:
             return {"status": "ok"}
 
         client = TestClient(app)
-        
+
         correlation_ids = []
         for _ in range(num_requests):
             response = client.get("/test")
             correlation_ids.append(response.headers["X-Correlation-ID"])
 
         # All IDs should be unique
-        assert len(correlation_ids) == len(set(correlation_ids)), (
-            f"Expected {num_requests} unique IDs but got {len(set(correlation_ids))}"
-        )
+        assert len(correlation_ids) == len(
+            set(correlation_ids)
+        ), f"Expected {num_requests} unique IDs but got {len(set(correlation_ids))}"
 
 
 class TestCorrelationIDInAuditLogs:
     """
     Property 16: Correlation ID Propagation - Audit Log Tests
-    
+
     The correlation ID SHALL be included in all audit records.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -364,28 +355,26 @@ class TestCorrelationIDInAuditLogs:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any tool invocation with a correlation ID, the audit log entry
         SHALL include that correlation ID.
         """
         temp_db = create_temp_db()
         try:
             service = AuditService(db_path=temp_db)
-            
+
             entry = service.log_invocation(
                 tool_name=tool_name,
                 parameters=parameters,
                 status=AuditStatus.SUCCESS,
                 correlation_id=correlation_id,
             )
-            
+
             # Entry must have the correlation ID
-            assert entry.correlation_id is not None, (
-                "Audit entry must have correlation_id"
-            )
-            assert entry.correlation_id == correlation_id, (
-                f"Expected '{correlation_id}' but got '{entry.correlation_id}'"
-            )
+            assert entry.correlation_id is not None, "Audit entry must have correlation_id"
+            assert (
+                entry.correlation_id == correlation_id
+            ), f"Expected '{correlation_id}' but got '{entry.correlation_id}'"
         finally:
             cleanup_temp_db(temp_db)
 
@@ -404,14 +393,14 @@ class TestCorrelationIDInAuditLogs:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any audit log entry with a correlation ID, retrieving logs
         SHALL return entries with the same correlation ID.
         """
         temp_db = create_temp_db()
         try:
             service = AuditService(db_path=temp_db)
-            
+
             # Log the invocation
             entry = service.log_invocation(
                 tool_name=tool_name,
@@ -419,23 +408,23 @@ class TestCorrelationIDInAuditLogs:
                 status=AuditStatus.SUCCESS,
                 correlation_id=correlation_id,
             )
-            
+
             # Retrieve logs by correlation ID
             logs = service.get_logs(correlation_id=correlation_id)
-            
+
             # Should find the logged entry
             assert len(logs) >= 1, "Should have at least one log entry"
-            
+
             # Find our entry
             found = False
             for log in logs:
                 if log.id == entry.id:
                     found = True
-                    assert log.correlation_id == correlation_id, (
-                        f"Retrieved log has wrong correlation ID: {log.correlation_id}"
-                    )
+                    assert (
+                        log.correlation_id == correlation_id
+                    ), f"Retrieved log has wrong correlation ID: {log.correlation_id}"
                     break
-            
+
             assert found, f"Could not find logged entry with id {entry.id}"
         finally:
             cleanup_temp_db(temp_db)
@@ -455,7 +444,7 @@ class TestCorrelationIDInAuditLogs:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any tool invocation, if correlation ID is set in context,
         the audit service SHALL automatically capture it.
         """
@@ -463,9 +452,9 @@ class TestCorrelationIDInAuditLogs:
         try:
             # Set correlation ID in context
             set_correlation_id(correlation_id)
-            
+
             service = AuditService(db_path=temp_db)
-            
+
             # Log without explicitly passing correlation_id
             entry = service.log_invocation(
                 tool_name=tool_name,
@@ -473,11 +462,11 @@ class TestCorrelationIDInAuditLogs:
                 status=AuditStatus.SUCCESS,
                 # correlation_id not passed - should be captured from context
             )
-            
+
             # Entry must have the correlation ID from context
-            assert entry.correlation_id == correlation_id, (
-                f"Expected '{correlation_id}' from context but got '{entry.correlation_id}'"
-            )
+            assert (
+                entry.correlation_id == correlation_id
+            ), f"Expected '{correlation_id}' from context but got '{entry.correlation_id}'"
         finally:
             cleanup_temp_db(temp_db)
 
@@ -485,9 +474,9 @@ class TestCorrelationIDInAuditLogs:
 class TestCorrelationIDInLogRecords:
     """
     Property 16: Correlation ID Propagation - Log Record Tests
-    
+
     The correlation ID SHALL be included in all log entries.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -497,13 +486,13 @@ class TestCorrelationIDInLogRecords:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any log record when correlation ID is set in context,
         the CorrelationIDFilter SHALL add the correlation ID to the record.
         """
         # Set correlation ID in context
         set_correlation_id(correlation_id)
-        
+
         # Create a log record
         record = logging.LogRecord(
             name="test.logger",
@@ -514,21 +503,19 @@ class TestCorrelationIDInLogRecords:
             args=(),
             exc_info=None,
         )
-        
+
         # Apply the filter
         correlation_filter = CorrelationIDFilter()
         result = correlation_filter.filter(record)
-        
+
         # Filter should allow the record
         assert result is True, "Filter should return True"
-        
+
         # Record should have correlation_id attribute
-        assert hasattr(record, "correlation_id"), (
-            "Log record must have correlation_id attribute"
-        )
-        assert record.correlation_id == correlation_id, (
-            f"Expected '{correlation_id}' but got '{record.correlation_id}'"
-        )
+        assert hasattr(record, "correlation_id"), "Log record must have correlation_id attribute"
+        assert (
+            record.correlation_id == correlation_id
+        ), f"Expected '{correlation_id}' but got '{record.correlation_id}'"
 
     @given(st.data())
     @settings(max_examples=100, deadline=None)
@@ -536,13 +523,13 @@ class TestCorrelationIDInLogRecords:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any log record when correlation ID is not set in context,
         the CorrelationIDFilter SHALL add a dash placeholder.
         """
         # Clear correlation ID
         set_correlation_id("")
-        
+
         # Create a log record
         record = logging.LogRecord(
             name="test.logger",
@@ -553,28 +540,22 @@ class TestCorrelationIDInLogRecords:
             args=(),
             exc_info=None,
         )
-        
+
         # Apply the filter
         correlation_filter = CorrelationIDFilter()
         result = correlation_filter.filter(record)
-        
+
         # Filter should allow the record
         assert result is True, "Filter should return True"
-        
+
         # Record should have correlation_id as dash
-        assert hasattr(record, "correlation_id"), (
-            "Log record must have correlation_id attribute"
-        )
-        assert record.correlation_id == "-", (
-            f"Expected '-' but got '{record.correlation_id}'"
-        )
+        assert hasattr(record, "correlation_id"), "Log record must have correlation_id attribute"
+        assert record.correlation_id == "-", f"Expected '-' but got '{record.correlation_id}'"
 
     @given(
         correlation_id=uuid4_strategy(),
         log_message=st.text(
-            alphabet="abcdefghijklmnopqrstuvwxyz0123456789 ",
-            min_size=1,
-            max_size=50
+            alphabet="abcdefghijklmnopqrstuvwxyz0123456789 ", min_size=1, max_size=50
         ),
     )
     @settings(max_examples=100, deadline=None)
@@ -586,43 +567,43 @@ class TestCorrelationIDInLogRecords:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any log message when correlation ID is set, the correlation ID
         SHALL be available in the log record captured by handlers.
         """
         # Set correlation ID in context
         set_correlation_id(correlation_id)
-        
+
         # Create a logger with the filter
         test_logger = logging.getLogger(f"test.correlation.{correlation_id[:8]}")
         test_logger.setLevel(logging.INFO)
-        
+
         # Add filter
         correlation_filter = CorrelationIDFilter()
         test_logger.addFilter(correlation_filter)
-        
+
         # Add a handler to capture log records
         captured_records = []
-        
+
         class CaptureHandler(logging.Handler):
             def emit(self, record):
                 captured_records.append(record)
-        
+
         handler = CaptureHandler()
         test_logger.addHandler(handler)
-        
+
         try:
             # Log a message
             test_logger.info(log_message)
-            
+
             # Check that record has correlation ID
             assert len(captured_records) == 1, "Should have captured one log record"
-            assert hasattr(captured_records[0], "correlation_id"), (
-                "Log record must have correlation_id attribute"
-            )
-            assert captured_records[0].correlation_id == correlation_id, (
-                f"Expected '{correlation_id}' but got '{captured_records[0].correlation_id}'"
-            )
+            assert hasattr(
+                captured_records[0], "correlation_id"
+            ), "Log record must have correlation_id attribute"
+            assert (
+                captured_records[0].correlation_id == correlation_id
+            ), f"Expected '{correlation_id}' but got '{captured_records[0].correlation_id}'"
         finally:
             # Clean up
             test_logger.removeHandler(handler)
@@ -632,9 +613,9 @@ class TestCorrelationIDInLogRecords:
 class TestCorrelationIDEndToEnd:
     """
     Property 16: Correlation ID Propagation - End-to-End Tests
-    
+
     The correlation ID SHALL be propagated through the entire request lifecycle.
-    
+
     Validates: Requirements 15.1
     """
 
@@ -644,7 +625,7 @@ class TestCorrelationIDEndToEnd:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any request, the correlation ID generated by middleware SHALL
         be available for audit logging within the request handler.
         """
@@ -652,7 +633,7 @@ class TestCorrelationIDEndToEnd:
         try:
             app = FastAPI()
             app.add_middleware(CorrelationIDMiddleware)
-            
+
             audit_service = AuditService(db_path=temp_db)
             logged_entry = None
 
@@ -672,7 +653,7 @@ class TestCorrelationIDEndToEnd:
 
             # Get correlation ID from response header
             response_correlation_id = response.headers["X-Correlation-ID"]
-            
+
             # Audit entry should have the same correlation ID
             assert logged_entry is not None, "Audit entry should have been logged"
             assert logged_entry.correlation_id == response_correlation_id, (
@@ -688,7 +669,7 @@ class TestCorrelationIDEndToEnd:
         """
         Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
         Validates: Requirements 15.1
-        
+
         For any request with a provided correlation ID, that ID SHALL
         be propagated to audit logs.
         """
@@ -696,7 +677,7 @@ class TestCorrelationIDEndToEnd:
         try:
             app = FastAPI()
             app.add_middleware(CorrelationIDMiddleware)
-            
+
             audit_service = AuditService(db_path=temp_db)
             logged_entry = None
 
@@ -711,14 +692,11 @@ class TestCorrelationIDEndToEnd:
                 return {"status": "ok"}
 
             client = TestClient(app)
-            response = client.get(
-                "/test",
-                headers={"X-Correlation-ID": correlation_id}
-            )
+            response = client.get("/test", headers={"X-Correlation-ID": correlation_id})
 
             # Response should have the same correlation ID
             assert response.headers["X-Correlation-ID"] == correlation_id
-            
+
             # Audit entry should have the same correlation ID
             assert logged_entry is not None, "Audit entry should have been logged"
             assert logged_entry.correlation_id == correlation_id, (

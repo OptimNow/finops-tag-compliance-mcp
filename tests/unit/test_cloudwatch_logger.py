@@ -44,9 +44,7 @@ class TestCloudWatchHandler:
         )
 
         # Verify create_log_group was called
-        mock_client.create_log_group.assert_called_once_with(
-            logGroupName="/test/group"
-        )
+        mock_client.create_log_group.assert_called_once_with(logGroupName="/test/group")
 
         # Verify create_log_stream was called
         mock_client.create_log_stream.assert_called_once_with(
@@ -64,9 +62,7 @@ class TestCloudWatchHandler:
 
         # Simulate log group already exists
         error_response = {"Error": {"Code": "ResourceAlreadyExistsException"}}
-        mock_client.create_log_group.side_effect = ClientError(
-            error_response, "CreateLogGroup"
-        )
+        mock_client.create_log_group.side_effect = ClientError(error_response, "CreateLogGroup")
 
         # Should not raise exception
         handler = CloudWatchHandler(

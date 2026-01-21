@@ -28,27 +28,28 @@ def mock_aws_client():
 def mock_policy_service():
     """Create a mock policy service."""
     service = MagicMock(spec=PolicyService)
-    
+
     # Mock get_required_tags to return a list of required tags
     def get_required_tags(resource_type):
         return [
             MagicMock(
                 name="Environment",
                 allowed_values=["production", "staging", "development"],
-                validation_regex=None
+                validation_regex=None,
             ),
             MagicMock(
                 name="CostCenter",
                 allowed_values=["Engineering", "Marketing", "Sales"],
-                validation_regex=None
+                validation_regex=None,
             ),
         ]
-    
+
     service.get_required_tags = get_required_tags
     return service
 
 
 # Tests for ARN validation and parsing functions
+
 
 def test_is_valid_arn_valid_ec2():
     """Test ARN validation with valid EC2 ARN."""
@@ -93,7 +94,7 @@ def test_parse_arn_ec2_instance():
     """Test parsing EC2 instance ARN."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
     parsed = _parse_arn(arn)
-    
+
     assert parsed["service"] == "ec2"
     assert parsed["region"] == "us-east-1"
     assert parsed["account"] == "123456789012"
@@ -105,7 +106,7 @@ def test_parse_arn_s3_bucket():
     """Test parsing S3 bucket ARN."""
     arn = "arn:aws:s3:::my-bucket"
     parsed = _parse_arn(arn)
-    
+
     assert parsed["service"] == "s3"
     assert parsed["region"] == "global"
     assert parsed["resource_type"] == "s3:bucket"
@@ -116,7 +117,7 @@ def test_parse_arn_rds_database():
     """Test parsing RDS database ARN."""
     arn = "arn:aws:rds:us-west-2:123456789012:db:mydb"
     parsed = _parse_arn(arn)
-    
+
     assert parsed["service"] == "rds"
     assert parsed["region"] == "us-west-2"
     assert parsed["resource_type"] == "rds:db"
@@ -127,7 +128,7 @@ def test_parse_arn_lambda_function():
     """Test parsing Lambda function ARN."""
     arn = "arn:aws:lambda:eu-west-1:123456789012:function:my-function"
     parsed = _parse_arn(arn)
-    
+
     assert parsed["service"] == "lambda"
     assert parsed["region"] == "eu-west-1"
     assert parsed["resource_type"] == "lambda:function"
@@ -196,6 +197,7 @@ def test_extract_resource_id_multiple_slashes():
 
 # Tests for SuggestTagsResult
 
+
 def test_suggest_tags_result_to_dict():
     """Test SuggestTagsResult serialization to dictionary."""
     suggestions = [
@@ -203,25 +205,25 @@ def test_suggest_tags_result_to_dict():
             tag_key="Environment",
             suggested_value="production",
             confidence=0.85,
-            reasoning="Detected 'prod' pattern in resource name"
+            reasoning="Detected 'prod' pattern in resource name",
         ),
         TagSuggestion(
             tag_key="CostCenter",
             suggested_value="Engineering",
             confidence=0.75,
-            reasoning="Found in similar resources"
-        )
+            reasoning="Found in similar resources",
+        ),
     ]
-    
+
     result = SuggestTagsResult(
         resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
         resource_type="ec2:instance",
         suggestions=suggestions,
-        current_tags={"Name": "test-instance"}
+        current_tags={"Name": "test-instance"},
     )
-    
+
     result_dict = result.to_dict()
-    
+
     assert result_dict["resource_arn"] == "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
     assert result_dict["resource_type"] == "ec2:instance"
     assert result_dict["suggestion_count"] == 2
@@ -237,29 +239,26 @@ def test_suggest_tags_result_empty_suggestions():
         resource_arn="arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
         resource_type="ec2:instance",
         suggestions=[],
-        current_tags={"CostCenter": "Engineering", "Environment": "production"}
+        current_tags={"CostCenter": "Engineering", "Environment": "production"},
     )
-    
+
     result_dict = result.to_dict()
-    
+
     assert result_dict["suggestion_count"] == 0
     assert len(result_dict["suggestions"]) == 0
 
 
 # Tests for suggest_tags tool
 
+
 @pytest.mark.asyncio
 async def test_suggest_tags_empty_arn():
     """Test suggest_tags with empty ARN."""
     mock_client = MagicMock()
     mock_policy = MagicMock()
-    
+
     with pytest.raises(ValueError, match="resource_arn cannot be empty"):
-        await suggest_tags(
-            aws_client=mock_client,
-            policy_service=mock_policy,
-            resource_arn=""
-        )
+        await suggest_tags(aws_client=mock_client, policy_service=mock_policy, resource_arn="")
 
 
 @pytest.mark.asyncio
@@ -267,12 +266,10 @@ async def test_suggest_tags_invalid_arn():
     """Test suggest_tags with invalid ARN format."""
     mock_client = MagicMock()
     mock_policy = MagicMock()
-    
+
     with pytest.raises(ValueError, match="Invalid ARN format"):
         await suggest_tags(
-            aws_client=mock_client,
-            policy_service=mock_policy,
-            resource_arn="not-an-arn"
+            aws_client=mock_client, policy_service=mock_policy, resource_arn="not-an-arn"
         )
 
 
@@ -280,37 +277,39 @@ async def test_suggest_tags_invalid_arn():
 async def test_suggest_tags_ec2_instance_with_prod_pattern(mock_aws_client, mock_policy_service):
     """Test suggestion generation for EC2 instance with production pattern."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-12345"
-    
+
     # Mock AWS client to return resource with production naming
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    # Mock similar resources
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    # Mock similar resources
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
+    )
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     assert result.resource_arn == arn
     assert result.resource_type == "ec2:instance"
     assert result.current_tags == {}
@@ -322,25 +321,25 @@ async def test_suggest_tags_ec2_instance_with_prod_pattern(mock_aws_client, mock
 async def test_suggest_tags_confidence_score_bounds(mock_aws_client, mock_policy_service):
     """Test that confidence scores are within valid bounds (0.0 to 1.0)."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-12345"
-    
+
     # Mock AWS client
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     # Verify all suggestions have valid confidence scores
     for suggestion in result.suggestions:
         assert isinstance(suggestion.confidence, float)
@@ -351,25 +350,25 @@ async def test_suggest_tags_confidence_score_bounds(mock_aws_client, mock_policy
 async def test_suggest_tags_includes_reasoning(mock_aws_client, mock_policy_service):
     """Test that all suggestions include reasoning."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-12345"
-    
+
     # Mock AWS client
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     # Verify all suggestions have reasoning
     for suggestion in result.suggestions:
         assert suggestion.reasoning is not None
@@ -381,25 +380,25 @@ async def test_suggest_tags_includes_reasoning(mock_aws_client, mock_policy_serv
 async def test_suggest_tags_s3_bucket(mock_aws_client, mock_policy_service):
     """Test suggestion generation for S3 bucket."""
     arn = "arn:aws:s3:::my-prod-bucket"
-    
+
     # Mock AWS client to return S3 bucket
-    mock_aws_client.get_s3_buckets = AsyncMock(return_value=[
-        {
-            "resource_id": "my-prod-bucket",
-            "resource_type": "s3:bucket",
-            "region": "global",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_s3_buckets = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "my-prod-bucket",
+                "resource_type": "s3:bucket",
+                "region": "global",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     assert result.resource_arn == arn
     assert result.resource_type == "s3:bucket"
     assert result.current_tags == {}
@@ -409,25 +408,25 @@ async def test_suggest_tags_s3_bucket(mock_aws_client, mock_policy_service):
 async def test_suggest_tags_rds_database(mock_aws_client, mock_policy_service):
     """Test suggestion generation for RDS database."""
     arn = "arn:aws:rds:us-east-1:123456789012:db:prod-db"
-    
+
     # Mock AWS client to return RDS instance
-    mock_aws_client.get_rds_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "prod-db",
-            "resource_type": "rds:db",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_rds_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "prod-db",
+                "resource_type": "rds:db",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     assert result.resource_arn == arn
     assert result.resource_type == "rds:db"
     assert result.current_tags == {}
@@ -437,25 +436,25 @@ async def test_suggest_tags_rds_database(mock_aws_client, mock_policy_service):
 async def test_suggest_tags_lambda_function(mock_aws_client, mock_policy_service):
     """Test suggestion generation for Lambda function."""
     arn = "arn:aws:lambda:us-east-1:123456789012:function:prod-function"
-    
+
     # Mock AWS client to return Lambda function
-    mock_aws_client.get_lambda_functions = AsyncMock(return_value=[
-        {
-            "resource_id": "prod-function",
-            "resource_type": "lambda:function",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_lambda_functions = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "prod-function",
+                "resource_type": "lambda:function",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     assert result.resource_arn == arn
     assert result.resource_type == "lambda:function"
     assert result.current_tags == {}
@@ -465,30 +464,27 @@ async def test_suggest_tags_lambda_function(mock_aws_client, mock_policy_service
 async def test_suggest_tags_with_existing_tags(mock_aws_client, mock_policy_service):
     """Test suggestion generation for resource with some existing tags."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-12345"
-    
-    existing_tags = {
-        "Name": "test-instance",
-        "Environment": "production"
-    }
-    
+
+    existing_tags = {"Name": "test-instance", "Environment": "production"}
+
     # Mock AWS client
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": existing_tags,
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": existing_tags,
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     assert result.current_tags == existing_tags
     # Should not suggest Environment since it already exists
     env_suggestions = [s for s in result.suggestions if s.tag_key == "Environment"]
@@ -499,32 +495,32 @@ async def test_suggest_tags_with_existing_tags(mock_aws_client, mock_policy_serv
 async def test_suggest_tags_result_structure(mock_aws_client, mock_policy_service):
     """Test that suggest_tags returns properly structured result."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
-    
+
     # Mock AWS client
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     # Verify result structure
     assert isinstance(result, SuggestTagsResult)
     assert result.resource_arn == arn
     assert result.resource_type == "ec2:instance"
     assert isinstance(result.suggestions, list)
     assert isinstance(result.current_tags, dict)
-    
+
     # Verify to_dict() works
     result_dict = result.to_dict()
     assert "resource_arn" in result_dict
@@ -538,59 +534,59 @@ async def test_suggest_tags_result_structure(mock_aws_client, mock_policy_servic
 async def test_suggest_tags_multiple_suggestions(mock_aws_client, mock_policy_service):
     """Test that multiple suggestions can be generated for a resource."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-eng-12345"
-    
+
     # Mock AWS client with resource that has patterns for multiple tags
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-eng-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-eng-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     # Should have suggestions for multiple missing tags
     assert isinstance(result.suggestions, list)
     # Each suggestion should be a TagSuggestion object
     for suggestion in result.suggestions:
         assert isinstance(suggestion, TagSuggestion)
-        assert hasattr(suggestion, 'tag_key')
-        assert hasattr(suggestion, 'suggested_value')
-        assert hasattr(suggestion, 'confidence')
-        assert hasattr(suggestion, 'reasoning')
+        assert hasattr(suggestion, "tag_key")
+        assert hasattr(suggestion, "suggested_value")
+        assert hasattr(suggestion, "confidence")
+        assert hasattr(suggestion, "reasoning")
 
 
 @pytest.mark.asyncio
 async def test_suggest_tags_confidence_varies_by_source(mock_aws_client, mock_policy_service):
     """Test that confidence scores vary based on suggestion source."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-prod-12345"
-    
+
     # Mock AWS client
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-prod-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
-    result = await suggest_tags(
-        aws_client=mock_aws_client,
-        policy_service=mock_policy_service,
-        resource_arn=arn
+    mock_aws_client.get_ec2_instances = AsyncMock(
+        return_value=[
+            {
+                "resource_id": "i-prod-12345",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},
+                "created_at": None,
+                "arn": arn,
+            }
+        ]
     )
-    
+
+    result = await suggest_tags(
+        aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arn=arn
+    )
+
     # If we have multiple suggestions, they should have different confidence scores
     # (unless they happen to be the same)
     if len(result.suggestions) > 1:

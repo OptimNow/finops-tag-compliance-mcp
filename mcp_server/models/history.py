@@ -40,9 +40,7 @@ class ComplianceHistoryEntry(BaseModel):
 class ComplianceHistoryResult(BaseModel):
     """Result of a compliance history query."""
 
-    history: list[ComplianceHistoryEntry] = Field(
-        description="Historical compliance data points"
-    )
+    history: list[ComplianceHistoryEntry] = Field(description="Historical compliance data points")
     group_by: GroupBy = Field(description="How the data is grouped")
     trend_direction: TrendDirection = Field(
         description="Overall trend direction (improving, declining, stable)"
@@ -50,7 +48,5 @@ class ComplianceHistoryResult(BaseModel):
     earliest_score: float = Field(
         ge=0.0, le=1.0, description="Earliest compliance score in the range"
     )
-    latest_score: float = Field(
-        ge=0.0, le=1.0, description="Latest compliance score in the range"
-    )
+    latest_score: float = Field(ge=0.0, le=1.0, description="Latest compliance score in the range")
     days_back: int = Field(ge=1, le=90, description="Number of days of history returned")

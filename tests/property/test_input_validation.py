@@ -27,13 +27,15 @@ from mcp_server.utils.input_validation import (
 # =============================================================================
 
 # Valid resource types
-valid_resource_types = st.sampled_from([
-    "ec2:instance",
-    "rds:db",
-    "s3:bucket",
-    "lambda:function",
-    "ecs:service",
-])
+valid_resource_types = st.sampled_from(
+    [
+        "ec2:instance",
+        "rds:db",
+        "s3:bucket",
+        "lambda:function",
+        "ecs:service",
+    ]
+)
 
 # Invalid resource types (strings that are not in the valid set)
 invalid_resource_type = st.text(min_size=1, max_size=50).filter(
@@ -79,7 +81,9 @@ valid_arn = st.builds(
     service=st.sampled_from(["ec2", "rds", "s3", "lambda", "ecs"]),
     region=st.sampled_from(["us-east-1", "us-west-2", "eu-west-1"]),
     account=st.from_regex(r"^\d{12}$", fullmatch=True),
-    resource=st.from_regex(r"^[a-z0-9\-/:._]+$", fullmatch=True).filter(lambda x: len(x) > 0 and len(x) < 100),
+    resource=st.from_regex(r"^[a-z0-9\-/:._]+$", fullmatch=True).filter(
+        lambda x: len(x) > 0 and len(x) < 100
+    ),
 )
 
 # Invalid ARN (doesn't match pattern)
@@ -98,48 +102,49 @@ invalid_date = st.one_of(
 )
 
 # Injection patterns for security testing
-injection_patterns = st.sampled_from([
-    "<script>alert('xss')</script>",
-    "javascript:alert('xss')",
-    "<img onerror='alert(1)'>",
-    "eval(malicious_code)",
-    "exec(malicious_code)",
-    "__import__('os').system('rm -rf /')",
-    "${malicious_code}",
-    "{{malicious_code}}",
-    "../../etc/passwd",
-    "..\\..\\windows\\system32",
-    "/etc/passwd",
-    "cmd.exe /c dir",
-    "/bin/sh -c 'ls'",
-    "; rm -rf /",
-    "; drop table users",
-])
+injection_patterns = st.sampled_from(
+    [
+        "<script>alert('xss')</script>",
+        "javascript:alert('xss')",
+        "<img onerror='alert(1)'>",
+        "eval(malicious_code)",
+        "exec(malicious_code)",
+        "__import__('os').system('rm -rf /')",
+        "${malicious_code}",
+        "{{malicious_code}}",
+        "../../etc/passwd",
+        "..\\..\\windows\\system32",
+        "/etc/passwd",
+        "cmd.exe /c dir",
+        "/bin/sh -c 'ls'",
+        "; rm -rf /",
+        "; drop table users",
+    ]
+)
 
 # Safe strings that should pass validation
 safe_string = st.text(
     alphabet=st.characters(
         whitelist_categories=("L", "N", "P", "S"),
         blacklist_characters="\x00\x01\x02\x03\x04\x05\x06\x07\x08\x0b\x0c\x0e\x0f"
-                            "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
+        "\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\x1e\x1f",
     ),
     min_size=1,
     max_size=100,
-).filter(lambda x: x.strip() != "" and not any(
-    p.search(x) for p in InputValidator.SUSPICIOUS_PATTERNS
-))
+).filter(
+    lambda x: x.strip() != "" and not any(p.search(x) for p in InputValidator.SUSPICIOUS_PATTERNS)
+)
 
 
 # =============================================================================
 # Property Tests for Input Schema Validation
 # =============================================================================
 
+
 class TestInputSchemaValidationProperty:
     """Property tests for input schema validation (Property 17)."""
 
-    @given(
-        resource_types=st.lists(valid_resource_types, min_size=1, max_size=5, unique=True)
-    )
+    @given(resource_types=st.lists(valid_resource_types, min_size=1, max_size=5, unique=True))
     @settings(max_examples=100, deadline=None)
     def test_property_17_valid_resource_types_accepted(
         self,
@@ -148,7 +153,7 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid resource types, validation SHALL accept them.
         """
         result = InputValidator.validate_resource_types(resource_types)
@@ -168,16 +173,16 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any invalid resource type, validation SHALL reject with a clear
         error message indicating which parameter failed and why.
         """
         # Combine valid and invalid types
         resource_types = valid_types + [invalid_type]
-        
+
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_resource_types(resource_types)
-        
+
         error = exc_info.value
         # Error message should indicate the field name
         assert error.field == "resource_types"
@@ -199,7 +204,7 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid filter values, validation SHALL accept them.
         """
         filters = {"region": region, "account_id": account_id}
@@ -219,15 +224,15 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any invalid filter key, validation SHALL reject with a clear
         error message indicating which parameter failed and why.
         """
         filters = {invalid_key: "some_value"}
-        
+
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_filters(filters)
-        
+
         error = exc_info.value
         assert error.field == "filters"
         assert "invalid" in error.message.lower()
@@ -239,7 +244,7 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid severity value, validation SHALL accept it.
         """
         result = InputValidator.validate_severity(severity)
@@ -251,13 +256,13 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any invalid severity value, validation SHALL reject with a clear
         error message indicating which parameter failed and why.
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_severity(severity)
-        
+
         error = exc_info.value
         assert error.field == "severity"
         assert "invalid" in error.message.lower()
@@ -269,7 +274,7 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid severity value wrapped in a single-element array,
         validation SHALL auto-unwrap and accept it (AI agent tolerance).
         """
@@ -283,7 +288,7 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid ARNs, validation SHALL accept them.
         """
         result = InputValidator.validate_resource_arns(arns)
@@ -302,20 +307,20 @@ class TestInputSchemaValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any invalid ARN, validation SHALL reject with a clear
         error message indicating which parameter failed and why.
         Both ValidationError (for format issues) and SecurityViolationError
         (for control characters, null bytes, etc.) are valid rejection responses.
         """
         arns = valid_arns + [invalid_arn_val]
-        
+
         # Both ValidationError and SecurityViolationError are valid rejections
         # - ValidationError: for invalid ARN format
         # - SecurityViolationError: for control characters, null bytes, injection attempts
         with pytest.raises((ValidationError, SecurityViolationError)) as exc_info:
             InputValidator.validate_resource_arns(arns)
-        
+
         error = exc_info.value
         # Error should have a meaningful message
         if isinstance(error, ValidationError):
@@ -346,12 +351,12 @@ class TestInputValidationErrorMessages:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any type mismatch, the error message SHALL indicate the expected type.
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_resource_types(wrong_type)
-        
+
         error = exc_info.value
         assert error.field == "resource_types"
         # Should mention expected type (array/list)
@@ -372,11 +377,11 @@ class TestInputValidationErrorMessages:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any validation error, the error SHALL include the field name.
         """
         error = ValidationError(field_name, "Test error message", value)
-        
+
         assert error.field == field_name
         assert field_name in str(error)
 
@@ -393,24 +398,20 @@ class TestInputValidationErrorMessages:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any range validation error, the error SHALL include the valid bounds.
         """
         # Test minimum bound
         with pytest.raises(ValidationError) as exc_info:
-            InputValidator.validate_integer(
-                min_val - 1, "test_field", minimum=min_val
-            )
-        
+            InputValidator.validate_integer(min_val - 1, "test_field", minimum=min_val)
+
         error = exc_info.value
         assert str(min_val) in error.message
-        
+
         # Test maximum bound
         with pytest.raises(ValidationError) as exc_info:
-            InputValidator.validate_integer(
-                max_val + 1, "test_field", maximum=max_val
-            )
-        
+            InputValidator.validate_integer(max_val + 1, "test_field", maximum=max_val)
+
         error = exc_info.value
         assert str(max_val) in error.message
 
@@ -424,12 +425,12 @@ class TestSecurityValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any injection attempt, validation SHALL reject with a security error.
         """
         with pytest.raises(SecurityViolationError) as exc_info:
             InputValidator.detect_injection_attempt(injection, "test_field")
-        
+
         error = exc_info.value
         assert error.violation_type == "injection_attempt"
         assert "suspicious" in error.message.lower() or "malicious" in error.message.lower()
@@ -442,17 +443,17 @@ class TestSecurityValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any excessively nested structure, validation SHALL reject.
         """
         # Build nested structure
         data: dict = {"value": "leaf"}
         for i in range(depth):
             data = {f"level{i}": data}
-        
+
         with pytest.raises(SecurityViolationError) as exc_info:
             InputValidator.check_parameter_size_limits(data)
-        
+
         error = exc_info.value
         assert error.violation_type == "excessive_nesting"
         assert "nesting" in error.message.lower()
@@ -468,14 +469,14 @@ class TestSecurityValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any string exceeding max length, validation SHALL reject.
         """
         long_string = "a" * length
-        
+
         with pytest.raises((ValidationError, SecurityViolationError)) as exc_info:
             InputValidator.sanitize_string(long_string, field_name="test_field")
-        
+
         error = exc_info.value
         assert "too long" in error.message.lower() or "string" in error.message.lower()
 
@@ -490,14 +491,14 @@ class TestSecurityValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any dict with too many keys, validation SHALL reject.
         """
         data = {f"key{i}": f"value{i}" for i in range(num_keys)}
-        
+
         with pytest.raises(SecurityViolationError) as exc_info:
             InputValidator.check_parameter_size_limits(data)
-        
+
         error = exc_info.value
         assert error.violation_type == "excessive_keys"
 
@@ -512,14 +513,14 @@ class TestSecurityValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any array exceeding max length, validation SHALL reject.
         """
         data = ["item"] * num_items
-        
+
         with pytest.raises(SecurityViolationError) as exc_info:
             InputValidator.check_parameter_size_limits(data)
-        
+
         error = exc_info.value
         assert error.violation_type == "excessive_array_length"
 
@@ -540,18 +541,18 @@ class TestTimePeriodValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid time period (end after start, within 365 days),
         validation SHALL accept it.
         """
         from datetime import timedelta
-        
+
         end_date = start_date + timedelta(days=days_diff)
         time_period = {
             "Start": start_date.strftime("%Y-%m-%d"),
             "End": end_date.strftime("%Y-%m-%d"),
         }
-        
+
         result = InputValidator.validate_time_period(time_period)
         assert result == time_period
 
@@ -568,20 +569,20 @@ class TestTimePeriodValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any time period where end is before start, validation SHALL reject.
         """
         from datetime import timedelta
-        
+
         end_date = start_date - timedelta(days=days_before)
         time_period = {
             "Start": start_date.strftime("%Y-%m-%d"),
             "End": end_date.strftime("%Y-%m-%d"),
         }
-        
+
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_time_period(time_period)
-        
+
         error = exc_info.value
         assert "after" in error.message.lower() or "before" in error.message.lower()
 
@@ -598,20 +599,20 @@ class TestTimePeriodValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any time period exceeding 365 days, validation SHALL reject.
         """
         from datetime import timedelta
-        
+
         end_date = start_date + timedelta(days=days_diff)
         time_period = {
             "Start": start_date.strftime("%Y-%m-%d"),
             "End": end_date.strftime("%Y-%m-%d"),
         }
-        
+
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_time_period(time_period)
-        
+
         error = exc_info.value
         assert "too large" in error.message.lower() or "365" in error.message
 
@@ -619,34 +620,30 @@ class TestTimePeriodValidation:
 class TestRequiredFieldValidation:
     """Property tests for required field validation."""
 
-    @given(
-        field_name=st.text(min_size=1, max_size=30).filter(lambda x: x.strip() != "")
-    )
+    @given(field_name=st.text(min_size=1, max_size=30).filter(lambda x: x.strip() != ""))
     @settings(max_examples=100, deadline=None)
     def test_property_17_required_field_missing_rejected(self, field_name: str):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any required field that is None, validation SHALL reject
         with a clear message indicating the field is required.
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_resource_types(None, field_name=field_name, required=True)
-        
+
         error = exc_info.value
         assert error.field == field_name
         assert "required" in error.message.lower()
 
-    @given(
-        field_name=st.text(min_size=1, max_size=30).filter(lambda x: x.strip() != "")
-    )
+    @given(field_name=st.text(min_size=1, max_size=30).filter(lambda x: x.strip() != ""))
     @settings(max_examples=100, deadline=None)
     def test_property_17_optional_field_none_accepted(self, field_name: str):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any optional field that is None, validation SHALL accept it.
         """
         result = InputValidator.validate_filters(None, field_name=field_name, required=False)
@@ -671,11 +668,11 @@ class TestIntegerValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any integer within the specified range, validation SHALL accept it.
         """
         assume(minimum <= value <= maximum)
-        
+
         result = InputValidator.validate_integer(
             value, "test_field", minimum=minimum, maximum=maximum
         )
@@ -687,13 +684,13 @@ class TestIntegerValidation:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any boolean value, integer validation SHALL reject it
         (even though bool is a subclass of int in Python).
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_integer(value, "test_field")
-        
+
         error = exc_info.value
         assert "integer" in error.message.lower()
 
@@ -701,145 +698,144 @@ class TestIntegerValidation:
 class TestCostThresholdValidation:
     """Property tests for cost threshold validation."""
 
-    @given(
-        threshold=st.floats(min_value=0.0, max_value=1_000_000.0, allow_nan=False)
-    )
+    @given(threshold=st.floats(min_value=0.0, max_value=1_000_000.0, allow_nan=False))
     @settings(max_examples=100, deadline=None)
     def test_property_17_valid_cost_threshold_accepted(self, threshold: float):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid cost threshold (0 to 1,000,000), validation SHALL accept it.
         """
         result = InputValidator.validate_min_cost_threshold(threshold)
         assert result == threshold
 
-    @given(
-        threshold=st.floats(max_value=-0.01, allow_nan=False, allow_infinity=False)
-    )
+    @given(threshold=st.floats(max_value=-0.01, allow_nan=False, allow_infinity=False))
     @settings(max_examples=100, deadline=None)
     def test_property_17_negative_cost_threshold_rejected(self, threshold: float):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any negative cost threshold, validation SHALL reject it.
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_min_cost_threshold(threshold)
-        
+
         error = exc_info.value
         assert "non-negative" in error.message.lower() or "negative" in error.message.lower()
 
-    @given(
-        threshold=st.floats(min_value=1_000_001.0, max_value=10_000_000.0, allow_nan=False)
-    )
+    @given(threshold=st.floats(min_value=1_000_001.0, max_value=10_000_000.0, allow_nan=False))
     @settings(max_examples=100, deadline=None)
     def test_property_17_excessive_cost_threshold_rejected(self, threshold: float):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any cost threshold exceeding $1,000,000, validation SHALL reject it.
         """
         with pytest.raises(ValidationError) as exc_info:
             InputValidator.validate_min_cost_threshold(threshold)
-        
+
         error = exc_info.value
         assert "unreasonably large" in error.message.lower() or "1,000,000" in error.message
 
 
 class TestArnFormatValidationProperty:
     """Property tests for comprehensive ARN format validation.
-    
+
     Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
     Validates: Requirements 16.3
-    
+
     These tests verify that the ARN validation correctly handles all AWS service
     ARN formats including global services, S3 buckets, and various partitions.
     """
-    
+
     # Strategy for generating valid standard ARNs (with region and account)
     standard_arn = st.builds(
-        lambda partition, service, region, account, resource: 
-            f"arn:{partition}:{service}:{region}:{account}:{resource}",
+        lambda partition, service, region, account, resource: f"arn:{partition}:{service}:{region}:{account}:{resource}",
         partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
-        service=st.sampled_from(["ec2", "rds", "lambda", "ecs", "dynamodb", "sns", "sqs", "kinesis"]),
-        region=st.sampled_from(["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "cn-north-1", "us-gov-west-1"]),
+        service=st.sampled_from(
+            ["ec2", "rds", "lambda", "ecs", "dynamodb", "sns", "sqs", "kinesis"]
+        ),
+        region=st.sampled_from(
+            ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "cn-north-1", "us-gov-west-1"]
+        ),
         account=st.from_regex(r"^\d{12}$", fullmatch=True),
-        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(lambda x: 1 < len(x) < 100),
+        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(
+            lambda x: 1 < len(x) < 100
+        ),
     )
-    
+
     # Strategy for generating valid global service ARNs (empty region)
     global_service_arn = st.builds(
-        lambda partition, service, account, resource:
-            f"arn:{partition}:{service}::{account}:{resource}",
+        lambda partition, service, account, resource: f"arn:{partition}:{service}::{account}:{resource}",
         partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
         service=st.sampled_from(["iam", "route53", "cloudfront", "waf"]),
         account=st.from_regex(r"^\d{12}$", fullmatch=True),
-        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(lambda x: 1 < len(x) < 100),
+        resource=st.from_regex(r"^[a-z][a-z0-9\-/_:.]+$", fullmatch=True).filter(
+            lambda x: 1 < len(x) < 100
+        ),
     )
-    
+
     # Strategy for generating valid S3 bucket ARNs (empty region AND account)
     s3_bucket_arn = st.builds(
-        lambda partition, bucket:
-            f"arn:{partition}:s3:::{bucket}",
+        lambda partition, bucket: f"arn:{partition}:s3:::{bucket}",
         partition=st.sampled_from(["aws", "aws-cn", "aws-us-gov"]),
         bucket=st.from_regex(r"^[a-z0-9][a-z0-9\-._]{2,62}$", fullmatch=True),
     )
-    
+
     # Combined strategy for any valid ARN
     any_valid_arn = st.one_of(standard_arn, global_service_arn, s3_bucket_arn)
-    
+
     @given(arn=standard_arn)
     @settings(max_examples=100, deadline=None)
     def test_property_17_standard_arns_accepted(self, arn: str):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid standard ARN (with region and account), validation SHALL accept it.
         """
         result = InputValidator.validate_resource_arns([arn])
         assert result == [arn]
-    
+
     @given(arn=global_service_arn)
     @settings(max_examples=100, deadline=None)
     def test_property_17_global_service_arns_accepted(self, arn: str):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid global service ARN (empty region), validation SHALL accept it.
         """
         result = InputValidator.validate_resource_arns([arn])
         assert result == [arn]
-    
+
     @given(arn=s3_bucket_arn)
     @settings(max_examples=100, deadline=None)
     def test_property_17_s3_bucket_arns_accepted(self, arn: str):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any valid S3 bucket ARN (empty region and account), validation SHALL accept it.
         """
         result = InputValidator.validate_resource_arns([arn])
         assert result == [arn]
-    
+
     @given(arns=st.lists(any_valid_arn, min_size=1, max_size=10, unique=True))
     @settings(max_examples=100, deadline=None)
     def test_property_17_mixed_arn_types_accepted(self, arns: list[str]):
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any list of valid ARNs (mixed types), validation SHALL accept all of them.
         """
         result = InputValidator.validate_resource_arns(arns)
         assert result == arns
-    
+
     @given(
         partition=st.text(min_size=1, max_size=20).filter(
             lambda x: x not in ["aws", "aws-cn", "aws-us-gov"] and x.strip() != ""
@@ -850,14 +846,14 @@ class TestArnFormatValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any ARN with invalid partition, validation SHALL reject it.
         """
         arn = f"arn:{partition}:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
-        
+
         with pytest.raises((ValidationError, SecurityViolationError)):
             InputValidator.validate_resource_arns([arn])
-    
+
     @given(
         account=st.text(min_size=1, max_size=20).filter(
             lambda x: not (x.isdigit() and len(x) == 12) and x != "" and x.strip() != ""
@@ -868,7 +864,7 @@ class TestArnFormatValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any ARN with invalid account ID (not 12 digits and not empty),
         validation SHALL reject it.
         """
@@ -877,12 +873,12 @@ class TestArnFormatValidationProperty:
             InputValidator.detect_injection_attempt(account, "test")
         except SecurityViolationError:
             assume(False)  # Skip this test case
-        
+
         arn = f"arn:aws:ec2:us-east-1:{account}:instance/i-1234567890abcdef0"
-        
+
         with pytest.raises((ValidationError, SecurityViolationError)):
             InputValidator.validate_resource_arns([arn])
-    
+
     @given(
         prefix=st.text(min_size=1, max_size=50).filter(
             lambda x: not x.startswith("arn:") and x.strip() != ""
@@ -893,7 +889,7 @@ class TestArnFormatValidationProperty:
         """
         Feature: phase-1-aws-mvp, Property 17: Input Schema Validation
         Validates: Requirements 16.3
-        
+
         For any string that doesn't start with 'arn:', validation SHALL reject it.
         """
         # Skip if prefix contains characters that would trigger security violations
@@ -901,6 +897,6 @@ class TestArnFormatValidationProperty:
             InputValidator.detect_injection_attempt(prefix, "test")
         except SecurityViolationError:
             assume(False)  # Skip this test case
-        
+
         with pytest.raises((ValidationError, SecurityViolationError)):
             InputValidator.validate_resource_arns([prefix])

@@ -23,7 +23,7 @@ from .error_sanitization import (
 )
 
 __all__ = [
-    "CloudWatchHandler", 
+    "CloudWatchHandler",
     "configure_cloudwatch_logging",
     "fetch_resources_by_type",
     "extract_account_from_arn",

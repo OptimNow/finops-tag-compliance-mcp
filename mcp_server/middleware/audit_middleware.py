@@ -43,7 +43,7 @@ def audit_tool(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
-        
+
         # Capture correlation ID from context
         correlation_id = get_correlation_id() or None
 
@@ -110,7 +110,7 @@ def audit_tool_sync(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
-        
+
         # Capture correlation ID from context
         correlation_id = get_correlation_id() or None
 

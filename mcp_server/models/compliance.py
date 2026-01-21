@@ -33,9 +33,7 @@ class ComplianceResult(BaseModel):
         ge=0.0,
         le=1.0,
     )
-    total_resources: int = Field(
-        ..., description="Total number of resources scanned", ge=0
-    )
+    total_resources: int = Field(..., description="Total number of resources scanned", ge=0)
     compliant_resources: int = Field(
         ..., description="Number of resources that are compliant", ge=0
     )

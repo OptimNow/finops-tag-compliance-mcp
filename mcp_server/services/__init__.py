@@ -7,7 +7,13 @@ from .suggestion_service import SuggestionService
 from .report_service import ReportService
 from .history_service import HistoryService
 from .audit_service import AuditService
-from .security_service import SecurityService, SecurityEvent, get_security_service, set_security_service, configure_security_logging
+from .security_service import (
+    SecurityService,
+    SecurityEvent,
+    get_security_service,
+    set_security_service,
+    configure_security_logging,
+)
 from .metrics_service import MetricsService
 
 __all__ = [

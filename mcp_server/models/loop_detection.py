@@ -18,44 +18,31 @@ from pydantic import BaseModel, Field
 class LoopDetectedResponse(BaseModel):
     """
     Structured response for loop detection.
-    
+
     This is returned when the same tool is called repeatedly with
     identical parameters, indicating a potential agent loop.
-    
+
     Requirements: 15.4
     """
-    
+
     error_type: str = Field(
-        default="loop_detected",
-        description="Type of error for programmatic handling"
+        default="loop_detected", description="Type of error for programmatic handling"
     )
-    message: str = Field(
-        ...,
-        description="Human-readable message explaining the loop detection"
-    )
-    tool_name: str = Field(
-        ...,
-        description="The tool that was called repeatedly"
-    )
+    message: str = Field(..., description="Human-readable message explaining the loop detection")
+    tool_name: str = Field(..., description="The tool that was called repeatedly")
     call_count: int = Field(
-        ...,
-        ge=0,
-        description="Number of times the tool was called with identical parameters"
+        ..., ge=0, description="Number of times the tool was called with identical parameters"
     )
-    max_calls: int = Field(
-        ...,
-        ge=0,
-        description="Maximum identical calls allowed"
-    )
+    max_calls: int = Field(..., ge=0, description="Maximum identical calls allowed")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        description="Timestamp when loop was detected"
+        description="Timestamp when loop was detected",
     )
     suggestion: str = Field(
         default="Please review your request and try a different approach.",
-        description="Suggestion for the user on how to proceed"
+        description="Suggestion for the user on how to proceed",
     )
-    
+
     @classmethod
     def create(
         cls,
@@ -65,12 +52,12 @@ class LoopDetectedResponse(BaseModel):
     ) -> "LoopDetectedResponse":
         """
         Create a loop detected response with a helpful message.
-        
+
         Args:
             tool_name: The tool that was called repeatedly
             call_count: Number of times the tool was called
             max_calls: Maximum identical calls allowed
-        
+
         Returns:
             LoopDetectedResponse with formatted message
         """
@@ -79,7 +66,7 @@ class LoopDetectedResponse(BaseModel):
             f"with identical parameters (maximum allowed: {max_calls}). "
             f"This may indicate a repeated pattern that isn't making progress."
         )
-        
+
         suggestion = (
             "Please review your request and try a different approach. "
             "If you're stuck, consider:\n"
@@ -87,7 +74,7 @@ class LoopDetectedResponse(BaseModel):
             "- Breaking down the task into smaller steps\n"
             "- Asking for help or clarification"
         )
-        
+
         return cls(
             message=message,
             tool_name=tool_name,
@@ -95,11 +82,11 @@ class LoopDetectedResponse(BaseModel):
             max_calls=max_calls,
             suggestion=suggestion,
         )
-    
+
     def to_mcp_content(self) -> list[dict]:
         """
         Convert to MCP tool response content format.
-        
+
         Returns:
             List of content items for MCP response
         """
@@ -118,35 +105,23 @@ class LoopDetectedResponse(BaseModel):
 
 class LoopDetectionConfiguration(BaseModel):
     """Loop detection configuration."""
-    
-    enabled: bool = Field(
-        default=True,
-        description="Whether loop detection is enabled"
-    )
+
+    enabled: bool = Field(default=True, description="Whether loop detection is enabled")
     max_identical_calls: int = Field(
-        default=3,
-        ge=1,
-        description="Maximum identical calls allowed before blocking"
+        default=3, ge=1, description="Maximum identical calls allowed before blocking"
     )
     sliding_window_seconds: int = Field(
-        default=300,
-        ge=60,
-        description="Time window for tracking calls in seconds"
+        default=300, ge=60, description="Time window for tracking calls in seconds"
     )
 
 
 class LoopDetectionHealthInfo(BaseModel):
     """Loop detection information for health endpoint."""
-    
-    enabled: bool = Field(
-        ...,
-        description="Whether loop detection is enabled"
-    )
+
+    enabled: bool = Field(..., description="Whether loop detection is enabled")
     max_identical_calls: int = Field(
-        ...,
-        description="Maximum identical calls allowed before blocking"
+        ..., description="Maximum identical calls allowed before blocking"
     )
     sliding_window_seconds: int = Field(
-        ...,
-        description="Time window for tracking calls in seconds"
+        ..., description="Time window for tracking calls in seconds"
     )

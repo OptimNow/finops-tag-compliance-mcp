@@ -12,18 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field
 class TagNamingRules(BaseModel):
     """Rules for tag naming conventions."""
 
-    case_sensitivity: bool = Field(
-        False, description="Whether tag names are case-sensitive"
-    )
+    case_sensitivity: bool = Field(False, description="Whether tag names are case-sensitive")
     allow_special_characters: bool = Field(
         False, description="Whether special characters are allowed in tag names"
     )
-    max_key_length: int = Field(
-        128, description="Maximum length for tag keys", ge=1, le=256
-    )
-    max_value_length: int = Field(
-        256, description="Maximum length for tag values", ge=1, le=512
-    )
+    max_key_length: int = Field(128, description="Maximum length for tag keys", ge=1, le=256)
+    max_value_length: int = Field(256, description="Maximum length for tag values", ge=1, le=512)
 
 
 class RequiredTag(BaseModel):
@@ -38,15 +32,16 @@ class RequiredTag(BaseModel):
         None, description="Regex pattern for validating tag values (if applicable)"
     )
     applies_to: list[str] | None = Field(
-        None, description="List of resource types this tag applies to. None or empty list means applies to ALL resource types."
+        None,
+        description="List of resource types this tag applies to. None or empty list means applies to ALL resource types.",
     )
-    
+
     def applies_to_resource(self, resource_type: str) -> bool:
         """Check if this tag applies to a given resource type.
-        
+
         Args:
             resource_type: Resource type to check (e.g., "ec2:instance", "bedrock:agent")
-            
+
         Returns:
             True if this tag applies to the resource type.
             None or empty applies_to means applies to ALL resource types.

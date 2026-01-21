@@ -88,7 +88,7 @@ class AuditService:
             AuditLogEntry with the logged data including generated ID
         """
         timestamp = datetime.now(timezone.utc)
-        
+
         # Capture correlation ID from context if not explicitly provided
         if correlation_id is None:
             correlation_id = get_correlation_id() or None

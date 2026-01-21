@@ -26,13 +26,9 @@ class ReportSummary(BaseModel):
     )
     total_resources: int = Field(..., description="Total resources scanned")
     compliant_resources: int = Field(..., description="Number of compliant resources")
-    non_compliant_resources: int = Field(
-        ..., description="Number of non-compliant resources"
-    )
+    non_compliant_resources: int = Field(..., description="Number of non-compliant resources")
     total_violations: int = Field(..., description="Total number of violations")
-    cost_attribution_gap: float = Field(
-        ..., description="Dollar amount of unattributable spend"
-    )
+    cost_attribution_gap: float = Field(..., description="Dollar amount of unattributable spend")
 
 
 class GenerateComplianceReportResult(BaseModel):
@@ -118,9 +114,7 @@ async def generate_compliance_report(
     try:
         report_format = ReportFormat(format.lower())
     except ValueError:
-        raise ValueError(
-            f"Invalid format '{format}'. Must be one of: json, csv, markdown"
-        )
+        raise ValueError(f"Invalid format '{format}'. Must be one of: json, csv, markdown")
 
     # Use injected service or create one
     service = report_service

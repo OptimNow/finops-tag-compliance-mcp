@@ -33,16 +33,15 @@ from mcp_server.models.budget import (
 # Strategies for generating test data
 # =============================================================================
 
+
 @st.composite
 def session_id_strategy(draw):
     """Generate valid session IDs."""
     # Session IDs should be non-empty strings
     prefix = draw(st.sampled_from(["session", "sess", "s", "agent", "user"]))
-    suffix = draw(st.text(
-        alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_",
-        min_size=1,
-        max_size=30
-    ))
+    suffix = draw(
+        st.text(alphabet="abcdefghijklmnopqrstuvwxyz0123456789-_", min_size=1, max_size=30)
+    )
     return f"{prefix}_{suffix}"
 
 
@@ -67,15 +66,16 @@ def call_count_strategy(draw, max_calls: int = 100):
 # Property 14: Tool Budget Enforcement
 # =============================================================================
 
+
 class TestBudgetEnforcement:
     """
     Property 14: Tool Budget Enforcement
-    
+
     For any agent session with a configured step budget (max tool calls),
     the MCP Server SHALL reject additional tool calls once the budget is exhausted
     and return a graceful degradation response explaining the limit was reached.
     The response SHALL NOT be an error but a structured message indicating budget exhaustion.
-    
+
     Validates: Requirements 15.3, 15.5
     """
 
@@ -89,7 +89,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget tracker SHALL respect the configured max calls and TTL.
         """
         tracker = BudgetTracker(
@@ -97,7 +97,7 @@ class TestBudgetEnforcement:
             max_calls_per_session=config["max_calls_per_session"],
             session_ttl_seconds=config["session_ttl_seconds"],
         )
-        
+
         assert tracker.max_calls_per_session == config["max_calls_per_session"]
         assert tracker.session_ttl_seconds == config["session_ttl_seconds"]
 
@@ -119,14 +119,14 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget tracker SHALL allow tool calls while within the budget limit.
         """
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Make calls up to the limit
         for i in range(max_calls):
             success, count, limit = await tracker.consume_budget(session_id)
@@ -148,22 +148,22 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget tracker SHALL reject tool calls once budget is exhausted.
         """
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Exhaust the budget
         for _ in range(max_calls):
             await tracker.consume_budget(session_id)
-        
+
         # Next call should raise BudgetExhaustedError
         with pytest.raises(BudgetExhaustedError) as exc_info:
             await tracker.consume_budget(session_id)
-        
+
         error = exc_info.value
         assert error.session_id == session_id
         assert error.current_count == max_calls
@@ -188,7 +188,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.5
-        
+
         Budget exhaustion response SHALL be a structured message, not an error.
         """
         response = BudgetExhaustedResponse.create(
@@ -196,7 +196,7 @@ class TestBudgetEnforcement:
             current_usage=current_usage,
             limit=limit,
         )
-        
+
         # Response should be a structured object, not an exception
         assert isinstance(response, BudgetExhaustedResponse)
         assert response.error_type == "budget_exhausted"
@@ -219,7 +219,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.5
-        
+
         Budget exhaustion response SHALL explain the limit was reached.
         """
         response = BudgetExhaustedResponse.create(
@@ -227,12 +227,12 @@ class TestBudgetEnforcement:
             current_usage=current_usage,
             limit=limit,
         )
-        
+
         # Message should explain the situation
         assert "budget" in response.message.lower() or "exhausted" in response.message.lower()
         assert str(current_usage) in response.message
         assert str(limit) in response.message
-        
+
         # Should have a suggestion for the user
         assert response.suggestion is not None
         assert len(response.suggestion) > 0
@@ -254,7 +254,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.5
-        
+
         Budget exhaustion response SHALL include retry information when available.
         """
         response = BudgetExhaustedResponse.create(
@@ -263,7 +263,7 @@ class TestBudgetEnforcement:
             limit=limit,
             retry_after_seconds=retry_after,
         )
-        
+
         assert response.retry_after_seconds == retry_after
         # Suggestion should mention the retry time
         assert "minute" in response.suggestion.lower() or "session" in response.suggestion.lower()
@@ -283,7 +283,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.5
-        
+
         Budget exhaustion response SHALL convert to MCP content format.
         """
         response = BudgetExhaustedResponse.create(
@@ -291,17 +291,17 @@ class TestBudgetEnforcement:
             current_usage=current_usage,
             limit=limit,
         )
-        
+
         mcp_content = response.to_mcp_content()
-        
+
         # Should be a list of content items
         assert isinstance(mcp_content, list)
         assert len(mcp_content) >= 1
-        
+
         # First item should be text content
         assert mcp_content[0]["type"] == "text"
         assert "text" in mcp_content[0]
-        
+
         # Text should contain relevant information
         text = mcp_content[0]["text"]
         assert session_id in text
@@ -328,24 +328,24 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget status SHALL accurately reflect the current usage state.
         """
         # Ensure calls_made doesn't exceed max_calls for this test
         calls_made = min(calls_made, max_calls)
-        
+
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Make the specified number of calls
         for _ in range(calls_made):
             await tracker.consume_budget(session_id)
-        
+
         # Get status
         status = await tracker.get_budget_status(session_id)
-        
+
         assert status["session_id"] == session_id
         assert status["current_count"] == calls_made
         assert status["max_calls"] == max_calls
@@ -366,21 +366,21 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget utilization percentage SHALL be calculated correctly.
         """
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Make half the calls
         half_calls = max_calls // 2
         for _ in range(half_calls):
             await tracker.consume_budget(session_id)
-        
+
         status = await tracker.get_budget_status(session_id)
-        
+
         expected_utilization = (half_calls / max_calls) * 100
         assert abs(status["utilization_percent"] - expected_utilization) < 0.01
 
@@ -402,22 +402,22 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget reset SHALL clear the call count for a session.
         """
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Make some calls
         for _ in range(max_calls // 2):
             await tracker.consume_budget(session_id)
-        
+
         # Reset budget
         result = await tracker.reset_budget(session_id)
         assert result is True
-        
+
         # Count should be zero
         count = await tracker.get_current_count(session_id)
         assert count == 0
@@ -440,14 +440,14 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Checking budget SHALL NOT consume budget units.
         """
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Check budget multiple times
         for _ in range(10):
             has_budget, count, limit = await tracker.check_budget(session_id)
@@ -475,21 +475,21 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         Budget tracking SHALL be isolated per session.
         """
         # Ensure different session IDs
         assume(session_id_1 != session_id_2)
-        
+
         tracker = BudgetTracker(
             redis_cache=None,
             max_calls_per_session=max_calls,
         )
-        
+
         # Exhaust budget for session 1
         for _ in range(max_calls):
             await tracker.consume_budget(session_id_1)
-        
+
         # Session 2 should still have full budget
         has_budget, count, limit = await tracker.check_budget(session_id_2)
         assert has_budget is True
@@ -514,7 +514,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         BudgetExhaustedError SHALL contain session and count details.
         """
         error = BudgetExhaustedError(
@@ -522,7 +522,7 @@ class TestBudgetEnforcement:
             current_count=current_count,
             max_calls=max_calls,
         )
-        
+
         assert error.session_id == session_id
         assert error.current_count == current_count
         assert error.max_calls == max_calls
@@ -547,7 +547,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         BudgetConfiguration model SHALL accept valid configurations.
         """
         config = BudgetConfiguration(
@@ -555,7 +555,7 @@ class TestBudgetEnforcement:
             max_calls_per_session=max_calls,
             session_ttl_seconds=session_ttl,
         )
-        
+
         assert config.enabled == enabled
         assert config.max_calls_per_session == max_calls
         assert config.session_ttl_seconds == session_ttl
@@ -577,7 +577,7 @@ class TestBudgetEnforcement:
         """
         Feature: phase-1-aws-mvp, Property 14: Tool Budget Enforcement
         Validates: Requirements 15.3
-        
+
         BudgetHealthInfo model SHALL accept valid health information.
         """
         health_info = BudgetHealthInfo(
@@ -586,9 +586,8 @@ class TestBudgetEnforcement:
             session_ttl_seconds=session_ttl,
             active_sessions=active_sessions,
         )
-        
+
         assert health_info.enabled == enabled
         assert health_info.max_calls_per_session == max_calls
         assert health_info.session_ttl_seconds == session_ttl
         assert health_info.active_sessions == active_sessions
-

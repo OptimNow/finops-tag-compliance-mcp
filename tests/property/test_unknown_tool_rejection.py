@@ -42,9 +42,7 @@ unknown_tool_name = st.text(
     ),
     min_size=1,
     max_size=100,
-).filter(
-    lambda x: x.strip() != "" and x not in REGISTERED_TOOLS
-)
+).filter(lambda x: x.strip() != "" and x not in REGISTERED_TOOLS)
 
 # Strategy for generating random tool parameters
 random_parameters = st.dictionaries(
@@ -70,6 +68,7 @@ session_id_strategy = st.text(
 # Property Tests for Unknown Tool Rejection
 # =============================================================================
 
+
 class TestUnknownToolRejectionProperty:
     """Property tests for unknown tool rejection (Property 18)."""
 
@@ -89,12 +88,12 @@ class TestUnknownToolRejectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1, 16.4
-        
+
         For any request to invoke a tool that is not registered in the MCP Server,
         the request SHALL be rejected with an error response.
         """
         handler = MCPHandler()
-        
+
         # Mock the security service to avoid side effects
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
@@ -103,22 +102,22 @@ class TestUnknownToolRejectionProperty:
                 return_value=(False, 1, 10)  # Not blocked
             )
             mock_get_security.return_value = mock_security
-            
+
             # Mock correlation ID
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 result = await handler.invoke_tool(tool_name, parameters)
-        
+
         # Verify the result is an error
         assert isinstance(result, MCPToolResult)
         assert result.is_error is True
-        
+
         # Verify the error content
         assert len(result.content) > 0
         content = result.content[0]
         assert content["type"] == "text"
-        
+
         # Parse the error response
         error_data = json.loads(content["text"])
         assert "error" in error_data
@@ -137,12 +136,12 @@ class TestUnknownToolRejectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1, 16.4
-        
+
         For any unknown tool rejection, the tool name SHALL be logged
         for security monitoring.
         """
         handler = MCPHandler()
-        
+
         # Mock the security service to capture the logging call
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
@@ -151,20 +150,21 @@ class TestUnknownToolRejectionProperty:
                 return_value=(False, 1, 10)  # Not blocked
             )
             mock_get_security.return_value = mock_security
-            
+
             # Mock correlation ID
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 await handler.invoke_tool(tool_name, parameters)
-        
+
         # Verify log_unknown_tool_attempt was called with the tool name
         mock_security.log_unknown_tool_attempt.assert_called_once()
         call_kwargs = mock_security.log_unknown_tool_attempt.call_args
-        
+
         # Check that tool_name was passed
-        assert call_kwargs.kwargs.get("tool_name") == tool_name or \
-               (call_kwargs.args and call_kwargs.args[0] == tool_name)
+        assert call_kwargs.kwargs.get("tool_name") == tool_name or (
+            call_kwargs.args and call_kwargs.args[0] == tool_name
+        )
 
     @given(tool_name=unknown_tool_name)
     @settings(max_examples=100, deadline=None)
@@ -176,33 +176,31 @@ class TestUnknownToolRejectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1, 16.4
-        
+
         For any unknown tool rejection, the error response SHALL include
         the list of registered tools to help the user.
         """
         handler = MCPHandler()
-        
+
         # Mock the security service
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
             mock_security.log_unknown_tool_attempt = AsyncMock()
-            mock_security.check_unknown_tool_rate_limit = AsyncMock(
-                return_value=(False, 1, 10)
-            )
+            mock_security.check_unknown_tool_rate_limit = AsyncMock(return_value=(False, 1, 10))
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 result = await handler.invoke_tool(tool_name, {})
-        
+
         # Parse the error response
         error_data = json.loads(result.content[0]["text"])
-        
+
         # Verify registered_tools is included
         assert "registered_tools" in error_data
         registered = set(error_data["registered_tools"])
-        
+
         # Verify all 8 registered tools are listed
         assert registered == REGISTERED_TOOLS
 
@@ -226,14 +224,14 @@ class TestUnknownToolRateLimiting:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.4
-        
+
         For any session that exceeds the rate limit for unknown tool attempts,
         subsequent requests SHALL be blocked with a rate limit error.
         """
         assume(current_count > max_attempts)
-        
+
         handler = MCPHandler()
-        
+
         # Mock the security service to simulate rate limit exceeded
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
@@ -243,18 +241,18 @@ class TestUnknownToolRateLimiting:
             )
             mock_security.window_seconds = 60
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 result = await handler.invoke_tool(tool_name, {})
-        
+
         # Verify the result is an error
         assert result.is_error is True
-        
+
         # Parse the error response
         error_data = json.loads(result.content[0]["text"])
-        
+
         # Verify rate limit error
         assert error_data["error"] == "Rate limit exceeded"
         assert "details" in error_data
@@ -277,14 +275,14 @@ class TestUnknownToolRateLimiting:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.4
-        
+
         For any session under the rate limit threshold, unknown tool
         requests SHALL be rejected but not rate-limited.
         """
         assume(current_count < max_attempts)
-        
+
         handler = MCPHandler()
-        
+
         # Mock the security service to simulate under rate limit
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
@@ -293,18 +291,18 @@ class TestUnknownToolRateLimiting:
                 return_value=(False, current_count, max_attempts)  # Not blocked
             )
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 result = await handler.invoke_tool(tool_name, {})
-        
+
         # Verify the result is an error (unknown tool) but NOT rate limited
         assert result.is_error is True
-        
+
         # Parse the error response
         error_data = json.loads(result.content[0]["text"])
-        
+
         # Should be "Unknown tool" error, not "Rate limit exceeded"
         assert error_data["error"] == "Unknown tool"
 
@@ -323,34 +321,32 @@ class TestUnknownToolAuditLogging:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.4
-        
+
         For any unknown tool rejection, an audit log entry SHALL be created
         with the tool name and failure status.
         """
         # Create mock audit service
         mock_audit = MagicMock()
         mock_audit.log_invocation = MagicMock()
-        
+
         handler = MCPHandler(audit_service=mock_audit)
-        
+
         # Mock the security service
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
             mock_security.log_unknown_tool_attempt = AsyncMock()
-            mock_security.check_unknown_tool_rate_limit = AsyncMock(
-                return_value=(False, 1, 10)
-            )
+            mock_security.check_unknown_tool_rate_limit = AsyncMock(return_value=(False, 1, 10))
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 await handler.invoke_tool(tool_name, parameters)
-        
+
         # Verify audit log was called
         mock_audit.log_invocation.assert_called_once()
         call_kwargs = mock_audit.log_invocation.call_args.kwargs
-        
+
         # Verify the audit log contains the tool name
         assert call_kwargs["tool_name"] == tool_name
         # Verify the status is FAILURE
@@ -374,24 +370,24 @@ class TestRegisteredToolsAccepted:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1
-        
+
         For any registered tool, the request SHALL NOT be rejected as unknown.
         (It may fail for other reasons like missing parameters, but not as unknown.)
         """
         handler = MCPHandler()
-        
+
         # Mock the security service
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
             mock_security.log_unknown_tool_attempt = AsyncMock()
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 # Invoke with empty parameters (will likely fail validation)
                 result = await handler.invoke_tool(tool_name, {})
-        
+
         # If there's an error, it should NOT be "Unknown tool"
         if result.is_error:
             content_text = result.content[0]["text"]
@@ -405,7 +401,7 @@ class TestRegisteredToolsAccepted:
                 # Plain error string (e.g., "Error: PolicyService not initialized")
                 # This is fine - it's not an "Unknown tool" error
                 assert "Unknown tool" not in content_text
-        
+
         # log_unknown_tool_attempt should NOT have been called
         mock_security.log_unknown_tool_attempt.assert_not_called()
 
@@ -427,29 +423,27 @@ class TestUnknownToolEdgeCases:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1, 16.4
-        
+
         For any tool name that is similar to but not exactly a registered tool,
         the request SHALL be rejected as unknown.
         """
         # Create a tool name that's similar but not exact
         similar_name = f"{prefix}_{suffix}"
         assume(similar_name not in REGISTERED_TOOLS)
-        
+
         handler = MCPHandler()
-        
+
         with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
             mock_security = AsyncMock()
             mock_security.log_unknown_tool_attempt = AsyncMock()
-            mock_security.check_unknown_tool_rate_limit = AsyncMock(
-                return_value=(False, 1, 10)
-            )
+            mock_security.check_unknown_tool_rate_limit = AsyncMock(return_value=(False, 1, 10))
             mock_get_security.return_value = mock_security
-            
+
             with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                 mock_corr.return_value = "test-session-id"
-                
+
                 result = await handler.invoke_tool(similar_name, {})
-        
+
         # Should be rejected as unknown
         assert result.is_error is True
         error_data = json.loads(result.content[0]["text"])
@@ -467,7 +461,7 @@ class TestUnknownToolEdgeCases:
         """
         Feature: phase-1-aws-mvp, Property 18: Unknown Tool Rejection
         Validates: Requirements 16.1, 16.4
-        
+
         Tool names SHALL be case-sensitive. A tool name with different
         casing SHALL be rejected as unknown.
         """
@@ -477,26 +471,24 @@ class TestUnknownToolEdgeCases:
             tool_name.capitalize(),
             tool_name.swapcase(),
         ]
-        
+
         handler = MCPHandler()
-        
+
         for variant in variations:
             if variant == tool_name:
                 continue  # Skip if it happens to match
-            
+
             with patch("mcp_server.mcp_handler.get_security_service") as mock_get_security:
                 mock_security = AsyncMock()
                 mock_security.log_unknown_tool_attempt = AsyncMock()
-                mock_security.check_unknown_tool_rate_limit = AsyncMock(
-                    return_value=(False, 1, 10)
-                )
+                mock_security.check_unknown_tool_rate_limit = AsyncMock(return_value=(False, 1, 10))
                 mock_get_security.return_value = mock_security
-                
+
                 with patch("mcp_server.mcp_handler.get_correlation_id") as mock_corr:
                     mock_corr.return_value = "test-session-id"
-                    
+
                     result = await handler.invoke_tool(variant, {})
-            
+
             # Should be rejected as unknown
             assert result.is_error is True
             error_data = json.loads(result.content[0]["text"])

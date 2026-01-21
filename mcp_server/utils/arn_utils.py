@@ -15,7 +15,7 @@ from typing import Optional
 # ARN validation pattern - supports standard AWS ARN formats including:
 # - S3 buckets with empty region/account fields
 # - Resources with colons in their identifiers
-ARN_PATTERN = re.compile(r'^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]*:.+')
+ARN_PATTERN = re.compile(r"^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]*:.+")
 
 
 def is_valid_arn(arn: Optional[str]) -> bool:

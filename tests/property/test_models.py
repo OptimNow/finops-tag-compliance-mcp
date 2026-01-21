@@ -37,9 +37,16 @@ RESOURCE_TYPES = ["ec2:instance", "rds:db", "s3:bucket", "lambda:function", "ecs
 
 # Valid AWS regions
 AWS_REGIONS = [
-    "us-east-1", "us-east-2", "us-west-1", "us-west-2",
-    "eu-west-1", "eu-west-2", "eu-central-1",
-    "ap-southeast-1", "ap-southeast-2", "ap-northeast-1",
+    "us-east-1",
+    "us-east-2",
+    "us-west-1",
+    "us-west-2",
+    "eu-west-1",
+    "eu-west-2",
+    "eu-central-1",
+    "ap-southeast-1",
+    "ap-southeast-2",
+    "ap-northeast-1",
 ]
 
 # Strategy for non-empty strings (resource IDs, tag names, etc.)
@@ -77,17 +84,18 @@ allowed_values_strategy = st.lists(non_empty_string, min_size=1, max_size=10)
 # Property 2: Violation Detail Completeness
 # =============================================================================
 
+
 class TestViolationDetailCompleteness:
     """
     Property 2: Violation Detail Completeness
-    
+
     For any resource that fails policy validation, the violation object SHALL include:
     - resource ID
     - resource type
     - violation type
     - tag name
     - severity
-    
+
     When the violation is an invalid value, it SHALL also include:
     - current value
     - list of allowed values
@@ -116,7 +124,7 @@ class TestViolationDetailCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 2: Violation Detail Completeness
         Validates: Requirements 1.2, 3.2
-        
+
         For any violation, all required fields must be present and accessible.
         """
         violation = Violation(
@@ -161,7 +169,7 @@ class TestViolationDetailCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 2: Violation Detail Completeness
         Validates: Requirements 3.3
-        
+
         When the violation is an invalid value, the object SHALL include
         the current value and list of allowed values.
         """
@@ -200,7 +208,7 @@ class TestViolationDetailCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 2: Violation Detail Completeness
         Validates: Requirements 3.2
-        
+
         For missing required tag violations, current_value should be None.
         """
         violation = Violation(
@@ -220,10 +228,11 @@ class TestViolationDetailCompleteness:
 # Property 6: Suggestion Quality (partial - model validation)
 # =============================================================================
 
+
 class TestSuggestionQuality:
     """
     Property 6: Suggestion Quality (model-level validation)
-    
+
     For any tag suggestion returned, the suggestion SHALL include:
     - tag key
     - suggested value
@@ -248,7 +257,7 @@ class TestSuggestionQuality:
         """
         Feature: phase-1-aws-mvp, Property 6: Suggestion Quality
         Validates: Requirements 5.1, 5.2, 5.3
-        
+
         All suggestion fields must be present and valid.
         """
         suggestion = TagSuggestion(
@@ -269,7 +278,7 @@ class TestSuggestionQuality:
         """
         Feature: phase-1-aws-mvp, Property 6: Suggestion Quality
         Validates: Requirements 5.2
-        
+
         Confidence scores outside 0.0-1.0 range should be rejected.
         """
         with pytest.raises(ValidationError):
@@ -284,7 +293,7 @@ class TestSuggestionQuality:
         """
         Feature: phase-1-aws-mvp, Property 6: Suggestion Quality
         Validates: Requirements 5.3
-        
+
         Empty reasoning strings should be rejected.
         """
         with pytest.raises(ValidationError):
@@ -300,10 +309,11 @@ class TestSuggestionQuality:
 # Property 1: Compliance Score Bounds (model-level validation)
 # =============================================================================
 
+
 class TestComplianceScoreBounds:
     """
     Property 1: Compliance Score Bounds (model-level validation)
-    
+
     For any set of resources scanned, the compliance score returned SHALL be
     between 0.0 and 1.0 inclusive.
     """
@@ -321,11 +331,11 @@ class TestComplianceScoreBounds:
         """
         Feature: phase-1-aws-mvp, Property 1: Compliance Score Bounds
         Validates: Requirements 1.1
-        
+
         Compliance score must always be between 0.0 and 1.0.
         """
         compliant = int(total_resources * compliance_score)
-        
+
         result = ComplianceResult(
             compliance_score=compliance_score,
             total_resources=total_resources,
@@ -340,7 +350,7 @@ class TestComplianceScoreBounds:
         """
         Feature: phase-1-aws-mvp, Property 1: Compliance Score Bounds
         Validates: Requirements 1.1
-        
+
         Scores above 1.0 should be rejected.
         """
         with pytest.raises(ValidationError):
@@ -356,7 +366,7 @@ class TestComplianceScoreBounds:
         """
         Feature: phase-1-aws-mvp, Property 1: Compliance Score Bounds
         Validates: Requirements 1.1
-        
+
         Negative scores should be rejected.
         """
         with pytest.raises(ValidationError):
@@ -371,10 +381,11 @@ class TestComplianceScoreBounds:
 # Property 7: Policy Structure Completeness (model-level validation)
 # =============================================================================
 
+
 class TestPolicyStructureCompleteness:
     """
     Property 7: Policy Structure Completeness (model-level validation)
-    
+
     For any tagging policy returned, the policy SHALL include:
     - version
     - last updated timestamp
@@ -397,7 +408,7 @@ class TestPolicyStructureCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 7: Policy Structure Completeness
         Validates: Requirements 6.1, 6.2, 6.3, 6.4
-        
+
         Policy must have all required structural elements.
         """
         required_tag = RequiredTag(
@@ -405,12 +416,12 @@ class TestPolicyStructureCompleteness:
             description=description,
             applies_to=["ec2:instance"],
         )
-        
+
         optional_tag = OptionalTag(
             name=f"optional_{tag_name}",
             description=f"Optional {description}",
         )
-        
+
         policy = TagPolicy(
             version=version,
             required_tags=[required_tag],
@@ -439,7 +450,7 @@ class TestPolicyStructureCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 7: Policy Structure Completeness
         Validates: Requirements 6.4
-        
+
         Each required tag SHALL include applies_to list.
         """
         required_tag = RequiredTag(
@@ -458,7 +469,7 @@ class TestPolicyStructureCompleteness:
         """
         Feature: phase-1-aws-mvp, Property 7: Policy Structure Completeness
         Validates: Requirements 6.4
-        
+
         Required tags without applies_to should be rejected.
         """
         with pytest.raises(ValidationError):
