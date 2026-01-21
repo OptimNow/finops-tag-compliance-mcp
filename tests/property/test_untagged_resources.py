@@ -223,7 +223,12 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=[resource])
         
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: cost}, {"Amazon Elastic Compute Cloud - Compute": cost}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            {resource_id: cost},
+            {"Amazon Elastic Compute Cloud - Compute": cost},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute - without include_costs, costs should be None
         result = await find_untagged_resources(
@@ -311,7 +316,12 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=resources)
         
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            cost_data,
+            {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute
         result = await find_untagged_resources(
@@ -391,7 +401,12 @@ class TestResourceMetadataCompleteness:
         elif resource_type == "ecs:service":
             mock_aws_client.get_ecs_services = AsyncMock(return_value=resources)
         
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            cost_data,
+            {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute
         result = await find_untagged_resources(
@@ -447,7 +462,12 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: cost}, {"Amazon Elastic Compute Cloud - Compute": cost}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            {resource_id: cost},
+            {"Amazon Elastic Compute Cloud - Compute": cost},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute with include_costs=True to get cost data
         result = await find_untagged_resources(
@@ -499,7 +519,12 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=({resource_id: 100.0}, {"Amazon Elastic Compute Cloud - Compute": 100.0}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            {resource_id: 100.0},
+            {"Amazon Elastic Compute Cloud - Compute": 100.0},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute
         result = await find_untagged_resources(
@@ -577,7 +602,12 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            cost_data,
+            {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute
         result = await find_untagged_resources(
@@ -637,7 +667,12 @@ class TestResourceMetadataCompleteness:
         mock_aws_client.get_s3_buckets = AsyncMock(return_value=[])
         mock_aws_client.get_lambda_functions = AsyncMock(return_value=[])
         mock_aws_client.get_ecs_services = AsyncMock(return_value=[])
-        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(cost_data, {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())}, "actual"))
+        mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+            cost_data,
+            {"Amazon Elastic Compute Cloud - Compute": sum(cost_data.values())},
+            {},  # costs_by_name
+            "actual"
+        ))
         
         # Execute with include_costs=True to get cost data
         result = await find_untagged_resources(

@@ -612,13 +612,13 @@ class AWSClient:
     async def get_cost_data_by_resource(
         self,
         time_period: dict[str, str] | None = None,
-    ) -> tuple[dict[str, float], dict[str, float], str]:
+    ) -> tuple[dict[str, float], dict[str, float], dict[str, float], str]:
         """
         Fetch cost data from AWS Cost Explorer with per-resource granularity where available.
         
-        This method attempts to get actual per-resource costs for EC2 and RDS using
-        the RESOURCE_ID dimension. For other services (S3, Lambda, ECS), it returns
-        service-level totals that can be distributed among resources.
+        This method attempts to get actual per-resource costs for EC2 using the Name tag
+        (since RESOURCE_ID dimension is not available in standard Cost Explorer).
+        For other services (S3, Lambda, ECS), it returns service-level totals.
         
         Args:
             time_period: Time period for cost data (e.g., {"Start": "2025-01-01", "End": "2025-01-31"})
@@ -627,6 +627,7 @@ class AWSClient:
             Tuple of:
             - resource_costs: Dict mapping resource IDs to actual costs (EC2/RDS)
             - service_costs: Dict mapping service names to total costs
+            - costs_by_name: Dict mapping Name tag values to costs (for EC2)
             - cost_source: "actual" if per-resource data available, "service_average" otherwise
         """
         # Default to last 30 days if no time period specified
@@ -640,6 +641,7 @@ class AWSClient:
         
         resource_costs: dict[str, float] = {}
         service_costs: dict[str, float] = {}
+        costs_by_name: dict[str, float] = {}
         cost_source = "estimated"
         
         try:
@@ -663,7 +665,8 @@ class AWSClient:
             
             cost_source = "service_average"
             
-            # Try to get per-resource costs for EC2 (uses RESOURCE_ID dimension)
+            # Get per-resource costs for EC2 using Name tag (Cost Allocation Tag)
+            # RESOURCE_ID dimension is not available in standard Cost Explorer
             try:
                 ec2_response = await self._call_with_backoff(
                     "ce",
@@ -678,26 +681,34 @@ class AWSClient:
                         }
                     },
                     GroupBy=[
-                        {"Type": "DIMENSION", "Key": "RESOURCE_ID"}
+                        {"Type": "TAG", "Key": "Name"}
                     ]
                 )
                 
                 for result in ec2_response.get("ResultsByTime", []):
                     for group in result.get("Groups", []):
-                        resource_id = group.get("Keys", [""])[0]
-                        if resource_id and resource_id.startswith("i-"):
-                            amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
-                            resource_costs[resource_id] = resource_costs.get(resource_id, 0) + amount
+                        # Tag key format is "Name$value" or just the value
+                        tag_key = group.get("Keys", [""])[0]
+                        # Extract the actual name value (remove "Name$" prefix if present)
+                        if tag_key.startswith("Name$"):
+                            name_value = tag_key[5:]  # Remove "Name$" prefix
+                        else:
+                            name_value = tag_key
+                        
+                        amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                        if name_value and amount > 0:
+                            # Aggregate costs by name (same instance may appear multiple times)
+                            costs_by_name[name_value] = costs_by_name.get(name_value, 0) + amount
                 
-                if resource_costs:
-                    cost_source = "actual"
+                if costs_by_name:
+                    cost_source = "actual_by_name"
                     
             except Exception as e:
                 # Per-resource costs not available, continue with service-level
                 import logging
-                logging.getLogger(__name__).debug(f"Per-resource EC2 costs not available: {e}")
+                logging.getLogger(__name__).debug(f"Per-resource EC2 costs by Name tag not available: {e}")
             
-            # Try to get per-resource costs for RDS
+            # Try to get per-resource costs for RDS using Name tag
             try:
                 rds_response = await self._call_with_backoff(
                     "ce",
@@ -712,26 +723,29 @@ class AWSClient:
                         }
                     },
                     GroupBy=[
-                        {"Type": "DIMENSION", "Key": "RESOURCE_ID"}
+                        {"Type": "TAG", "Key": "Name"}
                     ]
                 )
                 
                 for result in rds_response.get("ResultsByTime", []):
                     for group in result.get("Groups", []):
-                        resource_id = group.get("Keys", [""])[0]
-                        if resource_id:
-                            # RDS resource IDs in Cost Explorer are ARNs
-                            # Extract the DB identifier
-                            if ":db:" in resource_id:
-                                db_id = resource_id.split(":db:")[-1]
-                                amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
-                                resource_costs[db_id] = resource_costs.get(db_id, 0) + amount
+                        tag_key = group.get("Keys", [""])[0]
+                        # Extract the actual name value (remove "Name$" prefix if present)
+                        if tag_key.startswith("Name$"):
+                            name_value = tag_key[5:]
+                        else:
+                            name_value = tag_key
+                        
+                        amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                        if name_value and amount > 0:
+                            # Store RDS costs by name as well
+                            costs_by_name[name_value] = costs_by_name.get(name_value, 0) + amount
                 
             except Exception as e:
                 import logging
                 logging.getLogger(__name__).debug(f"Per-resource RDS costs not available: {e}")
             
-            return resource_costs, service_costs, cost_source
+            return resource_costs, service_costs, costs_by_name, cost_source
         
         except AWSAPIError:
             raise

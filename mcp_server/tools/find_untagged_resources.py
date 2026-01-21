@@ -298,8 +298,8 @@ async def _get_cost_estimates(
     cost_sources: dict[str, str] = {}
     
     try:
-        # Get per-resource and service-level costs
-        resource_costs, service_costs, base_source = await aws_client.get_cost_data_by_resource()
+        # Get per-resource and service-level costs (4-tuple: resource_costs, service_costs, costs_by_name, cost_source)
+        resource_costs, service_costs, costs_by_name, base_source = await aws_client.get_cost_data_by_resource()
         
         # Count resources by service for averaging
         resources_by_service: dict[str, list[str]] = {}

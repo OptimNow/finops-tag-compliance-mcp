@@ -198,7 +198,7 @@ class CostService:
             service_costs = service_breakdown
         else:
             # Get service-level costs only for specified types
-            _, service_costs, _ = await self.aws_client.get_cost_data_by_resource(
+            _, service_costs, _, _ = await self.aws_client.get_cost_data_by_resource(
                 time_period=time_period
             )
             # Calculate total spend only for tracked services
@@ -208,10 +208,22 @@ class CostService:
                 total_spend += service_costs.get(service_name, 0.0)
             logger.info(f"Total spend for tracked services: ${total_spend:.2f}")
         
-        # Get per-resource costs where available
-        resource_costs, _, cost_source = await self.aws_client.get_cost_data_by_resource(
+        # Get per-resource costs where available (by Name tag)
+        resource_costs, _, costs_by_name, cost_source = await self.aws_client.get_cost_data_by_resource(
             time_period=time_period
         )
+        
+        logger.info(f"Cost source: {cost_source}, costs by name: {len(costs_by_name)}")
+        
+        # Build a case-insensitive lookup for costs_by_name
+        # Also aggregate costs for similar names (e.g., "Agent Smith" and "agent-smith")
+        costs_by_name_lower: dict[str, float] = {}
+        for name, cost in costs_by_name.items():
+            # Normalize: lowercase and replace spaces with hyphens
+            normalized = name.lower().replace(" ", "-")
+            costs_by_name_lower[normalized] = costs_by_name_lower.get(normalized, 0) + cost
+        
+        logger.info(f"Normalized costs by name: {costs_by_name_lower}")
         
         # Build resource cost map - distribute service costs among resources
         resource_cost_map: dict[str, float] = {}
@@ -221,21 +233,29 @@ class CostService:
             service_total = service_costs.get(service_name, 0.0)
             
             if resource_type in ["ec2:instance", "rds:db"]:
-                # STEP 1: Assign actual costs from Cost Explorer where available
+                # STEP 1: Try to assign actual costs from Cost Explorer by Name tag
+                resources_with_costs = []
+                resources_without_costs = []
+                
                 for resource in resources:
                     rid = resource["resource_id"]
-                    if rid in resource_costs:
-                        resource_cost_map[rid] = resource_costs[rid]
+                    name_tag = resource.get("tags", {}).get("Name", "")
+                    
+                    # Check if we have cost data for this resource by Name tag
+                    # Use case-insensitive matching with normalized names
+                    normalized_name = name_tag.lower().replace(" ", "-") if name_tag else ""
+                    
+                    if normalized_name and normalized_name in costs_by_name_lower:
+                        resource_cost_map[rid] = costs_by_name_lower[normalized_name]
+                        resources_with_costs.append(resource)
+                        logger.info(f"Assigned ${costs_by_name_lower[normalized_name]:.2f} to {rid} via Name tag '{name_tag}'")
+                    else:
+                        resources_without_costs.append(resource)
 
                 # STEP 2: Handle resources without Cost Explorer data
-                resources_without_costs = [
-                    r for r in resources
-                    if r["resource_id"] not in resource_costs
-                ]
-
                 if resources_without_costs:
                     known_costs = sum(
-                        resource_costs.get(r["resource_id"], 0)
+                        resource_cost_map.get(r["resource_id"], 0)
                         for r in resources
                     )
                     remaining = max(0, service_total - known_costs)
@@ -437,10 +457,16 @@ class CostService:
                 resources_by_type[rt] = []
             resources_by_type[rt].append(resource)
         
-        # Get per-resource costs where available
-        resource_costs, service_costs, cost_source = await self.aws_client.get_cost_data_by_resource(
+        # Get per-resource costs where available (by Name tag)
+        resource_costs, service_costs, costs_by_name, cost_source = await self.aws_client.get_cost_data_by_resource(
             time_period=time_period
         )
+        
+        # Build a case-insensitive lookup for costs_by_name
+        costs_by_name_lower: dict[str, float] = {}
+        for name, cost in costs_by_name.items():
+            normalized = name.lower().replace(" ", "-")
+            costs_by_name_lower[normalized] = costs_by_name_lower.get(normalized, 0) + cost
         
         # Build resource cost map - distribute service costs among resources
         resource_cost_map: dict[str, float] = {}
@@ -450,21 +476,26 @@ class CostService:
             service_total = service_costs.get(service_name, 0.0)
             
             if resource_type in ["ec2:instance", "rds:db"]:
-                # STEP 1: Assign actual costs from Cost Explorer where available
+                # STEP 1: Try to assign actual costs from Cost Explorer by Name tag
+                resources_with_costs = []
+                resources_without_costs = []
+                
                 for resource in resources:
                     rid = resource["resource_id"]
-                    if rid in resource_costs:
-                        resource_cost_map[rid] = resource_costs[rid]
+                    name_tag = resource.get("tags", {}).get("Name", "")
+                    normalized_name = name_tag.lower().replace(" ", "-") if name_tag else ""
+                    
+                    # Check if we have cost data for this resource by Name tag
+                    if normalized_name and normalized_name in costs_by_name_lower:
+                        resource_cost_map[rid] = costs_by_name_lower[normalized_name]
+                        resources_with_costs.append(resource)
+                    else:
+                        resources_without_costs.append(resource)
 
                 # STEP 2: Handle resources without Cost Explorer data
-                resources_without_costs = [
-                    r for r in resources
-                    if r["resource_id"] not in resource_costs
-                ]
-
                 if resources_without_costs:
                     known_costs = sum(
-                        resource_costs.get(r["resource_id"], 0)
+                        resource_cost_map.get(r["resource_id"], 0)
                         for r in resources
                     )
                     remaining = max(0, service_total - known_costs)
@@ -668,15 +699,21 @@ class CostService:
         
         logger.info(f"Total resources fetched: {len(all_resources)}")
         
-        # Get cost data with per-resource granularity where available
-        resource_costs, service_costs, cost_source = await self.aws_client.get_cost_data_by_resource(
+        # Get cost data with per-resource granularity where available (by Name tag)
+        resource_costs, service_costs, costs_by_name, cost_source = await self.aws_client.get_cost_data_by_resource(
             time_period=time_period
         )
         
-        logger.info(f"Cost source: {cost_source}, per-resource costs: {len(resource_costs)}, service costs: {len(service_costs)}")
+        logger.info(f"Cost source: {cost_source}, costs by name: {len(costs_by_name)}, service costs: {len(service_costs)}")
+        
+        # Build a case-insensitive lookup for costs_by_name
+        costs_by_name_lower: dict[str, float] = {}
+        for name, cost in costs_by_name.items():
+            normalized = name.lower().replace(" ", "-")
+            costs_by_name_lower[normalized] = costs_by_name_lower.get(normalized, 0) + cost
         
         # Calculate costs for each resource
-        # For EC2/RDS: use actual per-resource costs from Cost Explorer
+        # For EC2/RDS: use actual per-resource costs from Cost Explorer (by Name tag)
         # For S3/Lambda/ECS: distribute service total among resources of that type
         resource_cost_map: dict[str, float] = {}
         
@@ -685,21 +722,28 @@ class CostService:
             service_total = service_costs.get(service_name, 0.0)
             
             if resource_type in ["ec2:instance", "rds:db"]:
-                # Use per-resource costs where available
+                # Use per-resource costs where available (by Name tag)
+                resources_with_costs = []
+                resources_without_costs = []
+                
                 for resource in resources:
                     rid = resource["resource_id"]
-                    if rid in resource_costs:
-                        resource_cost_map[rid] = resource_costs[rid]
-                    elif resources:
-                        # Fallback: distribute service total among resources without specific costs
-                        resources_without_costs = [r for r in resources if r["resource_id"] not in resource_costs]
-                        if resources_without_costs:
-                            # Calculate remaining cost after subtracting known per-resource costs
-                            known_costs = sum(resource_costs.get(r["resource_id"], 0) for r in resources)
-                            remaining = max(0, service_total - known_costs)
-                            per_resource = remaining / len(resources_without_costs)
-                            if rid not in resource_costs:
-                                resource_cost_map[rid] = per_resource
+                    name_tag = resource.get("tags", {}).get("Name", "")
+                    normalized_name = name_tag.lower().replace(" ", "-") if name_tag else ""
+                    
+                    if normalized_name and normalized_name in costs_by_name_lower:
+                        resource_cost_map[rid] = costs_by_name_lower[normalized_name]
+                        resources_with_costs.append(resource)
+                    else:
+                        resources_without_costs.append(resource)
+                
+                # Fallback: distribute remaining cost among resources without specific costs
+                if resources_without_costs:
+                    known_costs = sum(resource_cost_map.get(r["resource_id"], 0) for r in resources)
+                    remaining = max(0, service_total - known_costs)
+                    per_resource = remaining / len(resources_without_costs)
+                    for resource in resources_without_costs:
+                        resource_cost_map[resource["resource_id"]] = per_resource
             else:
                 # For S3, Lambda, ECS: distribute service total evenly among resources
                 if resources:

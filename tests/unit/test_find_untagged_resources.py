@@ -144,10 +144,11 @@ async def test_find_untagged_resources_with_costs(mock_aws_client, mock_policy_s
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
         }
     ])
-    # Return per-resource cost data
+    # Return per-resource cost data (4-tuple: resource_costs, service_costs, costs_by_name, cost_source)
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-12345": 100.0},  # resource_costs
         {"Amazon Elastic Compute Cloud - Compute": 100.0},  # service_costs
+        {},  # costs_by_name
         "actual"  # cost_source
     ))
     
@@ -249,10 +250,11 @@ async def test_find_untagged_resources_cost_threshold(mock_aws_client, mock_poli
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-high-cost"
         }
     ])
-    # Return per-resource cost data
+    # Return per-resource cost data (4-tuple: resource_costs, service_costs, costs_by_name, cost_source)
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-low-cost": 25.0, "i-high-cost": 200.0},  # resource_costs
         {"Amazon Elastic Compute Cloud - Compute": 225.0},  # service_costs
+        {},  # costs_by_name
         "actual"  # cost_source
     ))
     

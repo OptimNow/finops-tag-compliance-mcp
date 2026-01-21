@@ -126,10 +126,11 @@ async def test_get_cost_attribution_gap_basic(mock_aws_client, mock_policy_servi
     ]
     
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
-    # Return: (per_resource_costs, service_costs, cost_source)
+    # Return: (per_resource_costs, service_costs, costs_by_name, cost_source)
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},  # per-resource costs
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},  # service costs
+        {},  # costs_by_name
         "cost_explorer"  # cost source
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
@@ -197,7 +198,7 @@ async def test_get_cost_attribution_gap_all_compliant(mock_aws_client, mock_poli
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
@@ -241,7 +242,7 @@ async def test_get_cost_attribution_gap_all_non_compliant(mock_aws_client, mock_
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
@@ -281,6 +282,7 @@ async def test_get_cost_attribution_gap_no_resources(mock_aws_client, mock_polic
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {},  # no per-resource costs
         {},  # no service costs
+        {},  # costs_by_name
         "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
@@ -321,7 +323,7 @@ async def test_get_cost_attribution_gap_with_custom_time_period(mock_aws_client,
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
@@ -341,10 +343,12 @@ async def test_get_cost_attribution_gap_with_custom_time_period(mock_aws_client,
     # Verify time period is returned correctly
     assert result.time_period == custom_period
     
-    # Verify cost data was called with custom time period
-    mock_aws_client.get_cost_data_by_resource.assert_called_once()
-    call_args = mock_aws_client.get_cost_data_by_resource.call_args
-    assert call_args[1]["time_period"] == custom_period
+    # Verify cost data was called with custom time period (may be called multiple times)
+    assert mock_aws_client.get_cost_data_by_resource.called
+    # Check that at least one call used the custom time period
+    calls = mock_aws_client.get_cost_data_by_resource.call_args_list
+    time_periods_used = [call[1].get("time_period") for call in calls]
+    assert custom_period in time_periods_used
 
 
 @pytest.mark.asyncio
@@ -383,7 +387,7 @@ async def test_get_cost_attribution_gap_group_by_resource_type(mock_aws_client, 
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 300.0, "i-456": 300.0, "db-789": 300.0},
         {"Amazon Elastic Compute Cloud - Compute": 600.0, "Amazon Relational Database Service": 300.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     
     def mock_service_name(resource_type):
@@ -472,7 +476,7 @@ async def test_get_cost_attribution_gap_group_by_region(mock_aws_client, mock_po
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
@@ -537,7 +541,7 @@ async def test_get_cost_attribution_gap_group_by_account(mock_aws_client, mock_p
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     
@@ -621,7 +625,7 @@ async def test_get_cost_attribution_gap_multiple_resource_types(mock_aws_client,
             "Amazon Relational Database Service": 300.0,
             "Amazon Simple Storage Service": 300.0
         },
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     
     def mock_service_name(resource_type):
@@ -685,7 +689,7 @@ async def test_get_cost_attribution_gap_handles_fetch_errors(mock_logger, mock_a
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     
     def mock_service_name(resource_type):
@@ -727,7 +731,7 @@ async def test_get_cost_attribution_gap_default_time_period(mock_aws_client, moc
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
@@ -773,7 +777,7 @@ async def test_get_cost_attribution_gap_result_has_timestamp(mock_aws_client, mo
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "cost_explorer"
+        {}, "cost_explorer"
     ))
     mock_aws_client.get_service_name_for_resource_type = MagicMock(return_value="Amazon Elastic Compute Cloud - Compute")
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])

@@ -70,7 +70,7 @@ async def test_calculate_attribution_gap_basic(cost_service, mock_aws_client, mo
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},  # Per-resource costs
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},  # Service costs
-        "actual"
+        {}, "actual"
     ))
     
     # Mock policy validation - first resource compliant, second has violations
@@ -120,7 +120,7 @@ async def test_calculate_attribution_gap_all_compliant(cost_service, mock_aws_cl
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
@@ -151,7 +151,7 @@ async def test_calculate_attribution_gap_all_non_compliant(cost_service, mock_aw
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[
         Violation(
@@ -215,7 +215,7 @@ async def test_calculate_attribution_gap_with_grouping_by_resource_type(
             "Amazon Elastic Compute Cloud - Compute": 600.0,
             "Amazon Relational Database Service": 300.0
         },
-        "actual"
+        {}, "actual"
     ))
     
     # Mock validation: first EC2 compliant, others non-compliant
@@ -290,7 +290,7 @@ async def test_calculate_attribution_gap_with_grouping_by_region(
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -354,7 +354,7 @@ async def test_calculate_attribution_gap_with_grouping_by_account(
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 500.0, "i-456": 500.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     
     def mock_validate(resource_id, resource_type, region, tags, cost_impact):
@@ -433,7 +433,7 @@ async def test_calculate_attribution_gap_with_grouping_by_service(
             "Amazon Elastic Compute Cloud - Compute": 600.0,
             "Amazon Relational Database Service": 400.0
         },
-        "actual"
+        {}, "actual"
     ))
     
     # Mock validation: i-123 and db-789 compliant, i-456 non-compliant
@@ -495,7 +495,7 @@ async def test_calculate_attribution_gap_with_custom_time_period(
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
@@ -523,7 +523,7 @@ async def test_calculate_attribution_gap_no_resources(cost_service, mock_aws_cli
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {},  # No per-resource costs
         {},  # No service costs
-        "estimated"
+        {}, "estimated"
     ))
     
     result = await cost_service.calculate_attribution_gap(
@@ -556,7 +556,7 @@ async def test_calculate_attribution_gap_handles_fetch_errors(
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {"i-123": 1000.0},
         {"Amazon Elastic Compute Cloud - Compute": 1000.0},
-        "actual"
+        {}, "actual"
     ))
     mock_policy_service.validate_resource_tags = MagicMock(return_value=[])
     
@@ -672,7 +672,7 @@ async def test_stopped_instances_get_zero_cost(cost_service, mock_aws_client, mo
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {},  # No per-resource costs
         {"Amazon Elastic Compute Cloud - Compute": 100.0},
-        "service_average"
+        {}, "service_average"
     ))
 
     # All resources non-compliant (for simplicity)
@@ -703,7 +703,7 @@ async def test_stopped_instances_get_zero_cost(cost_service, mock_aws_client, mo
 
 @pytest.mark.asyncio
 async def test_mixed_cost_explorer_and_state(cost_service, mock_aws_client, mock_policy_service):
-    """Test mixed scenario: some instances have Cost Explorer data, others don't."""
+    """Test mixed scenario: some instances have Cost Explorer data (by Name tag), others don't."""
     # Setup: 4 instances - 2 with Cost Explorer data (1 running, 1 stopped),
     #                      2 without (1 running, 1 stopped)
     mock_resources = [
@@ -711,7 +711,7 @@ async def test_mixed_cost_explorer_and_state(cost_service, mock_aws_client, mock
             "resource_id": "i-1",
             "resource_type": "ec2:instance",
             "region": "us-east-1",
-            "tags": {"CostCenter": "Engineering"},  # Compliant
+            "tags": {"CostCenter": "Engineering", "Name": "server-1"},  # Compliant, has Name tag
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-1",
             "instance_state": "running",
             "instance_type": "m5.large"
@@ -720,7 +720,7 @@ async def test_mixed_cost_explorer_and_state(cost_service, mock_aws_client, mock
             "resource_id": "i-2",
             "resource_type": "ec2:instance",
             "region": "us-east-1",
-            "tags": {"CostCenter": "Engineering"},  # Compliant
+            "tags": {"CostCenter": "Engineering", "Name": "server-2"},  # Compliant, has Name tag
             "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-2",
             "instance_state": "stopped",
             "instance_type": "t2.micro"
@@ -747,12 +747,13 @@ async def test_mixed_cost_explorer_and_state(cost_service, mock_aws_client, mock
 
     mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
 
-    # Cost Explorer has data for i-1 ($30) and i-2 ($2 EBS only)
+    # Cost Explorer has data by Name tag for server-1 ($30) and server-2 ($2 EBS only)
     # Service total: $100, Remaining: $100 - $30 - $2 = $68
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
-        {"i-1": 30.0, "i-2": 2.0},
+        {},  # resource_costs (by ID) - empty since we use Name tag
         {"Amazon Elastic Compute Cloud - Compute": 100.0},
-        "actual"
+        {"server-1": 30.0, "server-2": 2.0},  # costs_by_name
+        "actual_by_name"
     ))
 
     # Mock validation: only i-1 and i-2 are compliant
@@ -819,7 +820,7 @@ async def test_all_stopped_with_service_costs(cost_service, mock_aws_client, moc
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {},
         {"Amazon Elastic Compute Cloud - Compute": 50.0},
-        "service_average"
+        {}, "service_average"
     ))
 
     mock_policy_service.validate_resource_tags = lambda **kwargs: []  # All compliant
@@ -864,7 +865,7 @@ async def test_unknown_state_treated_as_running(cost_service, mock_aws_client, m
     mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
         {},
         {"Amazon Elastic Compute Cloud - Compute": 100.0},
-        "service_average"
+        {}, "service_average"
     ))
 
     mock_policy_service.validate_resource_tags = lambda *args, **kwargs: []
