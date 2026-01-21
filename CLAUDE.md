@@ -64,22 +64,86 @@ mypy mcp_server/
 
 ## Architecture
 
-### High-Level Structure
+### Design Philosophy: Core Library + MCP Layer
+
+This project deliberately separates **protocol-agnostic business logic** (reusable core library) from **MCP-specific code**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                        MCP PROTOCOL LAYER                               │
+│  Handles MCP protocol, HTTP, FastAPI. Could be swapped for CLI/webhook  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  main.py              → FastAPI app, /mcp/* endpoints, lifespan         │
+│  mcp_handler.py       → MCP tool registration, invocation, responses    │
+│  middleware/          → Request sanitization, budget tracking           │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         TOOLS LAYER (Adapters)                          │
+│  Thin wrappers that translate MCP tool calls → service method calls     │
+├─────────────────────────────────────────────────────────────────────────┤
+│  tools/check_tag_compliance.py    → calls ComplianceService             │
+│  tools/find_untagged_resources.py → calls ComplianceService             │
+│  tools/get_cost_attribution_gap.py→ calls CostService                   │
+│  tools/suggest_tags.py            → calls SuggestionService             │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    SERVICES LAYER (Core Library)                        │
+│  ★ ZERO knowledge of MCP - pure business logic                          │
+│  ★ Reusable: `from mcp_server.services import ComplianceService`        │
+│  ★ Testable in isolation without MCP dependencies                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│  services/compliance_service.py  → Resource scanning, policy validation │
+│  services/cost_service.py        → Cost attribution calculations        │
+│  services/policy_service.py      → Tagging policy management            │
+│  services/suggestion_service.py  → ML-powered tag suggestions           │
+│  services/audit_service.py       → Audit logging                        │
+│  services/history_service.py     → Compliance trend tracking            │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                         MODELS LAYER (Pydantic)                         │
+│  17 model files with strict typing, validation, JSON schemas            │
+├─────────────────────────────────────────────────────────────────────────┤
+│  models/compliance.py, models/violations.py, models/resource.py         │
+│  models/policy.py, models/cost_attribution.py, etc.                     │
+└─────────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                          CLIENTS LAYER                                  │
+├─────────────────────────────────────────────────────────────────────────┤
+│  clients/aws_client.py   → Boto3 wrapper with rate limiting, backoff    │
+│  clients/cache.py        → Redis caching layer                          │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Why this separation matters:**
+- Services can be imported directly without MCP: `from mcp_server.services import ComplianceService`
+- Easy to add CLI, REST API, webhook, or Lambda interface without touching business logic
+- Services are testable in isolation (unit tests mock only clients, not MCP layer)
+- Clear boundaries for future extraction into a standalone package
+
+### High-Level File Structure
 
 ```
 mcp_server/
 ├── main.py              # FastAPI app entry point, lifespan management
 ├── config.py            # Pydantic Settings configuration
 ├── mcp_handler.py       # MCP protocol handler, tool registration
-├── models/              # Pydantic data models
-├── services/            # Business logic layer
-├── tools/               # 8 MCP tool implementations
+├── models/              # Pydantic data models (17 files)
+├── services/            # Core business logic (protocol-agnostic)
+├── tools/               # 8 MCP tool adapters (thin wrappers)
 ├── clients/             # AWS client wrapper, Redis cache
 ├── middleware/          # Audit, budget, sanitization middleware
 └── utils/               # Correlation IDs, CloudWatch, error sanitization
 ```
 
-### Service Layer Architecture
+### Service Layer Details
 
 The application follows a **service-oriented architecture** with clear separation of concerns:
 
