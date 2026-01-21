@@ -164,7 +164,7 @@ See the [full Roadmap](./docs/ROADMAP.md) for timelines and decision points.
 
 **Start here**: [User Manual](./docs/USER_MANUAL.md) — Practical guide for FinOps practitioners
 **Deploy**: [Deployment Guide](./docs/DEPLOYMENT.md) — Local and remote setup instructions
-**Configure**: [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) — Define your organization's rules
+**Configure**: [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) — Define your organization's rules | [Resource Type Configuration](./docs/RESOURCE_TYPE_CONFIGURATION.md) — Manage AWS resource types
 **Optimize**: [Tool Search Configuration](./docs/TOOL_SEARCH_CONFIGURATION.md) — Reduce token costs by 85%
 **Security**: [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) — Required AWS permissions
 
