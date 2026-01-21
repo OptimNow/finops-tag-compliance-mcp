@@ -180,11 +180,66 @@ See [Development Journal](./docs/DEVELOPMENT_JOURNAL.md) for build history and [
 
 ---
 
+## Architecture
+
+This project follows a **layered service-oriented architecture** with clear separation between the MCP protocol layer and reusable business logic:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     MCP Protocol Layer                          │
+│  main.py (FastAPI) → mcp_handler.py (Protocol handling)         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Tools Layer (Adapters)                     │
+│  check_tag_compliance.py, find_untagged_resources.py, etc.      │
+│  Thin wrappers that translate MCP calls to service methods      │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                 Services Layer (Core Library)                   │
+│  ComplianceService, CostService, PolicyService, AuditService    │
+│  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
+│  ✓ Protocol-agnostic (no MCP knowledge)                         │
+│  ✓ Reusable in CLI, REST API, webhooks, etc.                    │
+│  ✓ All business logic lives here                                │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Models Layer (Pydantic)                    │
+│  17 model files with strict validation, type safety, schemas    │
+│  ComplianceResult, Violation, Resource, TagPolicy, etc.         │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                      Clients Layer                              │
+│  AWSClient (boto3 wrapper), RedisCache, SQLite databases        │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+- **Services are reusable**: The `mcp_server/services/` layer has zero knowledge of MCP. You could import `ComplianceService` into a CLI tool or webhook handler today.
+- **Pydantic everywhere**: All data structures use Pydantic models with validation, constraints, and automatic JSON schema generation for LLM compatibility.
+- **Thin tool adapters**: Each MCP tool in `mcp_server/tools/` is a lightweight wrapper that calls the corresponding service method.
+
+---
+
 ## Project Structure
 
 ```
 finops-tag-compliance-mcp/
-├── mcp_server/           # Main application (Python/FastAPI)
+├── mcp_server/
+│   ├── main.py           # FastAPI app, MCP endpoints
+│   ├── mcp_handler.py    # MCP protocol handling
+│   ├── services/         # Core business logic (protocol-agnostic)
+│   ├── tools/            # MCP tool adapters
+│   ├── models/           # Pydantic data models (17 files)
+│   ├── clients/          # AWS, Redis, database clients
+│   └── middleware/       # Budget, security, sanitization
 ├── policies/             # Your tagging policy (JSON)
 ├── scripts/              # Utilities (mcp_bridge.py, converter)
 ├── tests/                # Comprehensive test suite
