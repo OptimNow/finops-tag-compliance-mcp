@@ -766,10 +766,14 @@ class AWSClient:
             # Compute (40-60% of typical spend)
             "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
             "ec2:volume": "Amazon Elastic Compute Cloud - Compute",
+            "ec2:elastic-ip": "EC2 - Other",      # Elastic IPs cost ~$3.65/month if not attached
+            "ec2:snapshot": "EC2 - Other",        # Snapshots cost per GB stored
             "ec2:natgateway": "EC2 - Other",
-            "ec2:vpc": "Amazon Virtual Private Cloud",
-            "ec2:subnet": "Amazon Virtual Private Cloud",
-            "ec2:security-group": "Amazon Virtual Private Cloud",
+            # VPC, subnet, security-group are FREE resources - no direct costs
+            # VPC costs come from NAT Gateway, VPN, etc. not the VPC itself
+            "ec2:vpc": "",
+            "ec2:subnet": "",
+            "ec2:security-group": "",
             "lambda:function": "AWS Lambda",
             "ecs:cluster": "Amazon Elastic Container Service",
             "ecs:service": "Amazon Elastic Container Service",

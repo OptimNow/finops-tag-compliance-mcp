@@ -18,10 +18,22 @@ logger = logging.getLogger(__name__)
 # Resource types supported by individual service APIs
 # These are the HIGH-VALUE resource types that typically drive cloud costs
 # When "all" is specified, we scan ALL of these types individually
+# 
+# EXCLUDED (free or negligible cost resources):
+# - ec2:vpc, ec2:subnet, ec2:security-group - FREE
+# - logs:log-group - FREE (costs are on ingestion/storage)
+# - cloudwatch:alarm - Nearly free ($0.10/alarm after first 10)
+# - sns:topic, sqs:queue - FREE (costs are on messages)
+# - ecr:repository - FREE (costs are on storage)
+# - glue:database - FREE (costs are on jobs/crawlers)
+# - athena:workgroup - FREE (costs are on queries)
+#
 SUPPORTED_RESOURCE_TYPES = [
     # Compute (40-60% of typical spend)
     "ec2:instance",
     "ec2:volume",
+    "ec2:elastic-ip",      # $3.65/month if not attached to running instance
+    "ec2:snapshot",        # Cost per GB stored
     "lambda:function",
     "ecs:cluster",
     "ecs:service",
@@ -42,32 +54,19 @@ SUPPORTED_RESOURCE_TYPES = [
     "sagemaker:notebook-instance",
     "bedrock:agent",
     "bedrock:knowledge-base",
-    # Networking (Often overlooked)
+    # Networking (cost-generating resources only)
     "elasticloadbalancing:loadbalancer",
     "elasticloadbalancing:targetgroup",
-    "ec2:natgateway",
-    "ec2:vpc",
-    "ec2:subnet",
-    "ec2:security-group",
-    # Analytics (Data & streaming)
+    "ec2:natgateway",      # ~$32/month + data transfer
+    # Analytics (cost-generating only)
     "kinesis:stream",
     "glue:job",
     "glue:crawler",
-    "glue:database",
-    "athena:workgroup",
     "opensearch:domain",
-    # Identity & Security
+    # Identity & Security (with meaningful costs)
     "cognito-idp:userpool",
-    "secretsmanager:secret",
-    "kms:key",
-    # Monitoring & Logging
-    "logs:log-group",
-    "cloudwatch:alarm",
-    # Messaging
-    "sns:topic",
-    "sqs:queue",
-    # Containers
-    "ecr:repository",
+    "secretsmanager:secret",  # $0.40/month per secret
+    "kms:key",                # $1/month per key
 ]
 
 
@@ -105,11 +104,12 @@ TAGGING_API_RESOURCE_TYPES = [
     # Compute (40-60% of typical spend)
     "ec2:instance",
     "ec2:volume",
+    "ec2:elastic-ip",
+    "ec2:snapshot",
     "ec2:vpc",
     "ec2:subnet",
     "ec2:security-group",
     "ec2:natgateway",
-    "ec2:snapshot",
     "lambda:function",
     "ecs:cluster",
     "ecs:service",
