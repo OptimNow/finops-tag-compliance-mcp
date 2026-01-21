@@ -208,7 +208,9 @@ async def find_untagged_resources(
                 monthly_cost_estimate=monthly_cost,
                 cost_source=cost_source,
                 age_days=age_days,
-                created_at=resource.get("created_at")
+                created_at=resource.get("created_at"),
+                instance_state=resource.get("instance_state"),
+                instance_type=resource.get("instance_type")
             )
             
             untagged_resources.append(untagged_resource)
@@ -220,11 +222,27 @@ async def find_untagged_resources(
         # Determine cost data note based on ALL sources used during scan (not just filtered results)
         # This prevents false "Cost Explorer not enabled" messages when cost threshold filters out all resources
         if "actual" in all_cost_sources_used:
+            if "stopped" in all_cost_sources_used or "estimated" in all_cost_sources_used:
+                cost_note = (
+                    "EC2 costs: Actual per-resource values from Cost Explorer where available. "
+                    "Instances without Cost Explorer data: running instances share remaining costs, "
+                    "stopped instances assigned $0 (compute only). "
+                    "RDS costs are actual per-resource values. "
+                    "S3/Lambda/ECS costs are estimates (service total ÷ resource count)."
+                )
+            else:
+                cost_note = (
+                    "EC2/RDS costs are actual per-resource values from Cost Explorer. "
+                    "S3/Lambda/ECS costs are estimates (service total ÷ resource count) since AWS doesn't provide per-resource granularity for these services."
+                )
+        elif "stopped" in all_cost_sources_used or ("estimated" in all_cost_sources_used and any("ec2" in str(r.get("resource_type", "")) for r in resources)):
             cost_note = (
-                "EC2/RDS costs are actual per-resource values from Cost Explorer. "
-                "S3/Lambda/ECS costs are estimates (service total ÷ resource count) since AWS doesn't provide per-resource granularity for these services."
+                "EC2 costs are state-aware estimates: running instances share service total, "
+                "stopped instances assigned $0 (compute only). "
+                "Cost Explorer per-resource data not available. "
+                "Other service costs are estimates (service total ÷ resource count)."
             )
-        elif "service_average" in all_cost_sources_used:
+        elif "estimated" in all_cost_sources_used:
             cost_note = (
                 "Costs are estimates (service total ÷ resource count). "
                 "AWS Cost Explorer doesn't provide per-resource granularity for S3, Lambda, or ECS."
@@ -297,26 +315,53 @@ async def _get_cost_estimates(
                 resources_by_service[service_name] = []
             resources_by_service[service_name].append(rid)
         
-        # Assign costs to each resource
+        # Assign costs to each resource with state-aware logic for EC2
         for rid in resource_ids:
             rtype = resource_type_map.get(rid, "")
-            
+
             # Check if we have actual per-resource cost
             if rid in resource_costs:
                 cost_data[rid] = resource_costs[rid]
                 cost_sources[rid] = "actual"
             else:
-                # Use service-level average
+                # Use service-level average with state awareness for EC2
                 service_name = aws_client.get_service_name_for_resource_type(rtype)
                 service_total = service_costs.get(service_name, 0.0)
-                resource_count = len(resources_by_service.get(service_name, [rid]))
-                
-                if service_total > 0 and resource_count > 0:
-                    cost_data[rid] = service_total / resource_count
-                    cost_sources[rid] = "service_average"
+
+                if rtype == "ec2:instance":
+                    # State-aware distribution for EC2
+                    resource_obj = next((r for r in resources if r["resource_id"] == rid), None)
+                    instance_state = resource_obj.get("instance_state") if resource_obj else None
+
+                    if instance_state in ["stopped", "stopping", "terminated", "shutting-down"]:
+                        # Stopped instances get $0 (compute only)
+                        cost_data[rid] = 0.0
+                        cost_sources[rid] = "stopped"
+                    else:
+                        # Distribute among running instances only
+                        ec2_resources = resources_by_service.get(service_name, [])
+                        running_count = sum(
+                            1 for r_id in ec2_resources
+                            if next((r for r in resources if r["resource_id"] == r_id), {}).get("instance_state")
+                            not in ["stopped", "stopping", "terminated", "shutting-down"]
+                        )
+
+                        if running_count > 0:
+                            cost_data[rid] = service_total / running_count
+                            cost_sources[rid] = "estimated"
+                        else:
+                            cost_data[rid] = 0.0
+                            cost_sources[rid] = "estimated"
                 else:
-                    cost_data[rid] = 0.0
-                    cost_sources[rid] = "estimated"
+                    # Other resource types: use service average
+                    resource_count = len(resources_by_service.get(service_name, [rid]))
+
+                    if service_total > 0 and resource_count > 0:
+                        cost_data[rid] = service_total / resource_count
+                        cost_sources[rid] = "estimated"
+                    else:
+                        cost_data[rid] = 0.0
+                        cost_sources[rid] = "estimated"
         
         return cost_data, cost_sources
         

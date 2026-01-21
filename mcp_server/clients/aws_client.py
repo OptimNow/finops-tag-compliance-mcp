@@ -220,14 +220,20 @@ class AWSClient:
                     instance_id = instance.get("InstanceId")
                     tags = self._extract_tags(instance.get("Tags", []))
                     launch_time = instance.get("LaunchTime")
-                    
+
+                    # Extract instance metadata for state-aware cost attribution
+                    state = instance.get("State", {}).get("Name", "unknown")
+                    instance_type = instance.get("InstanceType", "unknown")
+
                     resources.append({
                         "resource_id": instance_id,
                         "resource_type": "ec2:instance",
                         "region": self.region,
                         "tags": tags,
                         "created_at": launch_time,
-                        "arn": f"arn:aws:ec2:{self.region}:{account_id}:instance/{instance_id}"
+                        "arn": f"arn:aws:ec2:{self.region}:{account_id}:instance/{instance_id}",
+                        "instance_state": state,
+                        "instance_type": instance_type
                     })
             
             return resources

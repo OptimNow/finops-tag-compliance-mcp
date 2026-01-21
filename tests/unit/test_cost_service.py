@@ -617,3 +617,263 @@ def test_get_group_key(cost_service):
     # Unknown grouping
     key = cost_service._get_group_key(resource, "unknown")
     assert key == "unknown"
+
+
+# =============================================================================
+# State-Aware Cost Distribution Tests
+# =============================================================================
+
+@pytest.mark.asyncio
+async def test_stopped_instances_get_zero_cost(cost_service, mock_aws_client, mock_policy_service):
+    """Test that stopped instances are assigned $0 when no Cost Explorer data."""
+    # Setup: 2 running, 2 stopped, no Cost Explorer per-resource data, $100 service total
+    mock_resources = [
+        {
+            "resource_id": "i-running-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-running-1",
+            "instance_state": "running",
+            "instance_type": "t3.medium"
+        },
+        {
+            "resource_id": "i-running-2",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-running-2",
+            "instance_state": "running",
+            "instance_type": "t3.medium"
+        },
+        {
+            "resource_id": "i-stopped-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-stopped-1",
+            "instance_state": "stopped",
+            "instance_type": "t3.large"
+        },
+        {
+            "resource_id": "i-stopped-2",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-stopped-2",
+            "instance_state": "stopped",
+            "instance_type": "t3.large"
+        }
+    ]
+
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+
+    # No per-resource costs from Cost Explorer, only service total
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {},  # No per-resource costs
+        {"Amazon Elastic Compute Cloud - Compute": 100.0},
+        "service_average"
+    ))
+
+    # All resources non-compliant (for simplicity)
+    def mock_validate(**kwargs):
+        return [
+            Violation(
+                resource_id=kwargs["resource_id"],
+                resource_type=kwargs["resource_type"],
+                region=kwargs["region"],
+                violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                tag_name="CostCenter",
+                severity=Severity.ERROR
+            )
+        ]
+
+    mock_policy_service.validate_resource_tags = mock_validate
+
+    # Execute
+    result = await cost_service.calculate_attribution_gap(
+        resource_types=["ec2:instance"]
+    )
+
+    # Expected: Running instances get $50 each, stopped instances get $0
+    assert result.total_spend == 100.0
+    # All non-compliant, so attribution gap = total spend
+    assert result.attribution_gap == 100.0
+
+
+@pytest.mark.asyncio
+async def test_mixed_cost_explorer_and_state(cost_service, mock_aws_client, mock_policy_service):
+    """Test mixed scenario: some instances have Cost Explorer data, others don't."""
+    # Setup: 4 instances - 2 with Cost Explorer data (1 running, 1 stopped),
+    #                      2 without (1 running, 1 stopped)
+    mock_resources = [
+        {
+            "resource_id": "i-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {"CostCenter": "Engineering"},  # Compliant
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-1",
+            "instance_state": "running",
+            "instance_type": "m5.large"
+        },
+        {
+            "resource_id": "i-2",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {"CostCenter": "Engineering"},  # Compliant
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-2",
+            "instance_state": "stopped",
+            "instance_type": "t2.micro"
+        },
+        {
+            "resource_id": "i-3",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # Non-compliant
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-3",
+            "instance_state": "running",
+            "instance_type": "t3.medium"
+        },
+        {
+            "resource_id": "i-4",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # Non-compliant
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-4",
+            "instance_state": "stopped",
+            "instance_type": "t3.medium"
+        }
+    ]
+
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+
+    # Cost Explorer has data for i-1 ($30) and i-2 ($2 EBS only)
+    # Service total: $100, Remaining: $100 - $30 - $2 = $68
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {"i-1": 30.0, "i-2": 2.0},
+        {"Amazon Elastic Compute Cloud - Compute": 100.0},
+        "actual"
+    ))
+
+    # Mock validation: only i-1 and i-2 are compliant
+    def mock_validate(resource_id, resource_type, region, tags, cost_impact):
+        if tags.get("CostCenter"):
+            return []
+        return [
+            Violation(
+                resource_id=resource_id,
+                resource_type=resource_type,
+                region=region,
+                violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                tag_name="CostCenter",
+                severity=Severity.ERROR
+            )
+        ]
+
+    mock_policy_service.validate_resource_tags = mock_validate
+
+    # Execute
+    result = await cost_service.calculate_attribution_gap(
+        resource_types=["ec2:instance"]
+    )
+
+    # Expected costs:
+    # - i-1: $30 (actual, compliant)
+    # - i-2: $2 (actual, compliant)
+    # - i-3: $68 (estimated, only running instance without data, non-compliant)
+    # - i-4: $0 (stopped, non-compliant)
+    # Total: $100, Attributable: $32, Gap: $68
+    assert result.total_spend == 100.0
+    assert result.attributable_spend == 32.0  # i-1 + i-2
+    assert result.attribution_gap == 68.0
+
+
+@pytest.mark.asyncio
+async def test_all_stopped_with_service_costs(cost_service, mock_aws_client, mock_policy_service):
+    """Test edge case: all instances stopped but service has costs."""
+    # This suggests Cost Explorer incomplete or other EC2 costs (NAT, EBS)
+    mock_resources = [
+        {
+            "resource_id": "i-stopped-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-stopped-1",
+            "instance_state": "stopped",
+            "instance_type": "t3.medium"
+        },
+        {
+            "resource_id": "i-stopped-2",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-stopped-2",
+            "instance_state": "stopped",
+            "instance_type": "t3.medium"
+        }
+    ]
+
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+
+    # Service has costs but no Cost Explorer per-resource data
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {},
+        {"Amazon Elastic Compute Cloud - Compute": 50.0},
+        "service_average"
+    ))
+
+    mock_policy_service.validate_resource_tags = lambda **kwargs: []  # All compliant
+
+    # Execute
+    result = await cost_service.calculate_attribution_gap(
+        resource_types=["ec2:instance"]
+    )
+
+    # Expected: Should distribute proportionally as fallback (warning logged)
+    # Both instances get $25 each
+    assert result.total_spend == 50.0
+    assert result.attributable_spend == 50.0  # All compliant
+
+
+@pytest.mark.asyncio
+async def test_unknown_state_treated_as_running(cost_service, mock_aws_client, mock_policy_service):
+    """Test that instances with unknown/null state are treated as running (conservative)."""
+    mock_resources = [
+        {
+            "resource_id": "i-unknown",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-unknown",
+            "instance_state": "unknown",  # Unknown state
+            "instance_type": "t3.medium"
+        },
+        {
+            "resource_id": "i-none",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-none",
+            "instance_state": None,  # No state
+            "instance_type": "t3.medium"
+        }
+    ]
+
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+
+    mock_aws_client.get_cost_data_by_resource = AsyncMock(return_value=(
+        {},
+        {"Amazon Elastic Compute Cloud - Compute": 100.0},
+        "service_average"
+    ))
+
+    mock_policy_service.validate_resource_tags = lambda *args, **kwargs: []
+
+    # Execute
+    result = await cost_service.calculate_attribution_gap(
+        resource_types=["ec2:instance"]
+    )
+
+    # Expected: Both treated as running, each gets $50
+    assert result.total_spend == 100.0
+    assert result.attributable_spend == 100.0  # All compliant

@@ -87,6 +87,90 @@ async def test_get_ec2_instances_multiple():
         assert all(r["resource_type"] == "ec2:instance" for r in resources)
 
 
+@pytest.mark.asyncio
+async def test_get_ec2_instances_extracts_state_and_type():
+    """Test that EC2 instances include state and type metadata."""
+    with mock_aws():
+        ec2 = boto3.resource("ec2", region_name="us-east-1")
+        instances = ec2.create_instances(
+            ImageId="ami-12345678",
+            MinCount=1,
+            MaxCount=1,
+            InstanceType="t3.medium"
+        )
+
+        client = AWSClient(region="us-east-1")
+        resources = await client.get_ec2_instances()
+
+        assert len(resources) == 1
+        assert resources[0]["instance_state"] == "running"  # moto defaults to running
+        assert resources[0]["instance_type"] == "t3.medium"
+
+
+@pytest.mark.asyncio
+async def test_get_ec2_instances_stopped_state():
+    """Test that stopped instances are captured correctly."""
+    with mock_aws():
+        ec2 = boto3.resource("ec2", region_name="us-east-1")
+
+        # Create and stop an instance
+        instances = ec2.create_instances(
+            ImageId="ami-12345678",
+            MinCount=1,
+            MaxCount=1,
+            InstanceType="t3.large"
+        )
+        instance = instances[0]
+        instance.stop()
+        instance.wait_until_stopped()
+
+        client = AWSClient(region="us-east-1")
+        resources = await client.get_ec2_instances()
+
+        assert len(resources) == 1
+        assert resources[0]["instance_state"] == "stopped"
+        assert resources[0]["instance_type"] == "t3.large"
+
+
+@pytest.mark.asyncio
+async def test_get_ec2_instances_mixed_states():
+    """Test fetching EC2 instances with mixed states."""
+    with mock_aws():
+        ec2 = boto3.resource("ec2", region_name="us-east-1")
+
+        # Create 3 instances: 2 running, 1 stopped
+        running_instances = ec2.create_instances(
+            ImageId="ami-12345678",
+            MinCount=2,
+            MaxCount=2,
+            InstanceType="t2.micro"
+        )
+
+        stopped_instances = ec2.create_instances(
+            ImageId="ami-12345678",
+            MinCount=1,
+            MaxCount=1,
+            InstanceType="m5.large"
+        )
+        stopped_instances[0].stop()
+        stopped_instances[0].wait_until_stopped()
+
+        client = AWSClient(region="us-east-1")
+        resources = await client.get_ec2_instances()
+
+        assert len(resources) == 3
+
+        # Check that we have 2 running and 1 stopped
+        states = [r["instance_state"] for r in resources]
+        assert states.count("running") == 2
+        assert states.count("stopped") == 1
+
+        # Check instance types
+        types = [r["instance_type"] for r in resources]
+        assert types.count("t2.micro") == 2
+        assert types.count("m5.large") == 1
+
+
 # =============================================================================
 # RDS Tests
 # =============================================================================
