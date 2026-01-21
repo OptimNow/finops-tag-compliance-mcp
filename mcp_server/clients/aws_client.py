@@ -184,7 +184,55 @@ class AWSClient:
                 result[key] = value
         
         return result
-    
+
+    async def get_tags_for_arns(self, arns: list[str]) -> dict[str, dict[str, str]]:
+        """
+        Efficiently fetch tags for specific resources by their ARNs.
+
+        Uses the Resource Groups Tagging API with ResourceARNList parameter
+        to fetch tags for multiple ARNs in a single API call, avoiding the
+        need to list all resources of a type.
+
+        Args:
+            arns: List of AWS ARNs to fetch tags for
+
+        Returns:
+            Dictionary mapping ARN to tag dictionary.
+            Example: {"arn:aws:ec2:...": {"Environment": "prod", "Owner": "team@example.com"}}
+
+        Note:
+            - Maximum 100 ARNs per request (AWS API limit)
+            - ARNs not found will not appear in the result
+        """
+        if not arns:
+            return {}
+
+        try:
+            result: dict[str, dict[str, str]] = {}
+
+            # Process in batches of 100 (AWS API limit)
+            batch_size = 100
+            for i in range(0, len(arns), batch_size):
+                batch = arns[i:i + batch_size]
+
+                response = await self._call_with_backoff(
+                    "resourcegroupstaggingapi",
+                    self.resourcegroupstaggingapi.get_resources,
+                    ResourceARNList=batch
+                )
+
+                for resource_mapping in response.get("ResourceTagMappingList", []):
+                    arn = resource_mapping.get("ResourceARN", "")
+                    tags = self._extract_tags(resource_mapping.get("Tags", []))
+                    result[arn] = tags
+
+            return result
+
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch tags for ARNs: {str(e)}") from e
+
     async def get_ec2_instances(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """
         Fetch EC2 instances with their tags.
