@@ -1,14 +1,18 @@
+# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
+# Licensed under the Proprietary Software License.
+# See LICENSE file in the project root for full license information.
+
 """Unit tests for validate_resource_tags tool."""
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_server.tools.validate_resource_tags import (
-    validate_resource_tags,
-    _is_valid_arn,
-    _parse_arn,
-    _service_to_resource_type,
-    _extract_resource_id,
+from mcp_server.tools.validate_resource_tags import validate_resource_tags
+from mcp_server.utils.arn_utils import (
+    is_valid_arn,
+    parse_arn,
+    service_to_resource_type,
+    extract_resource_id,
 )
 from mcp_server.clients.aws_client import AWSClient
 from mcp_server.services.policy_service import PolicyService
@@ -28,11 +32,11 @@ def mock_aws_client():
 def mock_policy_service():
     """Create a mock policy service."""
     service = MagicMock(spec=PolicyService)
-    
+
     # Mock validate_resource_tags to return violations
     def validate_tags(resource_id, resource_type, region, tags, cost_impact):
         violations = []
-        
+
         # Simulate missing CostCenter tag
         if "CostCenter" not in tags:
             violations.append(
@@ -48,7 +52,7 @@ def mock_policy_service():
                     cost_impact_monthly=cost_impact,
                 )
             )
-        
+
         # Simulate invalid Environment value
         if "Environment" in tags and tags["Environment"] not in ["production", "staging", "dev"]:
             violations.append(
@@ -64,59 +68,59 @@ def mock_policy_service():
                     cost_impact_monthly=cost_impact,
                 )
             )
-        
+
         return violations
-    
+
     service.validate_resource_tags = validate_tags
     return service
 
 
-# Tests for ARN validation and parsing functions
+# Tests for ARN validation and parsing functions (now in shared module)
 
 def test_is_valid_arn_valid_ec2():
     """Test ARN validation with valid EC2 ARN."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
 def test_is_valid_arn_valid_s3():
     """Test ARN validation with valid S3 ARN."""
     arn = "arn:aws:s3:::my-bucket"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
 def test_is_valid_arn_valid_rds():
     """Test ARN validation with valid RDS ARN."""
     arn = "arn:aws:rds:us-east-1:123456789012:db:mydb"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
 def test_is_valid_arn_valid_lambda():
     """Test ARN validation with valid Lambda ARN."""
     arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
 def test_is_valid_arn_invalid_format():
     """Test ARN validation with invalid format."""
-    assert _is_valid_arn("not-an-arn") is False
+    assert is_valid_arn("not-an-arn") is False
 
 
 def test_is_valid_arn_empty_string():
     """Test ARN validation with empty string."""
-    assert _is_valid_arn("") is False
+    assert is_valid_arn("") is False
 
 
 def test_is_valid_arn_none():
     """Test ARN validation with None."""
-    assert _is_valid_arn(None) is False
+    assert is_valid_arn(None) is False
 
 
 def test_parse_arn_ec2_instance():
     """Test parsing EC2 instance ARN."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
-    parsed = _parse_arn(arn)
-    
+    parsed = parse_arn(arn)
+
     assert parsed["service"] == "ec2"
     assert parsed["region"] == "us-east-1"
     assert parsed["account"] == "123456789012"
@@ -127,8 +131,8 @@ def test_parse_arn_ec2_instance():
 def test_parse_arn_s3_bucket():
     """Test parsing S3 bucket ARN."""
     arn = "arn:aws:s3:::my-bucket"
-    parsed = _parse_arn(arn)
-    
+    parsed = parse_arn(arn)
+
     assert parsed["service"] == "s3"
     assert parsed["region"] == "global"  # S3 buckets have no region
     assert parsed["resource_type"] == "s3:bucket"
@@ -138,8 +142,8 @@ def test_parse_arn_s3_bucket():
 def test_parse_arn_rds_database():
     """Test parsing RDS database ARN."""
     arn = "arn:aws:rds:us-west-2:123456789012:db:mydb"
-    parsed = _parse_arn(arn)
-    
+    parsed = parse_arn(arn)
+
     assert parsed["service"] == "rds"
     assert parsed["region"] == "us-west-2"
     assert parsed["resource_type"] == "rds:db"
@@ -149,8 +153,8 @@ def test_parse_arn_rds_database():
 def test_parse_arn_lambda_function():
     """Test parsing Lambda function ARN."""
     arn = "arn:aws:lambda:eu-west-1:123456789012:function:my-function"
-    parsed = _parse_arn(arn)
-    
+    parsed = parse_arn(arn)
+
     assert parsed["service"] == "lambda"
     assert parsed["region"] == "eu-west-1"
     assert parsed["resource_type"] == "lambda:function"
@@ -160,60 +164,60 @@ def test_parse_arn_lambda_function():
 def test_parse_arn_invalid_format():
     """Test parsing invalid ARN format."""
     with pytest.raises(ValueError, match="Invalid ARN format"):
-        _parse_arn("invalid-arn")
+        parse_arn("invalid-arn")
 
 
 def test_service_to_resource_type_ec2():
     """Test service to resource type mapping for EC2."""
-    resource_type = _service_to_resource_type("ec2", "instance/i-12345")
+    resource_type = service_to_resource_type("ec2", "instance/i-12345")
     assert resource_type == "ec2:instance"
 
 
 def test_service_to_resource_type_s3():
     """Test service to resource type mapping for S3."""
-    resource_type = _service_to_resource_type("s3", "my-bucket")
+    resource_type = service_to_resource_type("s3", "my-bucket")
     assert resource_type == "s3:bucket"
 
 
 def test_service_to_resource_type_rds():
     """Test service to resource type mapping for RDS."""
-    resource_type = _service_to_resource_type("rds", "db:mydb")
+    resource_type = service_to_resource_type("rds", "db:mydb")
     assert resource_type == "rds:db"
 
 
 def test_service_to_resource_type_lambda():
     """Test service to resource type mapping for Lambda."""
-    resource_type = _service_to_resource_type("lambda", "function:my-func")
+    resource_type = service_to_resource_type("lambda", "function:my-func")
     assert resource_type == "lambda:function"
 
 
 def test_service_to_resource_type_ecs():
     """Test service to resource type mapping for ECS."""
-    resource_type = _service_to_resource_type("ecs", "service/my-cluster/my-service")
+    resource_type = service_to_resource_type("ecs", "service/my-cluster/my-service")
     assert resource_type == "ecs:service"
 
 
 def test_extract_resource_id_with_slash():
     """Test extracting resource ID with slash separator."""
-    resource_id = _extract_resource_id("instance/i-12345")
+    resource_id = extract_resource_id("instance/i-12345")
     assert resource_id == "i-12345"
 
 
 def test_extract_resource_id_with_colon():
     """Test extracting resource ID with colon separator."""
-    resource_id = _extract_resource_id("db:mydb")
+    resource_id = extract_resource_id("db:mydb")
     assert resource_id == "mydb"
 
 
 def test_extract_resource_id_simple():
     """Test extracting simple resource ID."""
-    resource_id = _extract_resource_id("my-bucket")
+    resource_id = extract_resource_id("my-bucket")
     assert resource_id == "my-bucket"
 
 
 def test_extract_resource_id_multiple_slashes():
     """Test extracting resource ID with multiple slashes."""
-    resource_id = _extract_resource_id("service/cluster/my-service")
+    resource_id = extract_resource_id("service/cluster/my-service")
     assert resource_id == "my-service"
 
 
@@ -224,7 +228,7 @@ async def test_validate_resource_tags_empty_list():
     """Test validation with empty ARN list."""
     mock_client = MagicMock()
     mock_policy = MagicMock()
-    
+
     with pytest.raises(ValueError, match="resource_arns cannot be empty"):
         await validate_resource_tags(
             aws_client=mock_client,
@@ -238,7 +242,7 @@ async def test_validate_resource_tags_invalid_arn():
     """Test validation with invalid ARN format."""
     mock_client = MagicMock()
     mock_policy = MagicMock()
-    
+
     with pytest.raises(ValueError, match="Invalid ARN format"):
         await validate_resource_tags(
             aws_client=mock_client,
@@ -251,29 +255,22 @@ async def test_validate_resource_tags_invalid_arn():
 async def test_validate_resource_tags_missing_tags(mock_aws_client, mock_policy_service):
     """Test validation detects missing required tags."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
-    
-    # Mock AWS client to return resource with missing tags
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},  # Missing CostCenter
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return resource with missing tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {}  # Missing CostCenter
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     assert result.compliant_resources == 0
     assert result.non_compliant_resources == 1
-    
+
     resource_result = result.results[0]
     assert resource_result.resource_arn == arn
     assert resource_result.resource_id == "i-12345"
@@ -288,36 +285,29 @@ async def test_validate_resource_tags_missing_tags(mock_aws_client, mock_policy_
 async def test_validate_resource_tags_invalid_value(mock_aws_client, mock_policy_service):
     """Test validation detects invalid tag values."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
-    
-    # Mock AWS client to return resource with invalid tag value
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {
-                "CostCenter": "Engineering",
-                "Environment": "invalid-env"  # Invalid value
-            },
-            "created_at": None,
-            "arn": arn
+
+    # Mock get_tags_for_arns to return resource with invalid tag value
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {
+            "CostCenter": "Engineering",
+            "Environment": "invalid-env"  # Invalid value
         }
-    ])
-    
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     assert result.compliant_resources == 0
     assert result.non_compliant_resources == 1
-    
+
     resource_result = result.results[0]
     assert resource_result.is_compliant is False
     assert len(resource_result.violations) == 1
-    
+
     violation = resource_result.violations[0]
     assert violation.violation_type == ViolationType.INVALID_VALUE
     assert violation.tag_name == "Environment"
@@ -329,32 +319,25 @@ async def test_validate_resource_tags_invalid_value(mock_aws_client, mock_policy
 async def test_validate_resource_tags_compliant_resource(mock_aws_client, mock_policy_service):
     """Test validation passes for compliant resources."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
-    
-    # Mock AWS client to return compliant resource
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {
-                "CostCenter": "Engineering",
-                "Environment": "production"
-            },
-            "created_at": None,
-            "arn": arn
+
+    # Mock get_tags_for_arns to return compliant resource
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {
+            "CostCenter": "Engineering",
+            "Environment": "production"
         }
-    ])
-    
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     assert result.compliant_resources == 1
     assert result.non_compliant_resources == 0
-    
+
     resource_result = result.results[0]
     assert resource_result.is_compliant is True
     assert len(resource_result.violations) == 0
@@ -365,33 +348,19 @@ async def test_validate_resource_tags_multiple_resources(mock_aws_client, mock_p
     """Test validation of multiple resources."""
     arn1 = "arn:aws:ec2:us-east-1:123456789012:instance/i-11111"
     arn2 = "arn:aws:ec2:us-east-1:123456789012:instance/i-22222"
-    
-    # Mock AWS client to return multiple resources
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-11111",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {"CostCenter": "Engineering", "Environment": "production"},
-            "created_at": None,
-            "arn": arn1
-        },
-        {
-            "resource_id": "i-22222",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": {},  # Missing tags
-            "created_at": None,
-            "arn": arn2
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return multiple resources
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn1: {"CostCenter": "Engineering", "Environment": "production"},
+        arn2: {}  # Missing tags
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn1, arn2]
     )
-    
+
     assert result.total_resources == 2
     assert result.compliant_resources == 1
     assert result.non_compliant_resources == 1
@@ -402,25 +371,18 @@ async def test_validate_resource_tags_multiple_resources(mock_aws_client, mock_p
 async def test_validate_resource_tags_s3_bucket(mock_aws_client, mock_policy_service):
     """Test validation of S3 bucket."""
     arn = "arn:aws:s3:::my-bucket"
-    
-    # Mock AWS client to return S3 bucket
-    mock_aws_client.get_s3_buckets = AsyncMock(return_value=[
-        {
-            "resource_id": "my-bucket",
-            "resource_type": "s3:bucket",
-            "region": "global",
-            "tags": {"CostCenter": "Engineering"},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return S3 bucket tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {"CostCenter": "Engineering"}
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     resource_result = result.results[0]
     assert resource_result.resource_type == "s3:bucket"
@@ -431,25 +393,18 @@ async def test_validate_resource_tags_s3_bucket(mock_aws_client, mock_policy_ser
 async def test_validate_resource_tags_rds_database(mock_aws_client, mock_policy_service):
     """Test validation of RDS database."""
     arn = "arn:aws:rds:us-east-1:123456789012:db:mydb"
-    
-    # Mock AWS client to return RDS instance
-    mock_aws_client.get_rds_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "mydb",
-            "resource_type": "rds:db",
-            "region": "us-east-1",
-            "tags": {"CostCenter": "Engineering", "Environment": "production"},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return RDS tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {"CostCenter": "Engineering", "Environment": "production"}
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     resource_result = result.results[0]
     assert resource_result.resource_type == "rds:db"
@@ -460,25 +415,18 @@ async def test_validate_resource_tags_rds_database(mock_aws_client, mock_policy_
 async def test_validate_resource_tags_lambda_function(mock_aws_client, mock_policy_service):
     """Test validation of Lambda function."""
     arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
-    
-    # Mock AWS client to return Lambda function
-    mock_aws_client.get_lambda_functions = AsyncMock(return_value=[
-        {
-            "resource_id": "my-function",
-            "resource_type": "lambda:function",
-            "region": "us-east-1",
-            "tags": {"CostCenter": "Engineering"},
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return Lambda tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {"CostCenter": "Engineering"}
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     assert result.total_resources == 1
     resource_result = result.results[0]
     assert resource_result.resource_type == "lambda:function"
@@ -489,31 +437,24 @@ async def test_validate_resource_tags_lambda_function(mock_aws_client, mock_poli
 async def test_validate_resource_tags_current_tags_included(mock_aws_client, mock_policy_service):
     """Test that current tags are included in the result."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
-    
+
     current_tags = {
         "CostCenter": "Engineering",
         "Environment": "production",
         "Owner": "john@example.com"
     }
-    
-    # Mock AWS client to return resource with tags
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
-        {
-            "resource_id": "i-12345",
-            "resource_type": "ec2:instance",
-            "region": "us-east-1",
-            "tags": current_tags,
-            "created_at": None,
-            "arn": arn
-        }
-    ])
-    
+
+    # Mock get_tags_for_arns to return resource with tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: current_tags
+    })
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     resource_result = result.results[0]
     assert resource_result.current_tags == current_tags
 
@@ -521,19 +462,88 @@ async def test_validate_resource_tags_current_tags_included(mock_aws_client, moc
 @pytest.mark.asyncio
 @patch('mcp_server.tools.validate_resource_tags.logger')
 async def test_validate_resource_tags_resource_not_found(mock_logger, mock_aws_client, mock_policy_service):
-    """Test handling when resource is not found."""
+    """Test handling when resource is not found (returns empty tags)."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-nonexistent"
-    
-    # Mock AWS client to return no resources
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
-    
+
+    # Mock get_tags_for_arns to return no tags for the resource
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={})
+
     result = await validate_resource_tags(
         aws_client=mock_aws_client,
         policy_service=mock_policy_service,
         resource_arns=[arn]
     )
-    
+
     # Should still return a result with empty tags
     assert result.total_resources == 1
     resource_result = result.results[0]
     assert resource_result.current_tags == {}
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_ecs_service(mock_aws_client, mock_policy_service):
+    """Test validation of ECS service."""
+    arn = "arn:aws:ecs:us-east-1:123456789012:service/my-cluster/my-service"
+
+    # Mock get_tags_for_arns to return ECS tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {"CostCenter": "Engineering", "Environment": "production"}
+    })
+
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn]
+    )
+
+    assert result.total_resources == 1
+    resource_result = result.results[0]
+    assert resource_result.resource_type == "ecs:service"
+    assert resource_result.resource_id == "my-service"
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_mixed_resource_types(mock_aws_client, mock_policy_service):
+    """Test validation of mixed resource types in single call."""
+    ec2_arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+    s3_arn = "arn:aws:s3:::my-bucket"
+    lambda_arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
+
+    # Mock get_tags_for_arns to return tags for all resources
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        ec2_arn: {"CostCenter": "Engineering", "Environment": "production"},
+        s3_arn: {"CostCenter": "Marketing"},  # Missing nothing, compliant
+        lambda_arn: {}  # Missing CostCenter
+    })
+
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[ec2_arn, s3_arn, lambda_arn]
+    )
+
+    assert result.total_resources == 3
+    assert result.compliant_resources == 2  # EC2 and S3 are compliant
+    assert result.non_compliant_resources == 1  # Lambda is non-compliant
+
+    # Verify resource types are correctly identified
+    resource_types = {r.resource_type for r in result.results}
+    assert resource_types == {"ec2:instance", "s3:bucket", "lambda:function"}
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_validation_timestamp(mock_aws_client, mock_policy_service):
+    """Test that validation timestamp is included in result."""
+    arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={
+        arn: {"CostCenter": "Engineering"}
+    })
+
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn]
+    )
+
+    assert result.validation_timestamp is not None

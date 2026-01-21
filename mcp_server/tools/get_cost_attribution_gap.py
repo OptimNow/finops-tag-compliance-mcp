@@ -22,7 +22,8 @@ async def get_cost_attribution_gap(
     resource_types: list[str],
     time_period: Optional[dict[str, str]] = None,
     group_by: Optional[str] = None,
-    filters: Optional[dict] = None
+    filters: Optional[dict] = None,
+    cost_service: Optional[CostService] = None,
 ) -> CostAttributionGapResult:
     """
     Calculate the cost attribution gap - the financial impact of tagging gaps.
@@ -35,6 +36,8 @@ async def get_cost_attribution_gap(
         aws_client: AWSClient instance for fetching resources and cost data
         policy_service: PolicyService for tag validation
         resource_types: List of resource types to analyze (e.g., ["ec2:instance", "rds:db"])
+        cost_service: Optional injected CostService instance. If not provided, one will
+                     be created internally using aws_client and policy_service.
                        Supported types: ec2:instance, rds:db, s3:bucket,
                        lambda:function, ecs:service
         time_period: Optional time period for cost analysis.
@@ -130,14 +133,16 @@ async def get_cost_attribution_gap(
         f"Calculating cost attribution gap for types={resource_types}, "
         f"period={time_period}, group_by={group_by}"
     )
-    
-    # Create CostService and calculate attribution gap
-    cost_service = CostService(
-        aws_client=aws_client,
-        policy_service=policy_service
-    )
-    
-    result = await cost_service.calculate_attribution_gap(
+
+    # Use injected service or create one
+    service = cost_service
+    if service is None:
+        service = CostService(
+            aws_client=aws_client,
+            policy_service=policy_service
+        )
+
+    result = await service.calculate_attribution_gap(
         resource_types=resource_types,
         time_period=time_period,
         group_by=group_by,
