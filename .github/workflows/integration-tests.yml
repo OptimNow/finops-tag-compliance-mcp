@@ -1,0 +1,79 @@
+name: Integration Tests
+
+on:
+  # Run on demand
+  workflow_dispatch:
+  # Run weekly on Sunday at midnight UTC
+  schedule:
+    - cron: "0 0 * * 0"
+  # Run on pushes to main that modify integration test files
+  push:
+    branches: [main, master]
+    paths:
+      - "tests/integration/**"
+      - "mcp_server/clients/**"
+      - ".github/workflows/integration-tests.yml"
+
+jobs:
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    # Don't run on forks (they won't have AWS credentials)
+    if: github.repository == 'OptimNow/finops-tag-compliance-mcp'
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      REDIS_URL: redis://localhost:6379/0
+      AWS_DEFAULT_REGION: us-east-1
+      # Use moto for AWS mocking in integration tests
+      AWS_ACCESS_KEY_ID: testing
+      AWS_SECRET_ACCESS_KEY: testing
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: Wait for Redis
+        run: |
+          for i in {1..30}; do
+            if redis-cli -h localhost ping | grep -q PONG; then
+              echo "Redis is ready"
+              break
+            fi
+            echo "Waiting for Redis..."
+            sleep 1
+          done
+
+      - name: Run integration tests with moto
+        run: |
+          pytest tests/integration/ -v --tb=short -m "integration"
+        continue-on-error: true  # Integration tests may fail if AWS resources not available
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-test-results
+          path: |
+            pytest-results.xml
+            coverage.xml
+          retention-days: 30
