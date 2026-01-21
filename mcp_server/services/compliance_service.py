@@ -15,6 +15,7 @@ from ..models.compliance import ComplianceResult
 from ..models.violations import Violation
 from ..services.policy_service import PolicyService
 from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn
+from ..utils.resource_type_config import get_resource_type_config
 
 logger = logging.getLogger(__name__)
 
@@ -216,8 +217,24 @@ class ComplianceService:
         
         logger.info(f"Total resources fetched before filtering: {len(all_resources)}")
         
+        # Filter out free resources (VPC, Subnet, Security Group, etc.)
+        # These are taggable but have no direct cost, so we exclude them from compliance scans
+        config = get_resource_type_config()
+        filtered_by_cost = []
+        free_resource_count = 0
+        
+        for resource in all_resources:
+            resource_type = resource.get("resource_type", "")
+            if config.is_free_resource(resource_type):
+                free_resource_count += 1
+                continue
+            filtered_by_cost.append(resource)
+        
+        if free_resource_count > 0:
+            logger.info(f"Excluded {free_resource_count} free resources (VPC, Subnet, Security Group, etc.)")
+        
         # Apply post-fetch filters (region, account_id)
-        filtered_resources = self._apply_resource_filters(all_resources, filters)
+        filtered_resources = self._apply_resource_filters(filtered_by_cost, filters)
         logger.info(f"Total resources after filtering: {len(filtered_resources)}")
         
         # Validate each resource against policy and collect violations

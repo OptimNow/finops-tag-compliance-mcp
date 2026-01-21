@@ -709,6 +709,8 @@ class TestAllResourceTypeSupport:
     ):
         """Test scanning all resources via Resource Groups Tagging API."""
         # Setup mock resources from Tagging API
+        # Note: Only cost-generating resources are included in compliance scans
+        # Free resources (VPC, Subnet, Security Group, SQS, SNS, etc.) are filtered out
         mock_resources = [
             {
                 "resource_id": "i-123",
@@ -727,12 +729,12 @@ class TestAllResourceTypeSupport:
                 "arn": "arn:aws:dynamodb:us-east-1:123456789012:table/MyTable"
             },
             {
-                "resource_id": "my-queue",
-                "resource_type": "sqs:queue",
+                "resource_id": "my-function",
+                "resource_type": "lambda:function",
                 "region": "us-east-1",
                 "tags": {"CostCenter": "Marketing"},
                 "cost_impact": 10.0,
-                "arn": "arn:aws:sqs:us-east-1:123456789012:my-queue"
+                "arn": "arn:aws:lambda:us-east-1:123456789012:function:my-function"
             }
         ]
         
@@ -826,3 +828,67 @@ class TestAllResourceTypeSupport:
         # Verify cache key includes "all"
         cache_key = mock_cache.get.call_args[0][0]
         assert "compliance:" in cache_key
+
+
+    @pytest.mark.asyncio
+    async def test_free_resources_filtered_from_compliance_scan(
+        self, compliance_service, mock_aws_client, mock_policy_service
+    ):
+        """Test that free resources (VPC, Subnet, Security Group, etc.) are filtered out."""
+        # Setup mock resources including free resources that should be filtered
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-123"
+            },
+            {
+                "resource_id": "vpc-123",
+                "resource_type": "ec2:vpc",  # FREE - should be filtered
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 0.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-123"
+            },
+            {
+                "resource_id": "subnet-123",
+                "resource_type": "ec2:subnet",  # FREE - should be filtered
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 0.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-123"
+            },
+            {
+                "resource_id": "sg-123",
+                "resource_type": "ec2:security-group",  # FREE - should be filtered
+                "region": "us-east-1",
+                "tags": {},
+                "cost_impact": 0.0,
+                "arn": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-123"
+            },
+            {
+                "resource_id": "my-bucket",
+                "resource_type": "s3:bucket",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Marketing"},
+                "cost_impact": 10.0,
+                "arn": "arn:aws:s3:::my-bucket"
+            }
+        ]
+        
+        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=mock_resources)
+        mock_policy_service.validate_resource_tags.return_value = []
+        
+        result = await compliance_service._scan_and_validate(
+            resource_types=["all"],
+            filters=None,
+            severity="all"
+        )
+        
+        # Only 2 cost-generating resources should be included (ec2:instance, s3:bucket)
+        # VPC, Subnet, Security Group should be filtered out
+        assert result.total_resources == 2
+        assert result.compliant_resources == 2
