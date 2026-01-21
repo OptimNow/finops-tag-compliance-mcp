@@ -10,8 +10,6 @@ from mcp_server.utils.resource_utils import (
     fetch_resources_via_tagging_api,
     get_supported_resource_types,
     get_tagging_api_resource_types,
-    SUPPORTED_RESOURCE_TYPES,
-    TAGGING_API_RESOURCE_TYPES,
 )
 
 
@@ -227,21 +225,26 @@ class TestResourceTypeConstants:
     """Test resource type constants and helper functions."""
 
     def test_supported_resource_types_not_empty(self):
-        """Test that SUPPORTED_RESOURCE_TYPES is not empty."""
-        assert len(SUPPORTED_RESOURCE_TYPES) > 0
-        assert "ec2:instance" in SUPPORTED_RESOURCE_TYPES
-        assert "s3:bucket" in SUPPORTED_RESOURCE_TYPES
+        """Test that get_supported_resource_types returns non-empty list."""
+        supported = get_supported_resource_types()
+        assert len(supported) > 0
+        assert "ec2:instance" in supported
+        assert "s3:bucket" in supported
 
     def test_tagging_api_resource_types_not_empty(self):
-        """Test that TAGGING_API_RESOURCE_TYPES is not empty."""
-        assert len(TAGGING_API_RESOURCE_TYPES) > 0
-        assert "dynamodb:table" in TAGGING_API_RESOURCE_TYPES
-        assert "sns:topic" in TAGGING_API_RESOURCE_TYPES
+        """Test that get_tagging_api_resource_types returns non-empty list."""
+        tagging_api = get_tagging_api_resource_types()
+        assert len(tagging_api) > 0
+        assert "dynamodb:table" in tagging_api
+        assert "rds:cluster" in tagging_api
+        # Note: sns:topic, sqs:queue, etc. are excluded as they are free resources
 
     def test_tagging_api_includes_supported_types(self):
         """Test that Tagging API types include all supported types."""
-        for rt in SUPPORTED_RESOURCE_TYPES:
-            assert rt in TAGGING_API_RESOURCE_TYPES
+        supported = get_supported_resource_types()
+        tagging_api = get_tagging_api_resource_types()
+        for rt in supported:
+            assert rt in tagging_api
 
     def test_get_supported_resource_types_returns_copy(self):
         """Test that get_supported_resource_types returns a copy."""

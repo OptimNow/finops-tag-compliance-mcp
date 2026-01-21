@@ -33,6 +33,7 @@ ENV PATH=/root/.local/bin:$PATH \
 # Copy application code
 COPY mcp_server/ ./mcp_server/
 COPY policies/ ./policies/
+COPY config/ ./config/
 COPY scripts/mcp_bridge.py ./mcp_bridge.py
 COPY pyproject.toml .
 

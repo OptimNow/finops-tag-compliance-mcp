@@ -10,7 +10,7 @@ from typing import Optional
 from ..models.compliance import ComplianceResult
 from ..services.compliance_service import ComplianceService
 from ..services.history_service import HistoryService
-from ..utils.resource_utils import SUPPORTED_RESOURCE_TYPES
+from ..utils.resource_utils import get_supported_resource_types
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +103,7 @@ async def check_tag_compliance(
     
     # Validate resource types (unless using "all")
     if not use_tagging_api:
-        valid_types = set(SUPPORTED_RESOURCE_TYPES)
+        valid_types = set(get_supported_resource_types())
         invalid_types = [rt for rt in resource_types if rt not in valid_types]
         if invalid_types:
             raise ValueError(

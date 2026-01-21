@@ -7,67 +7,48 @@ Shared utilities for AWS resource operations.
 
 This module contains common functions used across multiple services
 for fetching and processing AWS resources.
+
+Resource type configuration is loaded from config/resource_types.json
+for easy maintenance. See ResourceTypeConfig for details.
 """
 
 import logging
 from typing import Optional
 
+from .resource_type_config import (
+    get_resource_type_config,
+    get_supported_resource_types as _get_supported,
+    get_tagging_api_resource_types as _get_tagging_api,
+)
+
 logger = logging.getLogger(__name__)
 
 
-# Resource types supported by individual service APIs
-# These are the HIGH-VALUE resource types that typically drive cloud costs
-# When "all" is specified, we scan ALL of these types individually
-# 
-# EXCLUDED (free or negligible cost resources):
-# - ec2:vpc, ec2:subnet, ec2:security-group - FREE
-# - logs:log-group - FREE (costs are on ingestion/storage)
-# - cloudwatch:alarm - Nearly free ($0.10/alarm after first 10)
-# - sns:topic, sqs:queue - FREE (costs are on messages)
-# - ecr:repository - FREE (costs are on storage)
-# - glue:database - FREE (costs are on jobs/crawlers)
-# - athena:workgroup - FREE (costs are on queries)
-#
-SUPPORTED_RESOURCE_TYPES = [
-    # Compute (40-60% of typical spend)
-    "ec2:instance",
-    "ec2:volume",
-    "ec2:elastic-ip",      # $3.65/month if not attached to running instance
-    "ec2:snapshot",        # Cost per GB stored
-    "lambda:function",
-    "ecs:cluster",
-    "ecs:service",
-    "ecs:task-definition",
-    "eks:cluster",
-    "eks:nodegroup",
-    # Storage (10-20% of typical spend)
-    "s3:bucket",
-    "elasticfilesystem:file-system",
-    "fsx:file-system",
-    # Database (15-25% of typical spend)
-    "rds:db",
-    "dynamodb:table",
-    "elasticache:cluster",
-    "redshift:cluster",
-    # AI/ML (Growing rapidly)
-    "sagemaker:endpoint",
-    "sagemaker:notebook-instance",
-    "bedrock:agent",
-    "bedrock:knowledge-base",
-    # Networking (cost-generating resources only)
-    "elasticloadbalancing:loadbalancer",
-    "elasticloadbalancing:targetgroup",
-    "ec2:natgateway",      # ~$32/month + data transfer
-    # Analytics (cost-generating only)
-    "kinesis:stream",
-    "glue:job",
-    "glue:crawler",
-    "opensearch:domain",
-    # Identity & Security (with meaningful costs)
-    "cognito-idp:userpool",
-    "secretsmanager:secret",  # $0.40/month per secret
-    "kms:key",                # $1/month per key
-]
+# Re-export for backward compatibility
+# These now load from config/resource_types.json
+def get_supported_resource_types() -> list[str]:
+    """
+    Get list of resource types that generate direct costs.
+    
+    These are scanned for compliance and cost attribution.
+    Loaded from config/resource_types.json.
+    
+    Returns:
+        List of supported resource type strings
+    """
+    return _get_supported()
+
+
+def get_tagging_api_resource_types() -> list[str]:
+    """
+    Get list of resource types discoverable via Resource Groups Tagging API.
+    
+    Loaded from config/resource_types.json.
+    
+    Returns:
+        List of resource type strings
+    """
+    return _get_tagging_api()
 
 
 def expand_all_to_supported_types(resource_types: list[str]) -> list[str]:
@@ -87,8 +68,11 @@ def expand_all_to_supported_types(resource_types: list[str]) -> list[str]:
     if "all" not in resource_types:
         return resource_types
     
+    # Get current supported types from config
+    supported = get_supported_resource_types()
+    
     # Start with all supported types
-    expanded = set(SUPPORTED_RESOURCE_TYPES)
+    expanded = set(supported)
     
     # Add any other specific types that were requested alongside "all"
     for rt in resource_types:
@@ -96,79 +80,6 @@ def expand_all_to_supported_types(resource_types: list[str]) -> list[str]:
             expanded.add(rt)
     
     return list(expanded)
-
-# Resource types that can be discovered via Resource Groups Tagging API
-# This is a much larger set including DynamoDB, SNS, SQS, etc.
-# NOTE: This API only returns resources that have at least one tag!
-TAGGING_API_RESOURCE_TYPES = [
-    # Compute (40-60% of typical spend)
-    "ec2:instance",
-    "ec2:volume",
-    "ec2:elastic-ip",
-    "ec2:snapshot",
-    "ec2:vpc",
-    "ec2:subnet",
-    "ec2:security-group",
-    "ec2:natgateway",
-    "lambda:function",
-    "ecs:cluster",
-    "ecs:service",
-    "ecs:task-definition",
-    "eks:cluster",
-    "eks:nodegroup",
-    # Storage (10-20% of typical spend)
-    "s3:bucket",
-    "elasticfilesystem:file-system",
-    "fsx:file-system",
-    # Database (15-25% of typical spend)
-    "rds:db",
-    "rds:cluster",
-    "dynamodb:table",
-    "elasticache:cluster",
-    "elasticache:replicationgroup",
-    "redshift:cluster",
-    # AI/ML (Growing rapidly)
-    "sagemaker:endpoint",
-    "sagemaker:notebook-instance",
-    "bedrock:agent",
-    "bedrock:knowledge-base",
-    # Networking (Often overlooked)
-    "elasticloadbalancing:loadbalancer",
-    "elasticloadbalancing:targetgroup",
-    # Analytics (Data & streaming)
-    "kinesis:stream",
-    "glue:database",
-    "glue:table",
-    "glue:crawler",
-    "glue:job",
-    "athena:workgroup",
-    "opensearch:domain",
-    "emr:cluster",
-    # Identity & Security
-    "cognito-idp:userpool",
-    "cognito-identity:identitypool",
-    "secretsmanager:secret",
-    "kms:key",
-    # Monitoring & Logging
-    "logs:log-group",
-    "cloudwatch:alarm",
-    # Messaging
-    "sns:topic",
-    "sqs:queue",
-    # Containers
-    "ecr:repository",
-    # API Gateway
-    "apigateway:restapi",
-    # CDN
-    "cloudfront:distribution",
-    # DNS
-    "route53:hostedzone",
-    # Orchestration
-    "stepfunctions:statemachine",
-    # CI/CD
-    "codebuild:project",
-    "codepipeline:pipeline",
-]
 
 
 async def fetch_resources_by_type(
@@ -316,23 +227,3 @@ def extract_account_from_arn(arn: str) -> str:
         return parts[4] or "unknown"
     
     return "unknown"
-
-
-def get_supported_resource_types() -> list[str]:
-    """
-    Get list of resource types supported by individual service APIs.
-    
-    Returns:
-        List of supported resource type strings
-    """
-    return SUPPORTED_RESOURCE_TYPES.copy()
-
-
-def get_tagging_api_resource_types() -> list[str]:
-    """
-    Get list of resource types discoverable via Resource Groups Tagging API.
-    
-    Returns:
-        List of resource type strings
-    """
-    return TAGGING_API_RESOURCE_TYPES.copy()

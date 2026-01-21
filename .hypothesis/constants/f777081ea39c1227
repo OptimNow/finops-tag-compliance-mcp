@@ -1,0 +1,4 @@
+# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\models\cost_attribution.py
+# hypothesis_version: 6.148.8
+
+[0.0, 22.2, 1500.0, 3500.0, 10000.0, 15000.0, 20000.0, 30000.0, 35000.0, 45000.0, 50000.0, '2025-01-01', '2025-01-31', '2025-01-31T12:00:00', 'End', 'Start', 'Tax', 'attributable', 'attributable_spend', 'attribution_gap', 'breakdown', 'ec2:instance', 'example', 'gap', 'note', 'rds:db', 'resources_compliant', 'resources_scanned', 'scan_timestamp', 'taggable_spend', 'time_period', 'total', 'total_spend']

@@ -922,66 +922,36 @@ class AWSClient:
         """
         Map resource type to AWS Cost Explorer service name.
         
+        Service name mapping is loaded from config/resource_types.json.
+        Falls back to hardcoded mapping if config not available.
+        
         Args:
             resource_type: Resource type (e.g., "ec2:instance")
         
         Returns:
-            AWS service name as it appears in Cost Explorer
+            AWS service name as it appears in Cost Explorer, or empty string if free/unknown
         """
+        # Try to load from config first
+        try:
+            from ..utils.resource_type_config import get_service_name_for_resource_type
+            return get_service_name_for_resource_type(resource_type)
+        except ImportError:
+            pass
+        
+        # Fallback to hardcoded mapping if config service not available
         service_map = {
-            # Compute (40-60% of typical spend)
             "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
             "ec2:volume": "Amazon Elastic Compute Cloud - Compute",
-            "ec2:elastic-ip": "EC2 - Other",      # Elastic IPs cost ~$3.65/month if not attached
-            "ec2:snapshot": "EC2 - Other",        # Snapshots cost per GB stored
+            "ec2:elastic-ip": "EC2 - Other",
+            "ec2:snapshot": "EC2 - Other",
             "ec2:natgateway": "EC2 - Other",
-            # VPC, subnet, security-group are FREE resources - no direct costs
-            # VPC costs come from NAT Gateway, VPN, etc. not the VPC itself
             "ec2:vpc": "",
             "ec2:subnet": "",
             "ec2:security-group": "",
             "lambda:function": "AWS Lambda",
-            "ecs:cluster": "Amazon Elastic Container Service",
-            "ecs:service": "Amazon Elastic Container Service",
-            "ecs:task-definition": "Amazon Elastic Container Service",
-            "eks:cluster": "Amazon Elastic Kubernetes Service",
-            "eks:nodegroup": "Amazon Elastic Kubernetes Service",
-            # Storage (10-20% of typical spend)
             "s3:bucket": "Amazon Simple Storage Service",
-            "elasticfilesystem:file-system": "Amazon Elastic File System",
-            "fsx:file-system": "Amazon FSx",
-            # Database (15-25% of typical spend)
             "rds:db": "Amazon Relational Database Service",
             "dynamodb:table": "Amazon DynamoDB",
-            "elasticache:cluster": "Amazon ElastiCache",
-            "redshift:cluster": "Amazon Redshift",
-            # AI/ML (Growing rapidly)
-            "sagemaker:endpoint": "Amazon SageMaker",
-            "sagemaker:notebook-instance": "Amazon SageMaker",
-            "bedrock:agent": "Amazon Bedrock",
-            "bedrock:knowledge-base": "Amazon Bedrock",
-            # Networking (Often overlooked)
-            "elasticloadbalancing:loadbalancer": "Elastic Load Balancing",
-            "elasticloadbalancing:targetgroup": "Elastic Load Balancing",
-            # Analytics (Data & streaming)
-            "kinesis:stream": "Amazon Kinesis",
-            "glue:job": "AWS Glue",
-            "glue:crawler": "AWS Glue",
-            "glue:database": "AWS Glue",
-            "athena:workgroup": "Amazon Athena",
-            "opensearch:domain": "Amazon OpenSearch Service",
-            # Identity & Security
-            "cognito-idp:userpool": "Amazon Cognito",
-            "secretsmanager:secret": "AWS Secrets Manager",
-            "kms:key": "AWS Key Management Service",
-            # Monitoring & Logging
-            "logs:log-group": "Amazon CloudWatch",
-            "cloudwatch:alarm": "Amazon CloudWatch",
-            # Messaging
-            "sns:topic": "Amazon Simple Notification Service",
-            "sqs:queue": "Amazon Simple Queue Service",
-            # Containers
-            "ecr:repository": "Amazon EC2 Container Registry (ECR)",
         }
         return service_map.get(resource_type, "")
 

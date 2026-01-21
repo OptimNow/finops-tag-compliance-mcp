@@ -14,8 +14,8 @@ from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
 from ..utils.resource_utils import (
     fetch_resources_by_type,
-    SUPPORTED_RESOURCE_TYPES,
-    TAGGING_API_RESOURCE_TYPES,
+    get_supported_resource_types,
+    get_tagging_api_resource_types,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,7 +99,7 @@ async def find_untagged_resources(
     
     # Validate resource types (unless using "all")
     if not use_tagging_api:
-        valid_types = set(SUPPORTED_RESOURCE_TYPES)
+        valid_types = set(get_supported_resource_types())
         invalid_types = [rt for rt in resource_types if rt not in valid_types]
         if invalid_types:
             raise ValueError(

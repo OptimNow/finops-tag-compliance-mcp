@@ -1,0 +1,177 @@
+{
+  "$schema": "./resource_types.schema.json",
+  "_description": "Configuration des types de ressources AWS pour le scan de compliance et l'attribution des coûts",
+  "_last_updated": "2026-01-21",
+  "_documentation": "https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/supported-services.html",
+
+  "cost_generating_resources": {
+    "_description": "Ressources qui génèrent des coûts directs - scannées pour compliance et attribution",
+    "compute": [
+      "ec2:instance",
+      "ec2:volume",
+      "ec2:elastic-ip",
+      "ec2:snapshot",
+      "ec2:natgateway",
+      "lambda:function",
+      "ecs:cluster",
+      "ecs:service",
+      "ecs:task-definition",
+      "eks:cluster",
+      "eks:nodegroup"
+    ],
+    "storage": [
+      "s3:bucket",
+      "elasticfilesystem:file-system",
+      "fsx:file-system"
+    ],
+    "database": [
+      "rds:db",
+      "rds:cluster",
+      "dynamodb:table",
+      "elasticache:cluster",
+      "elasticache:replicationgroup",
+      "redshift:cluster"
+    ],
+    "ai_ml": [
+      "sagemaker:endpoint",
+      "sagemaker:notebook-instance",
+      "bedrock:agent",
+      "bedrock:knowledge-base"
+    ],
+    "networking": [
+      "elasticloadbalancing:loadbalancer",
+      "elasticloadbalancing:targetgroup"
+    ],
+    "analytics": [
+      "kinesis:stream",
+      "glue:job",
+      "glue:crawler",
+      "glue:table",
+      "opensearch:domain",
+      "emr:cluster"
+    ],
+    "security": [
+      "cognito-idp:userpool",
+      "cognito-identity:identitypool",
+      "secretsmanager:secret",
+      "kms:key"
+    ],
+    "application": [
+      "apigateway:restapi",
+      "cloudfront:distribution",
+      "route53:hostedzone",
+      "stepfunctions:statemachine",
+      "codebuild:project",
+      "codepipeline:pipeline"
+    ]
+  },
+
+  "free_resources": {
+    "_description": "Ressources taggables mais sans coût direct - exclues du scan de compliance par défaut",
+    "_note": "Ces ressources sont taggables mais leurs coûts viennent de l'utilisation (messages, requêtes, etc.)",
+    "networking": [
+      "ec2:vpc",
+      "ec2:subnet",
+      "ec2:security-group"
+    ],
+    "monitoring": [
+      "logs:log-group",
+      "cloudwatch:alarm"
+    ],
+    "messaging": [
+      "sns:topic",
+      "sqs:queue"
+    ],
+    "containers": [
+      "ecr:repository"
+    ],
+    "analytics": [
+      "glue:database",
+      "athena:workgroup"
+    ]
+  },
+
+  "unattributable_services": {
+    "_description": "Services avec coûts mais SANS ressources taggables - exclus du calcul du gap d'attribution",
+    "_note": "Ces coûts apparaissent dans Cost Explorer mais ne peuvent pas être attribués via tags",
+    "ai_ml_api_usage": [
+      "Claude 3.5 Sonnet (Amazon Bedrock Edition)",
+      "Claude 3 Haiku (Amazon Bedrock Edition)",
+      "Claude 3 Opus (Amazon Bedrock Edition)",
+      "Claude Instant (Amazon Bedrock Edition)",
+      "Amazon Titan (Amazon Bedrock Edition)",
+      "Amazon Bedrock"
+    ],
+    "aws_fees": [
+      "Tax",
+      "AWS Cost Explorer",
+      "AWS Support (Business)",
+      "AWS Support (Developer)",
+      "AWS Support (Enterprise)",
+      "AWS Marketplace"
+    ],
+    "data_transfer": [
+      "AWS Data Transfer"
+    ],
+    "other": [
+      "Route 53 Resolver DNS Firewall"
+    ]
+  },
+
+  "service_name_mapping": {
+    "_description": "Mapping type de ressource -> nom du service dans Cost Explorer",
+    "_note": "Chaîne vide = ressource gratuite (pas de coût direct)",
+    "ec2:instance": "Amazon Elastic Compute Cloud - Compute",
+    "ec2:volume": "Amazon Elastic Compute Cloud - Compute",
+    "ec2:elastic-ip": "EC2 - Other",
+    "ec2:snapshot": "EC2 - Other",
+    "ec2:natgateway": "EC2 - Other",
+    "ec2:vpc": "",
+    "ec2:subnet": "",
+    "ec2:security-group": "",
+    "lambda:function": "AWS Lambda",
+    "ecs:cluster": "Amazon Elastic Container Service",
+    "ecs:service": "Amazon Elastic Container Service",
+    "ecs:task-definition": "Amazon Elastic Container Service",
+    "eks:cluster": "Amazon Elastic Kubernetes Service",
+    "eks:nodegroup": "Amazon Elastic Kubernetes Service",
+    "s3:bucket": "Amazon Simple Storage Service",
+    "elasticfilesystem:file-system": "Amazon Elastic File System",
+    "fsx:file-system": "Amazon FSx",
+    "rds:db": "Amazon Relational Database Service",
+    "rds:cluster": "Amazon Relational Database Service",
+    "dynamodb:table": "Amazon DynamoDB",
+    "elasticache:cluster": "Amazon ElastiCache",
+    "elasticache:replicationgroup": "Amazon ElastiCache",
+    "redshift:cluster": "Amazon Redshift",
+    "sagemaker:endpoint": "Amazon SageMaker",
+    "sagemaker:notebook-instance": "Amazon SageMaker",
+    "bedrock:agent": "Amazon Bedrock",
+    "bedrock:knowledge-base": "Amazon Bedrock",
+    "elasticloadbalancing:loadbalancer": "Elastic Load Balancing",
+    "elasticloadbalancing:targetgroup": "Elastic Load Balancing",
+    "kinesis:stream": "Amazon Kinesis",
+    "glue:job": "AWS Glue",
+    "glue:crawler": "AWS Glue",
+    "glue:table": "AWS Glue",
+    "glue:database": "",
+    "athena:workgroup": "",
+    "opensearch:domain": "Amazon OpenSearch Service",
+    "emr:cluster": "Amazon EMR",
+    "cognito-idp:userpool": "Amazon Cognito",
+    "cognito-identity:identitypool": "Amazon Cognito",
+    "secretsmanager:secret": "AWS Secrets Manager",
+    "kms:key": "AWS Key Management Service",
+    "logs:log-group": "",
+    "cloudwatch:alarm": "",
+    "sns:topic": "",
+    "sqs:queue": "",
+    "ecr:repository": "",
+    "apigateway:restapi": "Amazon API Gateway",
+    "cloudfront:distribution": "Amazon CloudFront",
+    "route53:hostedzone": "Amazon Route 53",
+    "stepfunctions:statemachine": "AWS Step Functions",
+    "codebuild:project": "AWS CodeBuild",
+    "codepipeline:pipeline": "AWS CodePipeline"
+  }
+}

@@ -244,6 +244,16 @@ All configuration is via environment variables (see `mcp_server/config.py`):
 - `REDIS_URL` - Redis connection URL (default: `redis://localhost:6379/0`)
 - `HISTORY_DB_PATH` - SQLite database for compliance history (default: `compliance_history.db`)
 - `AUDIT_DB_PATH` - SQLite database for audit logs (default: `audit_logs.db`)
+- `RESOURCE_TYPES_CONFIG_PATH` - Path to resource types configuration (default: `config/resource_types.json`)
+
+**Resource Types Configuration** (`config/resource_types.json`):
+External JSON file that defines which AWS resource types to scan and how to categorize them:
+- `cost_generating_resources` - Resources that generate direct AWS costs (EC2, RDS, S3, etc.)
+- `free_resources` - Taggable resources with no direct cost (VPC, Subnet, Security Group, etc.)
+- `unattributable_services` - Services with costs but no taggable resources (Bedrock API, Tax, Support, etc.)
+- `service_name_mapping` - Maps resource types to Cost Explorer service names
+
+See `docs/RESOURCE_TYPE_CONFIGURATION.md` for full documentation.
 
 **Feature Flags**:
 - `BUDGET_TRACKING_ENABLED` - Enable tool call budgets (default: `true`)
@@ -309,6 +319,11 @@ The `cost_source` field in results indicates: `actual`, `estimated`, or `stopped
 - Implemented state-aware cost attribution for EC2 instances to prevent stopped instances from being incorrectly assigned compute costs
 - Added `instance_state` and `instance_type` fields to Resource and UntaggedResource models
 - Cost notes now explain state-aware methodology for transparency
+- External configuration file for resource types (`config/resource_types.json`)
+- Removed free resources (VPC, Subnet, Security Group, etc.) from compliance scans
+- Added unattributable services separation (Bedrock API, Tax, Support, etc.)
+- Cost attribution now uses Name tag matching instead of RESOURCE_ID dimension (not available in standard Cost Explorer)
+- Real production results: 58% attribution gap on $47.99 spend, directly correlating with 55% tagging compliance
 
 ## Testing Philosophy
 

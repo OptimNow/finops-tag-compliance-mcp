@@ -13,7 +13,10 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 ### Deployment & Operations
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - How to deploy to AWS EC2 or other cloud platforms
 - **[IAM_PERMISSIONS.md](./IAM_PERMISSIONS.md)** - AWS IAM permissions setup and troubleshooting
+
+### Configuration
 - **[TAGGING_POLICY_GUIDE.md](./TAGGING_POLICY_GUIDE.md)** - Complete guide to configuring tagging policies
+- **[RESOURCE_TYPE_CONFIGURATION.md](./RESOURCE_TYPE_CONFIGURATION.md)** - Managing AWS resource types for compliance and cost attribution
 - **[SECURITY_CONFIGURATION.md](./SECURITY_CONFIGURATION.md)** - Security setup and best practices
 - **[CLOUDWATCH_LOGGING.md](./CLOUDWATCH_LOGGING.md)** - CloudWatch logging configuration
 - **[AUDIT_LOGGING.md](./AUDIT_LOGGING.md)** - Audit logging implementation
@@ -41,6 +44,8 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 **Setting up IAM permissions?** See [IAM_PERMISSIONS.md](./IAM_PERMISSIONS.md)
 
 **Configuring tagging policies?** See [TAGGING_POLICY_GUIDE.md](./TAGGING_POLICY_GUIDE.md)
+
+**Managing resource types?** See [RESOURCE_TYPE_CONFIGURATION.md](./RESOURCE_TYPE_CONFIGURATION.md)
 
 **Testing?** See [TESTING_QUICK_START.md](./TESTING_QUICK_START.md)
 

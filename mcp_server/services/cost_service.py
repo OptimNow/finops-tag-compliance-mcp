@@ -10,34 +10,14 @@ from typing import Optional
 
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
+from ..utils.resource_type_config import get_unattributable_services
 from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn, expand_all_to_supported_types
 
 logger = logging.getLogger(__name__)
 
 
-# Services that have costs but NO taggable resources
-# These costs cannot be attributed via tagging and should be excluded from gap calculation
-# but reported separately for transparency
-UNATTRIBUTABLE_SERVICES = [
-    # AI/ML API usage (no taggable resources for API calls)
-    "Claude 3.5 Sonnet (Amazon Bedrock Edition)",
-    "Claude 3 Haiku (Amazon Bedrock Edition)",
-    "Claude 3 Opus (Amazon Bedrock Edition)",
-    "Claude Instant (Amazon Bedrock Edition)",
-    "Amazon Titan (Amazon Bedrock Edition)",
-    "Amazon Bedrock",  # Generic Bedrock costs
-    # AWS fees and taxes
-    "Tax",
-    "AWS Cost Explorer",
-    "AWS Support (Business)",
-    "AWS Support (Developer)",
-    "AWS Support (Enterprise)",
-    # Data transfer (cross-service, not tied to specific resources)
-    "AWS Data Transfer",
-    # Other resourceless costs
-    "AWS Marketplace",
-    "Route 53 Resolver DNS Firewall",
-]
+# UNATTRIBUTABLE_SERVICES is now loaded from config/resource_types.json
+# Use get_unattributable_services() to get the current list
 
 
 class CostAttributionResult:
@@ -430,13 +410,15 @@ class CostService:
         
         # Separate unattributable services (costs with no taggable resources)
         # These should NOT be included in the attribution gap calculation
-        unattributable_services: dict[str, float] = {}
+        unattributable_services_result: dict[str, float] = {}
         unattributable_total = 0.0
         
         if use_total_account_spend:
+            # Get unattributable services from config
+            unattributable_list = get_unattributable_services()
             for service_name, service_cost in service_costs.items():
-                if service_name in UNATTRIBUTABLE_SERVICES and service_cost > 0:
-                    unattributable_services[service_name] = service_cost
+                if service_name in unattributable_list and service_cost > 0:
+                    unattributable_services_result[service_name] = service_cost
                     unattributable_total += service_cost
                     logger.info(f"Unattributable service: {service_name} = ${service_cost:.2f}")
         
@@ -461,7 +443,7 @@ class CostService:
             total_resources_scanned=total_resources_scanned,
             total_resources_compliant=total_resources_compliant,
             total_resources_non_compliant=total_resources_non_compliant,
-            unattributable_services=unattributable_services if unattributable_services else None,
+            unattributable_services=unattributable_services_result if unattributable_services_result else None,
             taggable_spend=taggable_spend
         )
     

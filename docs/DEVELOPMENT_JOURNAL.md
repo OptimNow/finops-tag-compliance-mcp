@@ -1365,3 +1365,149 @@ This fix significantly improves the accuracy and trustworthiness of the financia
 **Complexity**: Medium (required changes across 7 files with comprehensive testing)
 **User Impact**: High (directly affects financial reporting accuracy)
 
+
+
+---
+
+## January 21, 2026 (Evening): External Resource Type Configuration
+
+### Post-Phase 1 Enhancement: Maintainable Resource Type Management
+
+**The Problem:**
+
+During cost attribution testing, several issues were discovered:
+1. Free resources (VPC, Subnet, Security Group) were being included in compliance scans despite having no direct costs
+2. Unattributable services (Bedrock API usage, Tax, AWS Support) were mixed with the attribution gap
+3. Resource type lists were hardcoded in multiple Python files, making maintenance difficult
+4. No clear way to add new AWS services when they become taggable
+
+**The Solution: External Configuration File**
+
+Created `config/resource_types.json` - a centralized configuration file that defines:
+
+1. **cost_generating_resources**: Resources that generate direct AWS costs
+   - Organized by category: compute, storage, database, networking, containers, serverless, analytics, ai_ml, search
+   - Examples: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:function`
+
+2. **free_resources**: Taggable resources with no direct cost
+   - VPC, Subnet, Security Group, Log Group, CloudWatch Alarm, SNS Topic, SQS Queue, ECR Repository, Glue Database, Athena Workgroup
+   - These are excluded from compliance scans by default
+
+3. **unattributable_services**: Services with costs but NO taggable resources
+   - Bedrock API usage (Claude 3.5 Sonnet, etc.)
+   - Tax, AWS Support, Cost Explorer fees
+   - Savings Plans, Reserved Instances
+   - Data Transfer, CloudWatch metrics
+   - These are reported separately for transparency
+
+4. **service_name_mapping**: Maps resource types to Cost Explorer service names
+   - Used for matching resources to their costs
+   - Empty string indicates a free resource
+
+**Implementation:**
+
+1. **Created `mcp_server/utils/resource_type_config.py`**:
+   - `ResourceTypeConfig` class loads configuration from JSON
+   - Fallback to hardcoded defaults if file not found
+   - Functions: `get_supported_resource_types()`, `get_tagging_api_resource_types()`, `get_unattributable_services()`, `get_service_name_mapping()`
+
+2. **Updated all consumers**:
+   - `mcp_server/utils/resource_utils.py` - Uses config for resource type lists
+   - `mcp_server/services/cost_service.py` - Uses config for unattributable services
+   - `mcp_server/clients/aws_client.py` - Uses config for service name mapping
+   - `mcp_server/tools/check_tag_compliance.py` - Uses functions instead of constants
+   - `mcp_server/tools/find_untagged_resources.py` - Uses functions instead of constants
+
+3. **Updated Docker**:
+   - `Dockerfile` now copies `config/` directory into container
+
+4. **Created documentation**:
+   - `docs/RESOURCE_TYPE_CONFIGURATION.md` - Comprehensive guide
+   - Updated `docs/README.md` with link to new documentation
+
+**Benefits:**
+
+- **Maintainability**: Add new AWS services by editing JSON, no code changes
+- **Transparency**: Clear separation between cost-generating, free, and unattributable resources
+- **Accuracy**: Free resources excluded from compliance scans, unattributable services reported separately
+- **Flexibility**: Override config path via `RESOURCE_TYPES_CONFIG_PATH` environment variable
+
+**Testing:**
+
+All 145 tests pass after the changes. Updated `tests/unit/test_resource_utils.py` to use `rds:cluster` instead of `sns:topic` (now a free resource).
+
+**Files Changed:**
+- `config/resource_types.json` - New configuration file
+- `mcp_server/utils/resource_type_config.py` - New config service
+- `mcp_server/utils/resource_utils.py` - Updated to use config
+- `mcp_server/services/cost_service.py` - Updated to use config
+- `mcp_server/clients/aws_client.py` - Updated to use config
+- `mcp_server/tools/check_tag_compliance.py` - Updated to use functions
+- `mcp_server/tools/find_untagged_resources.py` - Updated to use functions
+- `docs/RESOURCE_TYPE_CONFIGURATION.md` - New documentation
+- `docs/README.md` - Added link to new documentation
+- `Dockerfile` - Added config directory copy
+- `CLAUDE.md` - Updated configuration section
+- `tests/unit/test_resource_utils.py` - Updated test
+
+**What I Learned:**
+
+1. **Configuration should be external**: Hardcoded lists in code are hard to maintain
+2. **Categorization matters**: Separating free vs cost-generating vs unattributable improves accuracy
+3. **Documentation is essential**: Clear docs help users understand how to maintain the config
+4. **Fallback defaults are important**: System works even if config file is missing
+
+**Outcome:**
+
+✅ Resource types now managed via external JSON configuration
+✅ Free resources excluded from compliance scans
+✅ Unattributable services reported separately
+✅ Easy to add new AWS services as they become taggable
+✅ All tests passing
+
+**Implementation Time**: ~2 hours
+**Complexity**: Medium (changes across 12 files)
+**User Impact**: High (improves accuracy and maintainability)
+
+---
+
+### Cost Attribution Gap - Now Working Accurately!
+
+After all the fixes (Name tag matching, state-aware distribution, free resource exclusion, unattributable services separation), the cost attribution gap tool now provides accurate and actionable insights:
+
+**Real Production Results (January 1-21, 2026):**
+
+| Metric | Value |
+|--------|-------|
+| Total AWS Spend | $47.99 |
+| Attributable Spend | $10.62 (22%) |
+| Attribution Gap | $14.84 (58%) |
+| Fully Unattributable | $22.53 (47%) |
+
+**Breakdown by Service:**
+
+| Service | Total Cost | Attributable | Gap | Gap % |
+|---------|-----------|--------------|-----|-------|
+| EC2 Instances | $17.40 | $4.33 | $13.07 | 75% |
+| Elastic IPs | $4.21 | $4.21 | $0.00 | 0% |
+| Glue Crawler | $2.08 | $2.08 | $0.00 | 0% |
+| S3 Buckets | $0.01 | $0.001 | $0.01 | 95% |
+
+**Key Improvements:**
+
+1. **Accurate Cost Matching**: Using Name tag instead of RESOURCE_ID dimension (not available in standard Cost Explorer)
+2. **State-Aware Distribution**: Stopped EC2 instances correctly assigned $0 compute costs
+3. **Free Resources Excluded**: VPC, Subnet, Security Groups no longer pollute compliance metrics
+4. **Unattributable Services Separated**: Bedrock API, Tax, Support costs reported separately (the $22.53)
+5. **Clear Business Impact**: 58% gap directly correlates with 55% tagging compliance
+
+**What This Enables:**
+
+- ✅ Accurate chargeback to teams (Owner tag attribution)
+- ✅ Environment-specific cost analysis (Environment tag)
+- ✅ Application TCO calculation (Application tag)
+- ✅ Data-driven optimization decisions by business unit
+- ✅ Clear correlation: non-compliant resources = unattributable costs
+
+This is exactly what FinOps practitioners need - actionable cost attribution data that drives tagging compliance improvements.
+
