@@ -162,11 +162,13 @@ async def get_cost_attribution_gap(
     
     return CostAttributionGapResult(
         total_spend=result.total_spend,
+        taggable_spend=result.taggable_spend,
         attributable_spend=result.attributable_spend,
         attribution_gap=result.attribution_gap,
         attribution_gap_percentage=result.attribution_gap_percentage,
         time_period=time_period,
         breakdown=breakdown_dict,
+        unattributable_services=result.unattributable_services,
         total_resources_scanned=result.total_resources_scanned,
         total_resources_compliant=result.total_resources_compliant,
         total_resources_non_compliant=result.total_resources_non_compliant,

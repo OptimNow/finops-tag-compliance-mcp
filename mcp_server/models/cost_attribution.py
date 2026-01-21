@@ -51,16 +51,20 @@ class CostAttributionGapResult(BaseModel):
     """
     
     total_spend: float = Field(
-        description="Total cloud spend for the time period in USD"
+        description="Total cloud spend for the time period in USD (ALL services)"
+    )
+    taggable_spend: Optional[float] = Field(
+        default=None,
+        description="Spend from services that have taggable resources (excludes Bedrock API, Tax, etc.)"
     )
     attributable_spend: float = Field(
         description="Spend from resources with proper tags in USD"
     )
     attribution_gap: float = Field(
-        description="Dollar amount that cannot be attributed (total - attributable)"
+        description="Dollar amount that cannot be attributed (taggable_spend - attributable)"
     )
     attribution_gap_percentage: float = Field(
-        description="Gap as percentage of total spend (0-100)"
+        description="Gap as percentage of taggable spend (0-100)"
     )
     time_period: dict[str, str] = Field(
         description="Time period analyzed (Start and End dates)"
@@ -68,6 +72,10 @@ class CostAttributionGapResult(BaseModel):
     breakdown: Optional[dict[str, CostBreakdown]] = Field(
         default=None,
         description="Optional breakdown by grouping dimension (resource_type, region, or account)"
+    )
+    unattributable_services: Optional[dict[str, float]] = Field(
+        default=None,
+        description="Services with costs but no taggable resources (Bedrock API usage, Tax, Cost Explorer fees, etc.)"
     )
     total_resources_scanned: int = Field(
         default=0,
@@ -90,9 +98,10 @@ class CostAttributionGapResult(BaseModel):
         json_schema_extra = {
             "example": {
                 "total_spend": 50000.00,
+                "taggable_spend": 45000.00,
                 "attributable_spend": 35000.00,
-                "attribution_gap": 15000.00,
-                "attribution_gap_percentage": 30.0,
+                "attribution_gap": 10000.00,
+                "attribution_gap_percentage": 22.2,
                 "time_period": {
                     "Start": "2025-01-01",
                     "End": "2025-01-31"
@@ -108,18 +117,22 @@ class CostAttributionGapResult(BaseModel):
                         "note": None
                     },
                     "rds:db": {
-                        "total": 20000.00,
+                        "total": 15000.00,
                         "attributable": 15000.00,
-                        "gap": 5000.00,
+                        "gap": 0.00,
                         "resources_scanned": 3,
-                        "resources_compliant": 2,
-                        "resources_non_compliant": 1,
-                        "note": None
+                        "resources_compliant": 3,
+                        "resources_non_compliant": 0,
+                        "note": "All 3 resource(s) are properly tagged"
                     }
                 },
+                "unattributable_services": {
+                    "Claude 3.5 Sonnet (Amazon Bedrock Edition)": 3500.00,
+                    "Tax": 1500.00
+                },
                 "total_resources_scanned": 13,
-                "total_resources_compliant": 8,
-                "total_resources_non_compliant": 5,
+                "total_resources_compliant": 9,
+                "total_resources_non_compliant": 4,
                 "scan_timestamp": "2025-01-31T12:00:00"
             }
         }

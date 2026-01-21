@@ -213,6 +213,32 @@ async def debug_cost_attribution():
             print(f"    Gap: ${data.get('gap', 0):.2f}")
             print(f"    Note: {data.get('note', 'N/A')}")
     
+    # Step 5: Run full attribution calculation with "all" to see unattributable services
+    print("\n" + "=" * 80)
+    print("STEP 5: FULL ATTRIBUTION WITH 'ALL' (includes unattributable services)")
+    print("=" * 80)
+    
+    result_all = await cost_service.calculate_attribution_gap(
+        resource_types=["all"],
+        time_period=time_period,
+        group_by="resource_type"
+    )
+    
+    print(f"\nTotal Account Spend: ${result_all.total_spend:.2f}")
+    print(f"Taggable Spend: ${result_all.taggable_spend:.2f}")
+    print(f"Attributable Spend: ${result_all.attributable_spend:.2f}")
+    print(f"Attribution Gap: ${result_all.attribution_gap:.2f} ({result_all.attribution_gap_percentage:.1f}% of taggable)")
+    print(f"Resources Scanned: {result_all.total_resources_scanned}")
+    print(f"Resources Compliant: {result_all.total_resources_compliant}")
+    print(f"Resources Non-Compliant: {result_all.total_resources_non_compliant}")
+    
+    if result_all.unattributable_services:
+        print("\nUnattributable Services (no taggable resources):")
+        for service, cost in sorted(result_all.unattributable_services.items(), key=lambda x: x[1], reverse=True):
+            print(f"  - {service}: ${cost:.2f}")
+        unattributable_total = sum(result_all.unattributable_services.values())
+        print(f"  TOTAL: ${unattributable_total:.2f}")
+    
     print("\n" + "=" * 80)
     print("DEBUG COMPLETE")
     print("=" * 80)

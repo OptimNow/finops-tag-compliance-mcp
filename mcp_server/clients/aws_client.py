@@ -243,6 +243,172 @@ class AWSClient:
         except Exception as e:
             raise AWSAPIError(f"Failed to fetch EC2 instances: {str(e)}") from e
     
+    async def get_elastic_ips(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """
+        Fetch Elastic IPs with their tags.
+        
+        Elastic IPs cost ~$3.65/month if not attached to a running instance.
+        This is a significant cost that's often overlooked.
+        
+        Args:
+            filters: Optional filters for the query
+        
+        Returns:
+            List of Elastic IP resources with tags
+        """
+        filters = filters or {}
+        
+        try:
+            # Get account ID for ARN construction
+            account_id = await self._get_account_id()
+            
+            response = await self._call_with_backoff(
+                "ec2",
+                self.ec2.describe_addresses
+            )
+            
+            resources = []
+            for address in response.get("Addresses", []):
+                allocation_id = address.get("AllocationId")
+                public_ip = address.get("PublicIp")
+                tags = self._extract_tags(address.get("Tags", []))
+                
+                # Check if attached to an instance
+                instance_id = address.get("InstanceId")
+                association_id = address.get("AssociationId")
+                is_attached = bool(instance_id or association_id)
+                
+                # Use allocation ID as resource ID (more stable than public IP)
+                resource_id = allocation_id or public_ip
+                
+                resources.append({
+                    "resource_id": resource_id,
+                    "resource_type": "ec2:elastic-ip",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": None,  # EC2 doesn't provide creation date for EIPs
+                    "arn": f"arn:aws:ec2:{self.region}:{account_id}:elastic-ip/{allocation_id}",
+                    "public_ip": public_ip,
+                    "is_attached": is_attached,
+                    "attached_instance": instance_id
+                })
+            
+            return resources
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Elastic IPs: {str(e)}") from e
+    
+    async def get_ebs_snapshots(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """
+        Fetch EBS snapshots with their tags.
+        
+        Snapshots cost per GB stored (~$0.05/GB/month).
+        Old/orphaned snapshots can accumulate significant costs.
+        
+        Args:
+            filters: Optional filters for the query
+        
+        Returns:
+            List of EBS snapshot resources with tags
+        """
+        filters = filters or {}
+        
+        try:
+            # Get account ID for ARN construction
+            account_id = await self._get_account_id()
+            
+            # Only get snapshots owned by this account (not public AMI snapshots)
+            response = await self._call_with_backoff(
+                "ec2",
+                self.ec2.describe_snapshots,
+                OwnerIds=["self"]
+            )
+            
+            resources = []
+            for snapshot in response.get("Snapshots", []):
+                snapshot_id = snapshot.get("SnapshotId")
+                tags = self._extract_tags(snapshot.get("Tags", []))
+                start_time = snapshot.get("StartTime")
+                volume_size = snapshot.get("VolumeSize", 0)
+                
+                resources.append({
+                    "resource_id": snapshot_id,
+                    "resource_type": "ec2:snapshot",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": start_time,
+                    "arn": f"arn:aws:ec2:{self.region}:{account_id}:snapshot/{snapshot_id}",
+                    "volume_size_gb": volume_size,
+                    "state": snapshot.get("State", "unknown")
+                })
+            
+            return resources
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EBS snapshots: {str(e)}") from e
+    
+    async def get_ebs_volumes(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """
+        Fetch EBS volumes with their tags.
+        
+        EBS volumes cost per GB provisioned.
+        Unattached volumes still incur costs.
+        
+        Args:
+            filters: Optional filters for the query
+        
+        Returns:
+            List of EBS volume resources with tags
+        """
+        filters = filters or {}
+        
+        try:
+            # Get account ID for ARN construction
+            account_id = await self._get_account_id()
+            
+            response = await self._call_with_backoff(
+                "ec2",
+                self.ec2.describe_volumes
+            )
+            
+            resources = []
+            for volume in response.get("Volumes", []):
+                volume_id = volume.get("VolumeId")
+                tags = self._extract_tags(volume.get("Tags", []))
+                create_time = volume.get("CreateTime")
+                size = volume.get("Size", 0)
+                state = volume.get("State", "unknown")
+                
+                # Check if attached
+                attachments = volume.get("Attachments", [])
+                is_attached = len(attachments) > 0
+                attached_instance = attachments[0].get("InstanceId") if attachments else None
+                
+                resources.append({
+                    "resource_id": volume_id,
+                    "resource_type": "ec2:volume",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": create_time,
+                    "arn": f"arn:aws:ec2:{self.region}:{account_id}:volume/{volume_id}",
+                    "size_gb": size,
+                    "state": state,
+                    "is_attached": is_attached,
+                    "attached_instance": attached_instance,
+                    "volume_type": volume.get("VolumeType", "unknown")
+                })
+            
+            return resources
+        
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EBS volumes: {str(e)}") from e
+    
     async def get_rds_instances(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         """
         Fetch RDS instances with their tags.

@@ -15,6 +15,31 @@ from ..utils.resource_utils import fetch_resources_by_type, extract_account_from
 logger = logging.getLogger(__name__)
 
 
+# Services that have costs but NO taggable resources
+# These costs cannot be attributed via tagging and should be excluded from gap calculation
+# but reported separately for transparency
+UNATTRIBUTABLE_SERVICES = [
+    # AI/ML API usage (no taggable resources for API calls)
+    "Claude 3.5 Sonnet (Amazon Bedrock Edition)",
+    "Claude 3 Haiku (Amazon Bedrock Edition)",
+    "Claude 3 Opus (Amazon Bedrock Edition)",
+    "Claude Instant (Amazon Bedrock Edition)",
+    "Amazon Titan (Amazon Bedrock Edition)",
+    "Amazon Bedrock",  # Generic Bedrock costs
+    # AWS fees and taxes
+    "Tax",
+    "AWS Cost Explorer",
+    "AWS Support (Business)",
+    "AWS Support (Developer)",
+    "AWS Support (Enterprise)",
+    # Data transfer (cross-service, not tied to specific resources)
+    "AWS Data Transfer",
+    # Other resourceless costs
+    "AWS Marketplace",
+    "Route 53 Resolver DNS Firewall",
+]
+
+
 class CostAttributionResult:
     """Result of cost attribution analysis."""
     
@@ -27,20 +52,24 @@ class CostAttributionResult:
         breakdown: Optional[dict[str, dict[str, float]]] = None,
         total_resources_scanned: int = 0,
         total_resources_compliant: int = 0,
-        total_resources_non_compliant: int = 0
+        total_resources_non_compliant: int = 0,
+        unattributable_services: Optional[dict[str, float]] = None,
+        taggable_spend: Optional[float] = None
     ):
         """
         Initialize cost attribution result.
         
         Args:
-            total_spend: Total cloud spend for the period
+            total_spend: Total cloud spend for the period (ALL services)
             attributable_spend: Spend from resources with proper tags
-            attribution_gap: Dollar amount that cannot be attributed (total - attributable)
-            attribution_gap_percentage: Gap as percentage of total spend
+            attribution_gap: Dollar amount that cannot be attributed (taggable_spend - attributable)
+            attribution_gap_percentage: Gap as percentage of taggable spend
             breakdown: Optional breakdown by grouping dimension
             total_resources_scanned: Total number of resources scanned
             total_resources_compliant: Number of resources with proper tags
             total_resources_non_compliant: Number of resources missing required tags
+            unattributable_services: Services with costs but no taggable resources (Bedrock API, Tax, etc.)
+            taggable_spend: Spend from services that have taggable resources
         """
         self.total_spend = total_spend
         self.attributable_spend = attributable_spend
@@ -50,6 +79,8 @@ class CostAttributionResult:
         self.total_resources_scanned = total_resources_scanned
         self.total_resources_compliant = total_resources_compliant
         self.total_resources_non_compliant = total_resources_non_compliant
+        self.unattributable_services = unattributable_services or {}
+        self.taggable_spend = taggable_spend if taggable_spend is not None else total_spend
 
 
 class CostService:
@@ -397,11 +428,28 @@ class CostService:
                 data["note"] = self._generate_spend_note(data)
             breakdown = type_breakdown
         
-        # Calculate attribution gap
-        attribution_gap = total_spend - attributable_spend
-        attribution_gap_percentage = (attribution_gap / total_spend * 100) if total_spend > 0 else 0.0
+        # Separate unattributable services (costs with no taggable resources)
+        # These should NOT be included in the attribution gap calculation
+        unattributable_services: dict[str, float] = {}
+        unattributable_total = 0.0
         
-        logger.info(f"Attribution gap: ${attribution_gap:.2f} ({attribution_gap_percentage:.1f}%)")
+        if use_total_account_spend:
+            for service_name, service_cost in service_costs.items():
+                if service_name in UNATTRIBUTABLE_SERVICES and service_cost > 0:
+                    unattributable_services[service_name] = service_cost
+                    unattributable_total += service_cost
+                    logger.info(f"Unattributable service: {service_name} = ${service_cost:.2f}")
+        
+        # Calculate taggable spend (total minus unattributable)
+        taggable_spend = total_spend - unattributable_total
+        
+        # Calculate attribution gap based on TAGGABLE spend only
+        # Gap = taggable_spend - attributable_spend
+        attribution_gap = taggable_spend - attributable_spend
+        attribution_gap_percentage = (attribution_gap / taggable_spend * 100) if taggable_spend > 0 else 0.0
+        
+        logger.info(f"Total spend: ${total_spend:.2f}, Unattributable: ${unattributable_total:.2f}, Taggable: ${taggable_spend:.2f}")
+        logger.info(f"Attribution gap: ${attribution_gap:.2f} ({attribution_gap_percentage:.1f}%) of taggable spend")
         logger.info(f"Resources: {total_resources_scanned} scanned, {total_resources_compliant} compliant, {total_resources_non_compliant} non-compliant")
         
         return CostAttributionResult(
@@ -412,7 +460,9 @@ class CostService:
             breakdown=breakdown if breakdown else None,
             total_resources_scanned=total_resources_scanned,
             total_resources_compliant=total_resources_compliant,
-            total_resources_non_compliant=total_resources_non_compliant
+            total_resources_non_compliant=total_resources_non_compliant,
+            unattributable_services=unattributable_services if unattributable_services else None,
+            taggable_spend=taggable_spend
         )
     
     async def _calculate_attribution_gap_all(
