@@ -325,6 +325,7 @@ The `cost_source` field in results indicates: `actual`, `estimated`, or `stopped
 - Cost attribution now uses Name tag matching instead of RESOURCE_ID dimension (not available in standard Cost Explorer)
 - Real production results: 58% attribution gap on $47.99 spend, directly correlating with 55% tagging compliance
 - Compliance reports now hide "Cost Impact" column and "Top Violations by Cost Impact" section when all violation costs are $0.00 (typical when using Tagging API which doesn't provide per-resource cost data)
+- `age_days` field is now optional (None) when `created_at` is not available (Resource Groups Tagging API doesn't provide creation dates)
 
 ## Testing Philosophy
 

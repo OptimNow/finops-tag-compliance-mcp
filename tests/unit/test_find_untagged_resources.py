@@ -454,3 +454,59 @@ async def test_find_untagged_resources_all_no_validation_error():
     )
     
     assert result.total_untagged == 0
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_age_days_none_when_no_created_at(mock_aws_client, mock_policy_service):
+    """Test that age_days is None when created_at is not available (e.g., from Tagging API)."""
+    # Mock resource without created_at (like from Resource Groups Tagging API)
+    mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # No tags
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+            "created_at": None  # Tagging API doesn't provide creation date
+        }
+    ])
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["all"]
+    )
+    
+    assert result.total_untagged == 1
+    resource = result.resources[0]
+    # age_days should be None when created_at is not available
+    assert resource.age_days is None
+    assert resource.created_at is None
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_age_days_calculated_when_created_at_available(mock_aws_client, mock_policy_service):
+    """Test that age_days is calculated when created_at is available."""
+    created_at = datetime.now() - timedelta(days=45)
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # No tags
+            "created_at": created_at,
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+        }
+    ])
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"]
+    )
+    
+    assert result.total_untagged == 1
+    resource = result.resources[0]
+    # age_days should be calculated when created_at is available
+    assert resource.age_days == 45
+    assert resource.created_at == created_at
