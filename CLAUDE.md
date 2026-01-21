@@ -222,16 +222,29 @@ Supported resource types: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:functio
 
 Cost calculation varies by AWS service (`find_untagged_resources`, `get_cost_attribution_gap`):
 
-**Per-Resource Costs** (actual granularity from Cost Explorer):
-- EC2 instances
-- RDS databases
+**EC2 Instances** (state-aware distribution):
+- **Tier 1 - Actual Costs**: Uses Cost Explorer per-resource data when available (source: `actual`)
+- **Tier 2 - State-Aware Distribution**: For instances without Cost Explorer data:
+  - **Stopped instances** (stopped, stopping, terminated, shutting-down): Assigned $0 (compute costs only; EBS costs tracked separately)
+  - **Running instances** (running, pending, unknown): Remaining service costs distributed proportionally (source: `estimated`)
+  - **Conservative handling**: Unknown states treated as running to avoid underestimation
+- **Tier 3 - Proportional Fallback**: When all instances are stopped but service has costs, distributes proportionally with warning (suggests incomplete Cost Explorer data or other EC2 costs like NAT, EBS)
+
+**RDS Databases** (per-resource costs):
+- Uses Cost Explorer per-resource data when available (source: `actual`)
+- Falls back to even distribution among instances (source: `estimated`)
 
 **Service-Level Costs** (distributed evenly - estimates):
 - S3 buckets - Total S3 cost ÷ bucket count
 - Lambda functions - Total Lambda cost ÷ function count
 - ECS services - Total ECS cost ÷ service count
 
-The `cost_source` field in results indicates: `actual`, `service_average`, or `estimated`.
+The `cost_source` field in results indicates: `actual`, `estimated`, or `stopped`.
+
+**Key Changes (2025-01-21)**:
+- Implemented state-aware cost attribution for EC2 instances to prevent stopped instances from being incorrectly assigned compute costs
+- Added `instance_state` and `instance_type` fields to Resource and UntaggedResource models
+- Cost notes now explain state-aware methodology for transparency
 
 ## Testing Philosophy
 
