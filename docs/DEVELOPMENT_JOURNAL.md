@@ -1511,3 +1511,94 @@ After all the fixes (Name tag matching, state-aware distribution, free resource 
 
 This is exactly what FinOps practitioners need - actionable cost attribution data that drives tagging compliance improvements.
 
+
+
+---
+
+## January 21, 2026 (Night): Hide Zero Cost Impact in Reports
+
+### Post-Phase 1 Enhancement: Cleaner Compliance Reports
+
+**The Problem:**
+
+After filtering free resources from compliance scans, the compliance report was showing a "Cost Impact" column with "$0.00" for all violations. This was confusing because:
+1. The Tagging API (used for resource discovery) doesn't provide per-resource cost data
+2. Showing "$0.00" cost impact is misleading - it suggests no financial impact when we simply don't have the data
+3. The "Top Violations by Cost Impact" section was showing all zeros, which adds no value
+
+**The Solution:**
+
+Modified `mcp_server/services/report_service.py` to intelligently hide cost-related columns and sections when there's no meaningful cost data:
+
+1. **Added `_has_cost_data()` method**: Checks if any violation has a non-zero cost impact
+2. **Updated `_format_as_markdown()`**:
+   - Hides "Cost Impact" column from "Top Violations by Count" table when all costs are zero
+   - Completely hides "Top Violations by Cost Impact" section when all costs are zero
+3. **Updated `_format_as_csv()`**:
+   - Same logic applied to CSV format
+
+**Important**: The "Cost Attribution Gap" in the summary is ALWAYS shown because it's calculated separately via Cost Explorer and represents real financial impact.
+
+**Testing:**
+
+Added 6 new tests in `tests/unit/test_generate_compliance_report.py`:
+- `test_markdown_hides_cost_column_when_all_zero`
+- `test_markdown_hides_cost_section_when_all_zero`
+- `test_csv_hides_cost_column_when_all_zero`
+- `test_markdown_shows_cost_when_available`
+- `test_csv_shows_cost_when_available`
+- `test_cost_attribution_gap_always_shown`
+
+All 24 report tests pass.
+
+**Before:**
+```
+## Top Violations by Count
+
+| Tag Name | Violation Count | Cost Impact | Affected Resource Types |
+|----------|----------------|-------------|------------------------|
+| Owner | 28 | $0.00 | ec2:instance, s3:bucket |
+| Environment | 28 | $0.00 | ec2:instance, s3:bucket |
+
+## Top Violations by Cost Impact
+
+| Tag Name | Cost Impact | Violation Count | Affected Resource Types |
+|----------|-------------|----------------|------------------------|
+| Owner | $0.00 | 28 | ec2:instance, s3:bucket |
+```
+
+**After:**
+```
+## Top Violations by Count
+
+| Tag Name | Violation Count | Affected Resource Types |
+|----------|----------------|------------------------|
+| Owner | 28 | ec2:instance, s3:bucket |
+| Environment | 28 | ec2:instance, s3:bucket |
+```
+
+The "Top Violations by Cost Impact" section is completely hidden when all costs are zero.
+
+**Files Changed:**
+- `mcp_server/services/report_service.py` - Added `_has_cost_data()` method, updated formatters
+- `tests/unit/test_generate_compliance_report.py` - Added 6 new tests
+- `CLAUDE.md` - Updated key changes section
+- `docs/DEVELOPMENT_JOURNAL.md` - This entry
+
+**What I Learned:**
+
+1. **Show meaningful data only**: Displaying "$0.00" everywhere is worse than hiding the column
+2. **Separate concerns**: Cost Attribution Gap (from Cost Explorer) is different from per-violation costs (from Tagging API)
+3. **User experience matters**: Cleaner reports are easier to understand and act upon
+
+**Outcome:**
+
+✅ Compliance reports now cleaner and more meaningful
+✅ No more confusing "$0.00" cost impact columns
+✅ Cost Attribution Gap still prominently displayed
+✅ All tests passing
+
+**Implementation Time**: ~30 minutes
+**Complexity**: Low (changes to 2 files)
+**User Impact**: Medium (improves report readability)
+

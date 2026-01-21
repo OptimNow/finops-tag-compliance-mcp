@@ -363,6 +363,23 @@ class ReportService:
         report_dict = report.model_dump(mode='json')
         return json.dumps(report_dict, indent=2)
     
+    def _has_cost_data(self, report: ComplianceReport) -> bool:
+        """
+        Check if the report has any meaningful cost data.
+        
+        Returns True if any violation has a non-zero cost impact.
+        
+        Args:
+            report: ComplianceReport to check
+        
+        Returns:
+            True if cost data is available, False otherwise
+        """
+        for ranking in report.top_violations_by_count:
+            if ranking.total_cost_impact > 0:
+                return True
+        return False
+    
     def _format_as_csv(self, report: ComplianceReport) -> str:
         """
         Format report as CSV.
@@ -370,7 +387,7 @@ class ReportService:
         Creates multiple CSV sections:
         1. Summary statistics
         2. Top violations by count
-        3. Top violations by cost
+        3. Top violations by cost (only if cost data available)
         4. Recommendations (if present)
         
         Args:
@@ -381,6 +398,8 @@ class ReportService:
         """
         output = io.StringIO()
         writer = csv.writer(output)
+        
+        has_cost_data = self._has_cost_data(report)
         
         # Summary section
         writer.writerow(["Compliance Summary"])
@@ -393,29 +412,39 @@ class ReportService:
         writer.writerow(["Cost Attribution Gap", f"${report.cost_attribution_gap:.2f}"])
         writer.writerow([])
         
-        # Top violations by count
+        # Top violations by count (hide Cost Impact column if no cost data)
         writer.writerow(["Top Violations by Count"])
-        writer.writerow(["Tag Name", "Violation Count", "Cost Impact", "Affected Resource Types"])
-        for ranking in report.top_violations_by_count:
-            writer.writerow([
-                ranking.tag_name,
-                ranking.violation_count,
-                f"${ranking.total_cost_impact:.2f}",
-                ", ".join(ranking.affected_resource_types)
-            ])
+        if has_cost_data:
+            writer.writerow(["Tag Name", "Violation Count", "Cost Impact", "Affected Resource Types"])
+            for ranking in report.top_violations_by_count:
+                writer.writerow([
+                    ranking.tag_name,
+                    ranking.violation_count,
+                    f"${ranking.total_cost_impact:.2f}",
+                    ", ".join(ranking.affected_resource_types)
+                ])
+        else:
+            writer.writerow(["Tag Name", "Violation Count", "Affected Resource Types"])
+            for ranking in report.top_violations_by_count:
+                writer.writerow([
+                    ranking.tag_name,
+                    ranking.violation_count,
+                    ", ".join(ranking.affected_resource_types)
+                ])
         writer.writerow([])
         
-        # Top violations by cost
-        writer.writerow(["Top Violations by Cost"])
-        writer.writerow(["Tag Name", "Cost Impact", "Violation Count", "Affected Resource Types"])
-        for ranking in report.top_violations_by_cost:
-            writer.writerow([
-                ranking.tag_name,
-                f"${ranking.total_cost_impact:.2f}",
-                ranking.violation_count,
-                ", ".join(ranking.affected_resource_types)
-            ])
-        writer.writerow([])
+        # Top violations by cost (only show if cost data available)
+        if has_cost_data:
+            writer.writerow(["Top Violations by Cost"])
+            writer.writerow(["Tag Name", "Cost Impact", "Violation Count", "Affected Resource Types"])
+            for ranking in report.top_violations_by_cost:
+                writer.writerow([
+                    ranking.tag_name,
+                    f"${ranking.total_cost_impact:.2f}",
+                    ranking.violation_count,
+                    ", ".join(ranking.affected_resource_types)
+                ])
+            writer.writerow([])
         
         # Recommendations
         if report.recommendations:
@@ -438,7 +467,8 @@ class ReportService:
         
         Creates a well-structured Markdown document with:
         - Summary section with key metrics
-        - Top violations tables
+        - Top violations tables (Cost Impact column hidden if all costs are zero)
+        - Top violations by cost section (hidden if all costs are zero)
         - Recommendations section
         
         Args:
@@ -448,6 +478,7 @@ class ReportService:
             Markdown string
         """
         lines = []
+        has_cost_data = self._has_cost_data(report)
         
         # Title
         lines.append("# Tag Compliance Report")
@@ -467,22 +498,31 @@ class ReportService:
         lines.append(f"- **Cost Attribution Gap:** ${report.cost_attribution_gap:,.2f}/month")
         lines.append("")
         
-        # Top violations by count
+        # Top violations by count (hide Cost Impact column if no cost data)
         if report.top_violations_by_count:
             lines.append("## Top Violations by Count")
             lines.append("")
-            lines.append("| Tag Name | Violation Count | Cost Impact | Affected Resource Types |")
-            lines.append("|----------|----------------|-------------|------------------------|")
-            for ranking in report.top_violations_by_count:
-                resource_types = ", ".join(ranking.affected_resource_types)
-                lines.append(
-                    f"| {ranking.tag_name} | {ranking.violation_count} | "
-                    f"${ranking.total_cost_impact:,.2f} | {resource_types} |"
-                )
+            if has_cost_data:
+                lines.append("| Tag Name | Violation Count | Cost Impact | Affected Resource Types |")
+                lines.append("|----------|----------------|-------------|------------------------|")
+                for ranking in report.top_violations_by_count:
+                    resource_types = ", ".join(ranking.affected_resource_types)
+                    lines.append(
+                        f"| {ranking.tag_name} | {ranking.violation_count} | "
+                        f"${ranking.total_cost_impact:,.2f} | {resource_types} |"
+                    )
+            else:
+                lines.append("| Tag Name | Violation Count | Affected Resource Types |")
+                lines.append("|----------|----------------|------------------------|")
+                for ranking in report.top_violations_by_count:
+                    resource_types = ", ".join(ranking.affected_resource_types)
+                    lines.append(
+                        f"| {ranking.tag_name} | {ranking.violation_count} | {resource_types} |"
+                    )
             lines.append("")
         
-        # Top violations by cost
-        if report.top_violations_by_cost:
+        # Top violations by cost (only show if cost data available)
+        if has_cost_data and report.top_violations_by_cost:
             lines.append("## Top Violations by Cost Impact")
             lines.append("")
             lines.append("| Tag Name | Cost Impact | Violation Count | Affected Resource Types |")

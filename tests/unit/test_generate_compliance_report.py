@@ -328,3 +328,149 @@ class TestGenerateComplianceReportTool:
         result_dict = result.to_dict()
         json_str = json.dumps(result_dict)
         assert isinstance(json_str, str)
+
+
+@pytest.fixture
+def zero_cost_compliance_result():
+    """Create a compliance result with zero cost impact (typical for Tagging API resources)."""
+    violations = []
+    
+    # Create violations with zero cost (like resources from Tagging API)
+    for i in range(15):
+        violations.append(Violation(
+            resource_id=f"i-{i:016x}",
+            resource_type="ec2:instance",
+            region="us-east-1",
+            violation_type=ViolationType.MISSING_REQUIRED_TAG,
+            tag_name="Owner",
+            severity=Severity.ERROR,
+            current_value=None,
+            allowed_values=None,
+            cost_impact_monthly=0.0,  # Zero cost
+        ))
+    
+    for i in range(10):
+        violations.append(Violation(
+            resource_id=f"bucket-{i}",
+            resource_type="s3:bucket",
+            region="us-east-1",
+            violation_type=ViolationType.MISSING_REQUIRED_TAG,
+            tag_name="Environment",
+            severity=Severity.ERROR,
+            current_value=None,
+            allowed_values=["prod", "dev", "staging"],
+            cost_impact_monthly=0.0,  # Zero cost
+        ))
+    
+    return ComplianceResult(
+        compliance_score=0.55,
+        total_resources=69,
+        compliant_resources=39,
+        violations=violations,
+        cost_attribution_gap=15.40,  # Cost attribution gap is still calculated separately
+        scan_timestamp=datetime.now(UTC),
+    )
+
+
+class TestZeroCostReportFormatting:
+    """Test report formatting when all violation costs are zero."""
+
+    @pytest.mark.asyncio
+    async def test_markdown_hides_cost_column_when_all_zero(self, zero_cost_compliance_result):
+        """Test that Markdown format hides Cost Impact column when all costs are zero."""
+        result = await generate_compliance_report(
+            compliance_result=zero_cost_compliance_result,
+            format="markdown",
+            include_recommendations=True
+        )
+        
+        # Should NOT contain "Cost Impact" in the violations table header
+        # But should still contain "Cost Attribution Gap" in summary
+        assert "Cost Attribution Gap" in result.formatted_output
+        
+        # The "Top Violations by Count" table should not have Cost Impact column
+        lines = result.formatted_output.split("\n")
+        for i, line in enumerate(lines):
+            if "## Top Violations by Count" in line:
+                # Check the header row (should be 2 lines after the section title)
+                header_line = lines[i + 2] if i + 2 < len(lines) else ""
+                assert "Cost Impact" not in header_line
+                break
+
+    @pytest.mark.asyncio
+    async def test_markdown_hides_cost_section_when_all_zero(self, zero_cost_compliance_result):
+        """Test that Markdown format hides 'Top Violations by Cost Impact' section when all costs are zero."""
+        result = await generate_compliance_report(
+            compliance_result=zero_cost_compliance_result,
+            format="markdown",
+            include_recommendations=True
+        )
+        
+        # Should NOT contain the "Top Violations by Cost Impact" section
+        assert "## Top Violations by Cost Impact" not in result.formatted_output
+
+    @pytest.mark.asyncio
+    async def test_csv_hides_cost_column_when_all_zero(self, zero_cost_compliance_result):
+        """Test that CSV format hides Cost Impact column when all costs are zero."""
+        result = await generate_compliance_report(
+            compliance_result=zero_cost_compliance_result,
+            format="csv",
+            include_recommendations=True
+        )
+        
+        # Should NOT contain "Top Violations by Cost" section
+        assert "Top Violations by Cost" not in result.formatted_output
+        
+        # The "Top Violations by Count" header should not have Cost Impact
+        lines = result.formatted_output.split("\n")
+        for i, line in enumerate(lines):
+            if "Top Violations by Count" in line:
+                # Check the header row (next line)
+                header_line = lines[i + 1] if i + 1 < len(lines) else ""
+                assert "Cost Impact" not in header_line
+                break
+
+    @pytest.mark.asyncio
+    async def test_markdown_shows_cost_when_available(self, sample_compliance_result):
+        """Test that Markdown format shows Cost Impact when costs are non-zero."""
+        result = await generate_compliance_report(
+            compliance_result=sample_compliance_result,
+            format="markdown",
+            include_recommendations=True
+        )
+        
+        # Should contain "Top Violations by Cost Impact" section
+        assert "## Top Violations by Cost Impact" in result.formatted_output
+        
+        # The "Top Violations by Count" table should have Cost Impact column
+        lines = result.formatted_output.split("\n")
+        for i, line in enumerate(lines):
+            if "## Top Violations by Count" in line:
+                # Check the header row (should be 2 lines after the section title)
+                header_line = lines[i + 2] if i + 2 < len(lines) else ""
+                assert "Cost Impact" in header_line
+                break
+
+    @pytest.mark.asyncio
+    async def test_csv_shows_cost_when_available(self, sample_compliance_result):
+        """Test that CSV format shows Cost Impact when costs are non-zero."""
+        result = await generate_compliance_report(
+            compliance_result=sample_compliance_result,
+            format="csv",
+            include_recommendations=True
+        )
+        
+        # Should contain "Top Violations by Cost" section
+        assert "Top Violations by Cost" in result.formatted_output
+
+    @pytest.mark.asyncio
+    async def test_cost_attribution_gap_always_shown(self, zero_cost_compliance_result):
+        """Test that Cost Attribution Gap is always shown even when violation costs are zero."""
+        result = await generate_compliance_report(
+            compliance_result=zero_cost_compliance_result,
+            format="markdown",
+            include_recommendations=True
+        )
+        
+        # Cost Attribution Gap should always be shown (it's calculated separately via Cost Explorer)
+        assert "$15.40/month" in result.formatted_output
