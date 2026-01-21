@@ -6,7 +6,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import ViolationType, Severity
+from .enums import Severity, ViolationType
 
 
 class Violation(BaseModel):
@@ -34,9 +34,7 @@ class Violation(BaseModel):
     violation_type: ViolationType = Field(..., description="Type of violation")
     tag_name: str = Field(..., description="Name of the tag that violated the policy")
     severity: Severity = Field(..., description="Severity level of the violation")
-    current_value: str | None = Field(
-        None, description="Current value of the tag (if present)"
-    )
+    current_value: str | None = Field(None, description="Current value of the tag (if present)")
     allowed_values: list[str] | None = Field(
         None, description="List of allowed values for this tag (if applicable)"
     )

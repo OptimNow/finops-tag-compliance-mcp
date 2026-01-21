@@ -10,25 +10,20 @@ when the same tool is called with identical parameters more than N times
 SHALL return a message explaining the loop was detected.
 """
 
-import pytest
-from hypothesis import given, strategies as st, settings, assume
-from datetime import datetime, timedelta
-import hashlib
 import json
-from typing import Optional
 
-from mcp_server.utils.loop_detection import (
-    LoopDetector,
-    LoopDetectedError,
-    DEFAULT_MAX_IDENTICAL_CALLS,
-    DEFAULT_SLIDING_WINDOW_SECONDS,
-)
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
+
 from mcp_server.models.loop_detection import (
     LoopDetectedResponse,
     LoopDetectionConfiguration,
-    LoopDetectionHealthInfo,
 )
-
+from mcp_server.utils.loop_detection import (
+    LoopDetectedError,
+    LoopDetector,
+)
 
 # Strategies for generating test data
 tool_name_strategy = st.text(
@@ -83,7 +78,7 @@ class TestLoopDetectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 15: Loop Detection
         Validates: Requirements 15.4
-        
+
         For any session, tool, and parameters, calling the same tool with
         identical parameters more than N times SHALL trigger loop detection.
         """
@@ -93,7 +88,7 @@ class TestLoopDetectionProperty:
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Make max_calls calls (should all succeed)
         for i in range(max_calls):
             loop_detected, count = await detector.record_call(
@@ -103,7 +98,7 @@ class TestLoopDetectionProperty:
             )
             assert not loop_detected, f"Loop should not be detected on call {i + 1}"
             assert count == i + 1, f"Count should be {i + 1}, got {count}"
-        
+
         # The (N+1)th call should trigger loop detection
         with pytest.raises(LoopDetectedError) as exc_info:
             await detector.record_call(
@@ -111,7 +106,7 @@ class TestLoopDetectionProperty:
                 tool_name=tool_name,
                 parameters=parameters,
             )
-        
+
         # Verify the error contains correct information
         error = exc_info.value
         assert error.tool_name == tool_name
@@ -139,19 +134,19 @@ class TestLoopDetectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 15: Loop Detection
         Validates: Requirements 15.4
-        
+
         For any session and tool, calls with DIFFERENT parameters should NOT
         trigger loop detection, even if the same tool is called many times.
         """
         # Ensure params are actually different
         assume(json.dumps(params1, sort_keys=True) != json.dumps(params2, sort_keys=True))
-        
+
         detector = LoopDetector(
             redis_cache=None,
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Alternate between two different parameter sets
         # This should never trigger loop detection
         for i in range(max_calls * 2):
@@ -162,7 +157,7 @@ class TestLoopDetectionProperty:
                 parameters=params,
             )
             # Each parameter set should have its own count
-            assert not loop_detected, f"Loop should not be detected with alternating params"
+            assert not loop_detected, "Loop should not be detected with alternating params"
 
     @pytest.mark.asyncio
     @given(
@@ -184,27 +179,27 @@ class TestLoopDetectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 15: Loop Detection
         Validates: Requirements 15.4
-        
+
         For any two different sessions, loop detection should be independent.
         Calls in one session should not affect the count in another session.
         """
         # Ensure sessions are different
         assume(session1 != session2)
-        
+
         detector = LoopDetector(
             redis_cache=None,
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Make max_calls calls in session1 (all should succeed)
-        for i in range(max_calls):
+        for _i in range(max_calls):
             await detector.record_call(
                 session_id=session1,
                 tool_name=tool_name,
                 parameters=parameters,
             )
-        
+
         # Session2 should start fresh - first call should have count 1
         loop_detected, count = await detector.record_call(
             session_id=session2,
@@ -232,7 +227,7 @@ class TestLoopDetectionProperty:
         """
         Feature: phase-1-aws-mvp, Property 15: Loop Detection
         Validates: Requirements 15.4
-        
+
         When a loop is detected, the response SHALL contain a message
         explaining that the loop was detected.
         """
@@ -241,7 +236,7 @@ class TestLoopDetectionProperty:
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Make enough calls to trigger loop detection
         for _ in range(max_calls):
             await detector.record_call(
@@ -249,7 +244,7 @@ class TestLoopDetectionProperty:
                 tool_name=tool_name,
                 parameters=parameters,
             )
-        
+
         # Trigger loop detection
         with pytest.raises(LoopDetectedError) as exc_info:
             await detector.record_call(
@@ -257,22 +252,22 @@ class TestLoopDetectionProperty:
                 tool_name=tool_name,
                 parameters=parameters,
             )
-        
+
         error = exc_info.value
-        
+
         # Create the response object
         response = LoopDetectedResponse.create(
             tool_name=error.tool_name,
             call_count=error.call_count,
             max_calls=error.max_calls,
         )
-        
+
         # Verify response contains explanation
         assert response.error_type == "loop_detected"
         assert tool_name in response.message
         assert "loop" in response.message.lower() or "Loop" in response.message
         assert response.suggestion is not None and len(response.suggestion) > 0
-        
+
         # Verify MCP content format
         mcp_content = response.to_mcp_content()
         assert len(mcp_content) > 0
@@ -299,10 +294,10 @@ class TestLoopDetectionCallSignature:
         The same inputs should always produce the same signature.
         """
         detector = LoopDetector(redis_cache=None)
-        
+
         sig1 = detector._generate_call_signature(tool_name, parameters)
         sig2 = detector._generate_call_signature(tool_name, parameters)
-        
+
         assert sig1 == sig2, "Same inputs should produce same signature"
 
     @pytest.mark.asyncio
@@ -323,12 +318,12 @@ class TestLoopDetectionCallSignature:
         """
         # Ensure params are actually different
         assume(json.dumps(params1, sort_keys=True) != json.dumps(params2, sort_keys=True))
-        
+
         detector = LoopDetector(redis_cache=None)
-        
+
         sig1 = detector._generate_call_signature(tool_name, params1)
         sig2 = detector._generate_call_signature(tool_name, params2)
-        
+
         assert sig1 != sig2, "Different params should produce different signatures"
 
     @pytest.mark.asyncio
@@ -348,12 +343,12 @@ class TestLoopDetectionCallSignature:
         For different tools with same parameters, the call signatures should differ.
         """
         assume(tool1 != tool2)
-        
+
         detector = LoopDetector(redis_cache=None)
-        
+
         sig1 = detector._generate_call_signature(tool1, parameters)
         sig2 = detector._generate_call_signature(tool2, parameters)
-        
+
         assert sig1 != sig2, "Different tools should produce different signatures"
 
 
@@ -378,7 +373,7 @@ class TestLoopDetectionConfiguration:
             max_identical_calls=max_calls,
             sliding_window_seconds=window_seconds,
         )
-        
+
         assert config.enabled is True
         assert config.max_identical_calls == max_calls
         assert config.sliding_window_seconds == window_seconds
@@ -401,7 +396,7 @@ class TestLoopDetectionConfiguration:
             max_identical_calls=max_calls,
             sliding_window_seconds=window_seconds,
         )
-        
+
         assert detector.max_identical_calls == max_calls
         assert detector.sliding_window_seconds == window_seconds
 
@@ -432,24 +427,24 @@ class TestLoopDetectionStats:
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Get initial total from internal counter
         initial_total = detector._total_loops_detected
-        
+
         # Trigger a loop - make max_calls successful calls first
         for _ in range(max_calls):
             await detector.record_call(session_id, tool_name, parameters)
-        
+
         # This call should trigger loop detection
         try:
             await detector.record_call(session_id, tool_name, parameters)
         except LoopDetectedError:
             pass  # Expected
-        
+
         # Check internal counter was updated
         assert detector._total_loops_detected > initial_total
         assert tool_name in detector._loop_events_by_tool
-        
+
         # Also verify stats method returns updated values
         updated_stats = await detector.get_loop_detection_stats()
         assert updated_stats["loops_detected_total"] > initial_total
@@ -476,21 +471,21 @@ class TestLoopDetectionStats:
             max_identical_calls=2,  # Low threshold for quick testing
             sliding_window_seconds=300,
         )
-        
+
         # Trigger a loop - make 2 successful calls first
         await detector.record_call(session_id, tool_name, parameters)
         await detector.record_call(session_id, tool_name, parameters)
-        
+
         # This call should trigger loop detection
         try:
             await detector.record_call(session_id, tool_name, parameters)
         except LoopDetectedError:
             pass  # Expected
-        
+
         # Check recent events
         recent_events = detector.get_recent_loop_events(limit=10)
         assert len(recent_events) > 0
-        
+
         # Find our event
         found = False
         for event in recent_events:
@@ -498,7 +493,7 @@ class TestLoopDetectionStats:
                 found = True
                 assert event["event_type"] == "loop_detected"
                 break
-        
+
         assert found, f"Event for tool '{tool_name}' should be in recent events"
 
 
@@ -529,18 +524,16 @@ class TestLoopDetectionReset:
             max_identical_calls=max_calls,
             sliding_window_seconds=300,
         )
-        
+
         # Make some calls (but not enough to trigger loop)
         for _ in range(max_calls):
             await detector.record_call(session_id, tool_name, parameters)
-        
+
         # Reset the session
         await detector.reset_session(session_id)
-        
+
         # Now we should be able to make max_calls calls again
         for i in range(max_calls):
-            loop_detected, count = await detector.record_call(
-                session_id, tool_name, parameters
-            )
+            loop_detected, count = await detector.record_call(session_id, tool_name, parameters)
             assert not loop_detected, f"After reset, call {i + 1} should not trigger loop"
-            assert count == i + 1, f"After reset, count should restart from 1"
+            assert count == i + 1, "After reset, count should restart from 1"

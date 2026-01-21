@@ -6,11 +6,13 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 
-from ..models.history import ComplianceHistoryResult, ComplianceHistoryEntry, GroupBy, TrendDirection
+from ..models.history import (
+    ComplianceHistoryResult,
+    GroupBy,
+)
 from ..services.history_service import HistoryService
 
 logger = logging.getLogger(__name__)
@@ -31,9 +33,7 @@ class TrendAnalysis(BaseModel):
 
     direction: str = Field(..., description="Trend direction (improving, declining, stable)")
     score_change: float = Field(..., description="Absolute change in compliance score")
-    score_change_percentage: float = Field(
-        ..., description="Score change as percentage points"
-    )
+    score_change_percentage: float = Field(..., description="Score change as percentage points")
 
 
 class GetViolationHistoryResult(BaseModel):
@@ -43,9 +43,7 @@ class GetViolationHistoryResult(BaseModel):
         default_factory=list, description="Historical compliance data points"
     )
     group_by: str = Field(..., description="How data is grouped (day, week, month)")
-    trend_direction: str = Field(
-        ..., description="Overall trend (improving, declining, stable)"
-    )
+    trend_direction: str = Field(..., description="Overall trend (improving, declining, stable)")
     earliest_score: float = Field(..., description="Score at start of period")
     latest_score: float = Field(..., description="Score at end of period")
     days_back: int = Field(..., description="Number of days of history")
@@ -83,7 +81,7 @@ class GetViolationHistoryResult(BaseModel):
 
 
 async def get_violation_history(
-    history_service: Optional[HistoryService] = None,
+    history_service: HistoryService | None = None,
     days_back: int = 30,
     group_by: str = "day",
     db_path: str = "compliance_history.db",
@@ -122,9 +120,7 @@ async def get_violation_history(
         >>> print(f"Trend: {result.trend_direction}")
         >>> print(f"Score change: {result.trend_analysis.score_change:.2%}")
     """
-    logger.info(
-        f"Retrieving violation history: days_back={days_back}, group_by={group_by}"
-    )
+    logger.info(f"Retrieving violation history: days_back={days_back}, group_by={group_by}")
 
     # Validate days_back parameter
     if days_back < 1 or days_back > 90:
@@ -134,9 +130,7 @@ async def get_violation_history(
     try:
         group_by_enum = GroupBy(group_by.lower())
     except ValueError:
-        raise ValueError(
-            f"Invalid group_by '{group_by}'. Must be one of: day, week, month"
-        )
+        raise ValueError(f"Invalid group_by '{group_by}'. Must be one of: day, week, month")
 
     # Use injected service or create one
     service = history_service
@@ -148,9 +142,7 @@ async def get_violation_history(
 
     try:
         # Query historical data
-        history_result = await service.get_history(
-            days_back=days_back, group_by=group_by_enum
-        )
+        history_result = await service.get_history(days_back=days_back, group_by=group_by_enum)
 
         logger.info(
             f"History retrieved successfully: {len(history_result.history)} data points, "

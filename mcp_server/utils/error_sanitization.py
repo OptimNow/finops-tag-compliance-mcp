@@ -13,9 +13,7 @@ Requirements: 16.5
 
 import logging
 import re
-import os
-from typing import Optional, Any, Dict
-from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -76,17 +74,17 @@ COMPILED_PATTERNS = {
 
 class SanitizedError:
     """Represents a sanitized error message with metadata."""
-    
+
     def __init__(
         self,
         user_message: str,
-        internal_message: Optional[str] = None,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        internal_message: str | None = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize a sanitized error.
-        
+
         Args:
             user_message: Safe message to show to users
             internal_message: Full error message for internal logging
@@ -97,8 +95,8 @@ class SanitizedError:
         self.internal_message = internal_message
         self.error_code = error_code
         self.details = details or {}
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON response."""
         result = {
             "error": self.error_code or "internal_error",
@@ -107,68 +105,71 @@ class SanitizedError:
         if self.details:
             result["details"] = self.details
         return result
-    
+
     def to_json_string(self) -> str:
         """Convert to JSON string."""
         import json
+
         return json.dumps(self.to_dict())
 
 
-def detect_sensitive_info(text: str) -> Dict[str, list]:
+def detect_sensitive_info(text: str) -> dict[str, list]:
     """
     Detect sensitive information in text.
-    
+
     Args:
         text: Text to scan for sensitive information
-    
+
     Returns:
         Dictionary mapping sensitivity categories to found patterns
-    
+
     Requirements: 16.5
     """
     if not text:
         return {}
-    
+
     found = {}
-    
+
     for category, patterns in COMPILED_PATTERNS.items():
         matches = []
         for pattern in patterns:
             for match in pattern.finditer(text):
-                matches.append({
-                    "pattern": pattern.pattern,
-                    "match": match.group(0),
-                    "position": match.start(),
-                })
-        
+                matches.append(
+                    {
+                        "pattern": pattern.pattern,
+                        "match": match.group(0),
+                        "position": match.start(),
+                    }
+                )
+
         if matches:
             found[category] = matches
-    
+
     return found
 
 
 def redact_sensitive_info(text: str, replacement: str = "[REDACTED]") -> str:
     """
     Redact sensitive information from text.
-    
+
     Args:
         text: Text to redact
         replacement: String to use for redacted content
-    
+
     Returns:
         Text with sensitive information redacted
-    
+
     Requirements: 16.5
     """
     if not text:
         return text
-    
+
     result = text
-    
-    for category, patterns in COMPILED_PATTERNS.items():
+
+    for _category, patterns in COMPILED_PATTERNS.items():
         for pattern in patterns:
             result = pattern.sub(replacement, result)
-    
+
     return result
 
 
@@ -179,42 +180,42 @@ def sanitize_exception(
 ) -> SanitizedError:
     """
     Sanitize an exception into a user-safe error message.
-    
+
     Args:
         exc: Exception to sanitize
         include_type: Whether to include exception type in message
         include_message: Whether to include exception message
-    
+
     Returns:
         SanitizedError with sanitized message
-    
+
     Requirements: 16.5
     """
     exc_type = type(exc).__name__
     exc_message = str(exc)
-    
+
     # Log the full exception internally
     logger.debug(
         f"Sanitizing exception: {exc_type}: {exc_message}",
         exc_info=True,
     )
-    
+
     # Detect sensitive information
     sensitive_info = detect_sensitive_info(exc_message)
-    
+
     if sensitive_info:
         logger.warning(
             f"Sensitive information detected in exception message: {list(sensitive_info.keys())}",
             extra={"sensitive_categories": list(sensitive_info.keys())},
         )
-    
+
     # Redact sensitive information
     safe_message = redact_sensitive_info(exc_message)
-    
+
     # Map exception types to user-friendly messages
     error_code = _get_error_code(exc)
     user_message = _get_user_message(exc, error_code, safe_message)
-    
+
     return SanitizedError(
         user_message=user_message,
         internal_message=exc_message,
@@ -225,17 +226,17 @@ def sanitize_exception(
 def sanitize_error_response(
     error: Any,
     status_code: int = 500,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Sanitize an error into a safe response dictionary.
-    
+
     Args:
         error: Error to sanitize (Exception, string, or dict)
         status_code: HTTP status code
-    
+
     Returns:
         Safe error response dictionary
-    
+
     Requirements: 16.5
     """
     if isinstance(error, Exception):
@@ -275,15 +276,15 @@ def sanitize_error_response(
 def _get_error_code(exc: Exception) -> str:
     """
     Map exception type to error code.
-    
+
     Args:
         exc: Exception to map
-    
+
     Returns:
         Error code string
     """
     exc_type = type(exc).__name__
-    
+
     # Map common exceptions to error codes
     error_code_map = {
         "ValueError": "invalid_input",
@@ -300,7 +301,7 @@ def _get_error_code(exc: Exception) -> str:
         "BudgetExhaustedError": "budget_exceeded",
         "LoopDetectedError": "loop_detected",
     }
-    
+
     return error_code_map.get(exc_type, "internal_error")
 
 
@@ -311,12 +312,12 @@ def _get_user_message(
 ) -> str:
     """
     Generate a user-friendly error message.
-    
+
     Args:
         exc: Original exception
         error_code: Error code
         safe_message: Sanitized exception message
-    
+
     Returns:
         User-friendly message
     """
@@ -336,7 +337,7 @@ def _get_user_message(
         "loop_detected": "A repeated tool call pattern was detected. Please try a different approach.",
         "internal_error": "An unexpected error occurred. Please try again later.",
     }
-    
+
     # Return mapped message or safe message
     return message_map.get(error_code, safe_message or "An error occurred")
 
@@ -344,34 +345,34 @@ def _get_user_message(
 def create_safe_error_response(
     error_code: str,
     user_message: str,
-    details: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Create a safe error response with guaranteed no sensitive info.
-    
+
     Args:
         error_code: Machine-readable error code
         user_message: User-friendly message (should already be safe)
         details: Additional safe details
-    
+
     Returns:
         Safe error response dictionary
-    
+
     Requirements: 16.5
     """
     # Double-check that user_message doesn't contain sensitive info
     if detect_sensitive_info(user_message):
         logger.warning(
-            f"User message contains sensitive information, redacting",
+            "User message contains sensitive information, redacting",
             extra={"error_code": error_code},
         )
         user_message = redact_sensitive_info(user_message)
-    
+
     response = {
         "error": error_code,
         "message": user_message,
     }
-    
+
     if details:
         # Redact any sensitive info from details
         safe_details = {}
@@ -381,28 +382,28 @@ def create_safe_error_response(
             else:
                 safe_details[key] = value
         response["details"] = safe_details
-    
+
     return response
 
 
 def log_error_safely(
     error: Exception,
-    context: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[logging.Logger] = None,
+    context: dict[str, Any] | None = None,
+    logger_instance: logging.Logger | None = None,
 ) -> None:
     """
     Log an error with full details internally while sanitizing for external use.
-    
+
     Args:
         error: Exception to log
         context: Additional context to log
         logger_instance: Logger to use (defaults to module logger)
-    
+
     Requirements: 16.5
     """
     if logger_instance is None:
         logger_instance = logger
-    
+
     # Log full error internally
     logger_instance.error(
         f"Error occurred: {type(error).__name__}: {str(error)}",
@@ -413,22 +414,27 @@ def log_error_safely(
 
 # Utility function for common error scenarios
 
+
 def handle_aws_error(exc: Exception) -> SanitizedError:
     """
     Handle AWS-specific errors with appropriate sanitization.
-    
+
     Args:
         exc: AWS exception
-    
+
     Returns:
         SanitizedError with appropriate message
-    
+
     Requirements: 16.5
     """
     exc_message = str(exc)
-    
+
     # Detect AWS-specific error patterns
-    if "AccessDenied" in exc_message or "UnauthorizedOperation" in exc_message or "not authorized" in exc_message.lower():
+    if (
+        "AccessDenied" in exc_message
+        or "UnauthorizedOperation" in exc_message
+        or "not authorized" in exc_message.lower()
+    ):
         return SanitizedError(
             user_message="You do not have permission to access this AWS resource.",
             internal_message=exc_message,
@@ -464,17 +470,17 @@ def handle_aws_error(exc: Exception) -> SanitizedError:
 def handle_database_error(exc: Exception) -> SanitizedError:
     """
     Handle database-specific errors with appropriate sanitization.
-    
+
     Args:
         exc: Database exception
-    
+
     Returns:
         SanitizedError with appropriate message
-    
+
     Requirements: 16.5
     """
     exc_message = str(exc)
-    
+
     # Detect database-specific error patterns
     if "UNIQUE constraint failed" in exc_message or "duplicate key" in exc_message.lower():
         return SanitizedError(

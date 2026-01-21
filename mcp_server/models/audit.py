@@ -4,8 +4,9 @@
 
 """Audit log data models."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
+
 from pydantic import BaseModel, Field, field_serializer
 
 
@@ -20,7 +21,7 @@ class AuditLogEntry(BaseModel):
     """Represents a single audit log entry for a tool invocation."""
 
     id: int | None = None
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(UTC))
     tool_name: str
     parameters: dict
     status: AuditStatus
@@ -31,6 +32,6 @@ class AuditLogEntry(BaseModel):
     class Config:
         """Pydantic config."""
 
-    @field_serializer('timestamp')
+    @field_serializer("timestamp")
     def serialize_timestamp(self, timestamp: datetime) -> str:
         return timestamp.isoformat()

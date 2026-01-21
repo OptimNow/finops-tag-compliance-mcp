@@ -6,8 +6,6 @@
 
 import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Optional
 
 from ..models import (
     ComplianceHistoryEntry,
@@ -65,7 +63,7 @@ class HistoryService:
         # Create index on timestamp for faster queries
         cursor.execute(
             """
-            CREATE INDEX IF NOT EXISTS idx_timestamp 
+            CREATE INDEX IF NOT EXISTS idx_timestamp
             ON compliance_scans(timestamp)
         """
         )
@@ -86,7 +84,7 @@ class HistoryService:
 
         cursor.execute(
             """
-            INSERT INTO compliance_scans 
+            INSERT INTO compliance_scans
             (timestamp, compliance_score, total_resources, compliant_resources, violation_count)
             VALUES (?, ?, ?, ?, ?)
         """,
@@ -129,7 +127,7 @@ class HistoryService:
         # Query data based on grouping
         if group_by == GroupBy.DAY:
             query = """
-                SELECT 
+                SELECT
                     DATE(timestamp) as period,
                     AVG(compliance_score) as avg_score,
                     SUM(total_resources) as total_res,
@@ -142,7 +140,7 @@ class HistoryService:
             """
         elif group_by == GroupBy.WEEK:
             query = """
-                SELECT 
+                SELECT
                     DATE(timestamp, 'weekday 0', '-6 days') as period,
                     AVG(compliance_score) as avg_score,
                     SUM(total_resources) as total_res,
@@ -155,7 +153,7 @@ class HistoryService:
             """
         else:  # MONTH
             query = """
-                SELECT 
+                SELECT
                     DATE(timestamp, 'start of month') as period,
                     AVG(compliance_score) as avg_score,
                     SUM(total_resources) as total_res,

@@ -6,12 +6,12 @@
 
 import functools
 import time
-from typing import Any, Callable, TypeVar, ParamSpec
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
 from ..models.audit import AuditStatus
 from ..services.audit_service import AuditService
 from ..utils.correlation import get_correlation_id
-
 
 # Type variables for generic decorator
 P = ParamSpec("P")
@@ -43,7 +43,7 @@ def audit_tool(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
-        
+
         # Capture correlation ID from context
         correlation_id = get_correlation_id() or None
 
@@ -110,7 +110,7 @@ def audit_tool_sync(tool_func: Callable[P, R]) -> Callable[P, R]:
             "args": args,
             "kwargs": kwargs,
         }
-        
+
         # Capture correlation ID from context
         correlation_id = get_correlation_id() or None
 

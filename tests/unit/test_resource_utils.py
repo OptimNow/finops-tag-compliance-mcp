@@ -1,12 +1,15 @@
 """Tests for shared resource utilities."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from mcp_server.utils.resource_utils import (
-    fetch_resources_by_type,
+    SUPPORTED_RESOURCE_TYPES,
+    TAGGING_API_RESOURCE_TYPES,
     extract_account_from_arn,
     fetch_all_resources_via_tagging_api,
+    fetch_resources_by_type,
     fetch_resources_via_tagging_api,
     get_supported_resource_types,
     get_tagging_api_resource_types,
@@ -21,12 +24,12 @@ class TestFetchResourcesByType:
         """Test successful resource fetching."""
         # Mock AWS client
         aws_client = MagicMock()
-        aws_client.get_ec2_instances = AsyncMock(return_value=[
-            {"resource_id": "i-123", "tags": {"Name": "test"}}
-        ])
-        
+        aws_client.get_ec2_instances = AsyncMock(
+            return_value=[{"resource_id": "i-123", "tags": {"Name": "test"}}]
+        )
+
         result = await fetch_resources_by_type(aws_client, "ec2:instance")
-        
+
         assert len(result) == 1
         assert result[0]["resource_id"] == "i-123"
         aws_client.get_ec2_instances.assert_called_once_with(None)
@@ -36,13 +39,13 @@ class TestFetchResourcesByType:
         """Test resource fetching with filters."""
         # Mock AWS client
         aws_client = MagicMock()
-        aws_client.get_rds_instances = AsyncMock(return_value=[
-            {"resource_id": "db-123", "tags": {"Environment": "prod"}}
-        ])
-        
+        aws_client.get_rds_instances = AsyncMock(
+            return_value=[{"resource_id": "db-123", "tags": {"Environment": "prod"}}]
+        )
+
         filters = {"region": "us-east-1"}
         result = await fetch_resources_by_type(aws_client, "rds:db", filters)
-        
+
         assert len(result) == 1
         assert result[0]["resource_id"] == "db-123"
         aws_client.get_rds_instances.assert_called_once_with(filters)
@@ -51,12 +54,14 @@ class TestFetchResourcesByType:
     async def test_fetch_resources_by_type_unknown_type_uses_tagging_api(self):
         """Test that unknown resource types fall back to Tagging API."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "table-123", "resource_type": "dynamodb:table", "tags": {}}
-        ])
-        
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "table-123", "resource_type": "dynamodb:table", "tags": {}}
+            ]
+        )
+
         result = await fetch_resources_by_type(aws_client, "dynamodb:table")
-        
+
         assert len(result) == 1
         assert result[0]["resource_type"] == "dynamodb:table"
         aws_client.get_all_tagged_resources.assert_called_once()
@@ -66,7 +71,7 @@ class TestFetchResourcesByType:
         """Test handling of API errors."""
         aws_client = MagicMock()
         aws_client.get_s3_buckets = AsyncMock(side_effect=Exception("API Error"))
-        
+
         with pytest.raises(Exception, match="API Error"):
             await fetch_resources_by_type(aws_client, "s3:bucket")
 
@@ -74,14 +79,16 @@ class TestFetchResourcesByType:
     async def test_fetch_resources_by_type_all(self):
         """Test fetching all resources via Tagging API."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {}},
-            {"resource_id": "bucket-1", "resource_type": "s3:bucket", "tags": {}},
-            {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
-        ])
-        
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {}},
+                {"resource_id": "bucket-1", "resource_type": "s3:bucket", "tags": {}},
+                {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
+            ]
+        )
+
         result = await fetch_resources_by_type(aws_client, "all")
-        
+
         assert len(result) == 3
         resource_types = {r["resource_type"] for r in result}
         assert "ec2:instance" in resource_types
@@ -97,34 +104,36 @@ class TestFetchAllResourcesViaTaggingApi:
     async def test_fetch_all_resources_success(self):
         """Test successful fetching of all resources."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {"Env": "prod"}},
-            {"resource_id": "bucket-1", "resource_type": "s3:bucket", "tags": {}},
-        ])
-        
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {"Env": "prod"}},
+                {"resource_id": "bucket-1", "resource_type": "s3:bucket", "tags": {}},
+            ]
+        )
+
         result = await fetch_all_resources_via_tagging_api(aws_client)
-        
+
         assert len(result) == 2
         aws_client.get_all_tagged_resources.assert_called_once_with(
-            resource_type_filters=None,
-            tag_filters=None
+            resource_type_filters=None, tag_filters=None
         )
 
     @pytest.mark.asyncio
     async def test_fetch_all_resources_with_tag_filters(self):
         """Test fetching resources with tag filters."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {"Env": "prod"}},
-        ])
-        
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "i-123", "resource_type": "ec2:instance", "tags": {"Env": "prod"}},
+            ]
+        )
+
         filters = {"tag_filters": [{"Key": "Env", "Values": ["prod"]}]}
         result = await fetch_all_resources_via_tagging_api(aws_client, filters)
-        
+
         assert len(result) == 1
         aws_client.get_all_tagged_resources.assert_called_once_with(
-            resource_type_filters=None,
-            tag_filters=[{"Key": "Env", "Values": ["prod"]}]
+            resource_type_filters=None, tag_filters=[{"Key": "Env", "Values": ["prod"]}]
         )
 
     @pytest.mark.asyncio
@@ -132,7 +141,7 @@ class TestFetchAllResourcesViaTaggingApi:
         """Test handling of API errors."""
         aws_client = MagicMock()
         aws_client.get_all_tagged_resources = AsyncMock(side_effect=Exception("API Error"))
-        
+
         with pytest.raises(Exception, match="API Error"):
             await fetch_all_resources_via_tagging_api(aws_client)
 
@@ -144,37 +153,36 @@ class TestFetchResourcesViaTaggingApi:
     async def test_fetch_specific_types(self):
         """Test fetching specific resource types via Tagging API."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
-            {"resource_id": "table-2", "resource_type": "dynamodb:table", "tags": {}},
-        ])
-        
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
+                {"resource_id": "table-2", "resource_type": "dynamodb:table", "tags": {}},
+            ]
+        )
+
         result = await fetch_resources_via_tagging_api(aws_client, ["dynamodb:table"])
-        
+
         assert len(result) == 2
         aws_client.get_all_tagged_resources.assert_called_once_with(
-            resource_type_filters=["dynamodb:table"],
-            tag_filters=None
+            resource_type_filters=["dynamodb:table"], tag_filters=None
         )
 
     @pytest.mark.asyncio
     async def test_fetch_multiple_types(self):
         """Test fetching multiple resource types via Tagging API."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(return_value=[
-            {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
-            {"resource_id": "topic-1", "resource_type": "sns:topic", "tags": {}},
-        ])
-        
-        result = await fetch_resources_via_tagging_api(
-            aws_client, 
-            ["dynamodb:table", "sns:topic"]
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "table-1", "resource_type": "dynamodb:table", "tags": {}},
+                {"resource_id": "topic-1", "resource_type": "sns:topic", "tags": {}},
+            ]
         )
-        
+
+        result = await fetch_resources_via_tagging_api(aws_client, ["dynamodb:table", "sns:topic"])
+
         assert len(result) == 2
         aws_client.get_all_tagged_resources.assert_called_once_with(
-            resource_type_filters=["dynamodb:table", "sns:topic"],
-            tag_filters=None
+            resource_type_filters=["dynamodb:table", "sns:topic"], tag_filters=None
         )
 
 
@@ -250,11 +258,11 @@ class TestResourceTypeConstants:
         """Test that get_supported_resource_types returns a copy."""
         types1 = get_supported_resource_types()
         types2 = get_supported_resource_types()
-        
+
         # Should be equal but not the same object
         assert types1 == types2
         assert types1 is not types2
-        
+
         # Modifying one shouldn't affect the other
         types1.append("test:type")
         assert "test:type" not in types2
@@ -263,7 +271,7 @@ class TestResourceTypeConstants:
         """Test that get_tagging_api_resource_types returns a copy."""
         types1 = get_tagging_api_resource_types()
         types2 = get_tagging_api_resource_types()
-        
+
         # Should be equal but not the same object
         assert types1 == types2
         assert types1 is not types2

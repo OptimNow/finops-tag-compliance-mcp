@@ -1,19 +1,18 @@
 """Tests for correlation ID generation and context management."""
 
 import logging
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 from mcp_server.utils.correlation import (
+    CorrelationIDMiddleware,
     generate_correlation_id,
-    set_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
-    CorrelationIDMiddleware,
+    set_correlation_id,
 )
-from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 
 
 class TestGenerateCorrelationId:
@@ -56,13 +55,14 @@ class TestCorrelationIdContext:
         """Test that get_correlation_id returns empty string by default."""
         # Create a new context to avoid interference from other tests
         import contextvars
+
         ctx = contextvars.copy_context()
-        
+
         def check_default():
             # In a fresh context, should return empty string
             return get_correlation_id()
-        
-        result = ctx.run(check_default)
+
+        ctx.run(check_default)
         # Note: This test may not work as expected due to context isolation
         # The important thing is that the function doesn't crash
 
@@ -183,7 +183,7 @@ class TestCorrelationIDFilter:
         # Set a correlation ID in context
         test_id = "test-correlation-123"
         set_correlation_id(test_id)
-        
+
         # Create a log record
         record = logging.LogRecord(
             name="test.logger",
@@ -194,14 +194,14 @@ class TestCorrelationIDFilter:
             args=(),
             exc_info=None,
         )
-        
+
         # Apply the filter
         correlation_filter = CorrelationIDFilter()
         result = correlation_filter.filter(record)
-        
+
         # Check that filter returns True (allows logging)
         assert result is True
-        
+
         # Check that correlation_id was added to record
         assert hasattr(record, "correlation_id")
         assert record.correlation_id == test_id
@@ -210,7 +210,7 @@ class TestCorrelationIDFilter:
         """Test that filter adds '-' when no correlation ID is set."""
         # Clear correlation ID
         set_correlation_id("")
-        
+
         # Create a log record
         record = logging.LogRecord(
             name="test.logger",
@@ -221,14 +221,14 @@ class TestCorrelationIDFilter:
             args=(),
             exc_info=None,
         )
-        
+
         # Apply the filter
         correlation_filter = CorrelationIDFilter()
         result = correlation_filter.filter(record)
-        
+
         # Check that filter returns True
         assert result is True
-        
+
         # Check that correlation_id was added with dash
         assert hasattr(record, "correlation_id")
         assert record.correlation_id == "-"
@@ -238,31 +238,31 @@ class TestCorrelationIDFilter:
         # Create a logger with the filter
         test_logger = logging.getLogger("test.correlation.filter")
         test_logger.setLevel(logging.INFO)
-        
+
         # Add filter
         correlation_filter = CorrelationIDFilter()
         test_logger.addFilter(correlation_filter)
-        
+
         # Add a handler to capture log records
         captured_records = []
-        
+
         class CaptureHandler(logging.Handler):
             def emit(self, record):
                 captured_records.append(record)
-        
+
         handler = CaptureHandler()
         test_logger.addHandler(handler)
-        
+
         # Set correlation ID and log
         test_id = "integration-test-456"
         set_correlation_id(test_id)
         test_logger.info("Test log message")
-        
+
         # Check that record has correlation ID
         assert len(captured_records) == 1
         assert hasattr(captured_records[0], "correlation_id")
         assert captured_records[0].correlation_id == test_id
-        
+
         # Clean up
         test_logger.removeHandler(handler)
         test_logger.removeFilter(correlation_filter)

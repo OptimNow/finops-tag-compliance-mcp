@@ -4,16 +4,17 @@
 
 """Unit tests for check_tag_compliance tool."""
 
-import pytest
-from datetime import datetime, UTC
-from unittest.mock import AsyncMock, MagicMock, patch
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
-from mcp_server.tools.check_tag_compliance import check_tag_compliance
+import pytest
+
+from mcp_server.models.compliance import ComplianceResult
+from mcp_server.models.enums import Severity, ViolationType
+from mcp_server.models.violations import Violation
 from mcp_server.services.compliance_service import ComplianceService
 from mcp_server.services.history_service import HistoryService
-from mcp_server.models.compliance import ComplianceResult
-from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
+from mcp_server.tools.check_tag_compliance import check_tag_compliance
 
 
 @pytest.fixture
@@ -114,9 +115,7 @@ class TestCheckTagComplianceBasicFunctionality:
     """Test basic functionality of check_tag_compliance tool."""
 
     @pytest.mark.asyncio
-    async def test_single_resource_type(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_single_resource_type(self, mock_compliance_service, sample_compliance_result):
         """Test compliance check with single resource type."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -132,9 +131,7 @@ class TestCheckTagComplianceBasicFunctionality:
         )
 
     @pytest.mark.asyncio
-    async def test_multiple_resource_types(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_multiple_resource_types(self, mock_compliance_service, sample_compliance_result):
         """Test compliance check with multiple resource types."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -150,9 +147,7 @@ class TestCheckTagComplianceBasicFunctionality:
         )
 
     @pytest.mark.asyncio
-    async def test_with_region_filter(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_with_region_filter(self, mock_compliance_service, sample_compliance_result):
         """Test compliance check with region filter."""
         filters = {"region": "us-west-2"}
 
@@ -171,9 +166,7 @@ class TestCheckTagComplianceBasicFunctionality:
         )
 
     @pytest.mark.asyncio
-    async def test_with_account_filter(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_with_account_filter(self, mock_compliance_service, sample_compliance_result):
         """Test compliance check with account ID filter."""
         filters = {"account_id": "123456789012"}
 
@@ -196,9 +189,7 @@ class TestCheckTagComplianceSeverityFiltering:
     """Test severity filtering in check_tag_compliance tool."""
 
     @pytest.mark.asyncio
-    async def test_errors_only_severity(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_errors_only_severity(self, mock_compliance_service, sample_compliance_result):
         """Test severity filter 'errors_only'."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -215,9 +206,7 @@ class TestCheckTagComplianceSeverityFiltering:
         )
 
     @pytest.mark.asyncio
-    async def test_warnings_only_severity(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_warnings_only_severity(self, mock_compliance_service, sample_compliance_result):
         """Test severity filter 'warnings_only'."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -238,9 +227,7 @@ class TestCheckTagComplianceForceRefresh:
     """Test force_refresh functionality in check_tag_compliance tool."""
 
     @pytest.mark.asyncio
-    async def test_force_refresh_true(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_force_refresh_true(self, mock_compliance_service, sample_compliance_result):
         """Test compliance check with force_refresh=True."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -291,9 +278,7 @@ class TestCheckTagComplianceHistoryStorage:
         )
 
         assert result == sample_compliance_result
-        mock_history_service.store_scan_result.assert_called_once_with(
-            sample_compliance_result
-        )
+        mock_history_service.store_scan_result.assert_called_once_with(sample_compliance_result)
 
     @pytest.mark.asyncio
     async def test_store_snapshot_false_no_storage(
@@ -331,9 +316,7 @@ class TestCheckTagComplianceHistoryStorage:
     ):
         """Test that history storage failure doesn't fail the compliance check."""
         mock_history_service = MagicMock(spec=HistoryService)
-        mock_history_service.store_scan_result = AsyncMock(
-            side_effect=Exception("Database error")
-        )
+        mock_history_service.store_scan_result = AsyncMock(side_effect=Exception("Database error"))
 
         # Should still return result despite storage failure
         result = await check_tag_compliance(
@@ -391,9 +374,7 @@ class TestCheckTagComplianceReturnValues:
         assert 0.0 <= result.compliance_score <= 1.0
 
     @pytest.mark.asyncio
-    async def test_violations_is_list(
-        self, mock_compliance_service, sample_compliance_result
-    ):
+    async def test_violations_is_list(self, mock_compliance_service, sample_compliance_result):
         """Test that violations is a list."""
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,

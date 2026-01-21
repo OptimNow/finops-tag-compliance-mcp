@@ -12,60 +12,52 @@ Requirements: 14.5, 15.3, 15.4, 15.5, 16.4
 
 import json
 import logging
-from datetime import datetime
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Optional
+
 from pydantic import BaseModel
 
+from .clients.aws_client import AWSClient
+from .clients.cache import RedisCache
+from .middleware.budget_middleware import (
+    BudgetExhaustedError,
+    get_budget_tracker,
+)
 from .models import (
-    ComplianceResult,
-    UntaggedResourcesResult,
-    ValidateResourceTagsResult,
-    CostAttributionGapResult,
     BudgetExhaustedResponse,
 )
 from .models.audit import AuditStatus
 from .models.loop_detection import LoopDetectedResponse
+from .services import (
+    AuditService,
+    ComplianceService,
+    HistoryService,
+    PolicyService,
+    get_security_service,
+)
 from .tools import (
     check_tag_compliance,
     find_untagged_resources,
-    validate_resource_tags,
-    get_cost_attribution_gap,
-    suggest_tags,
-    get_tagging_policy,
     generate_compliance_report,
+    get_cost_attribution_gap,
+    get_tagging_policy,
     get_violation_history,
-    SuggestTagsResult,
-    GetTaggingPolicyResult,
-    GenerateComplianceReportResult,
-    GetViolationHistoryResult,
-)
-from .services import (
-    PolicyService,
-    ComplianceService,
-    AuditService,
-    HistoryService,
-    get_security_service,
-)
-from .clients.aws_client import AWSClient
-from .clients.cache import RedisCache
-from .middleware.budget_middleware import (
-    BudgetTracker,
-    BudgetExhaustedError,
-    get_budget_tracker,
+    suggest_tags,
+    validate_resource_tags,
 )
 from .utils.correlation import get_correlation_id
+from .utils.input_validation import InputValidator, SecurityViolationError, ValidationError
 from .utils.loop_detection import (
-    LoopDetector,
     LoopDetectedError,
     get_loop_detector,
 )
-from .utils.input_validation import InputValidator, ValidationError, SecurityViolationError
 
 logger = logging.getLogger(__name__)
 
 
 class MCPToolDefinition(BaseModel):
     """Definition of an MCP tool."""
+
     name: str
     description: str
     input_schema: dict
@@ -73,6 +65,7 @@ class MCPToolDefinition(BaseModel):
 
 class MCPToolResult(BaseModel):
     """Result from an MCP tool invocation."""
+
     content: list[dict]
     is_error: bool = False
 
@@ -80,7 +73,7 @@ class MCPToolResult(BaseModel):
 class MCPHandler:
     """
     MCP Protocol Handler for the FinOps Tag Compliance Server.
-    
+
     This handler manages the registration and invocation of all 8 MCP tools:
     1. check_tag_compliance - Scan resources and return compliance score
     2. find_untagged_resources - Find resources missing tags
@@ -90,22 +83,22 @@ class MCPHandler:
     6. get_tagging_policy - Return the policy configuration
     7. generate_compliance_report - Generate formatted reports
     8. get_violation_history - Return historical compliance data
-    
+
     Requirements: 14.5
     """
-    
+
     def __init__(
         self,
-        aws_client: Optional[AWSClient] = None,
-        policy_service: Optional[PolicyService] = None,
-        compliance_service: Optional[ComplianceService] = None,
-        redis_cache: Optional[RedisCache] = None,
-        audit_service: Optional[AuditService] = None,
+        aws_client: AWSClient | None = None,
+        policy_service: PolicyService | None = None,
+        compliance_service: ComplianceService | None = None,
+        redis_cache: RedisCache | None = None,
+        audit_service: AuditService | None = None,
         history_service: Optional["HistoryService"] = None,
     ):
         """
         Initialize the MCP handler with required services.
-        
+
         Args:
             aws_client: AWSClient for AWS API calls
             policy_service: PolicyService for policy management
@@ -120,15 +113,15 @@ class MCPHandler:
         self.redis_cache = redis_cache
         self.audit_service = audit_service
         self.history_service = history_service
-        
+
         # Register all tools
         self._tools: dict[str, Callable] = {}
         self._tool_definitions: dict[str, MCPToolDefinition] = {}
         self._register_tools()
-    
+
     def _register_tools(self) -> None:
         """Register all 8 MCP tools with their definitions."""
-        
+
         # Tool 1: check_tag_compliance
         self._register_tool(
             name="check_tag_compliance",
@@ -253,7 +246,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 2: find_untagged_resources
         self._register_tool(
             name="find_untagged_resources",
@@ -357,7 +350,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 3: validate_resource_tags
         self._register_tool(
             name="validate_resource_tags",
@@ -388,7 +381,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 4: get_cost_attribution_gap
         self._register_tool(
             name="get_cost_attribution_gap",
@@ -510,7 +503,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 5: suggest_tags
         self._register_tool(
             name="suggest_tags",
@@ -535,7 +528,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 6: get_tagging_policy
         self._register_tool(
             name="get_tagging_policy",
@@ -552,7 +545,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 7: generate_compliance_report
         self._register_tool(
             name="generate_compliance_report",
@@ -636,7 +629,7 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         # Tool 8: get_violation_history
         self._register_tool(
             name="get_violation_history",
@@ -667,9 +660,9 @@ class MCPHandler:
                 "additionalProperties": False,
             },
         )
-        
+
         logger.info(f"Registered {len(self._tools)} MCP tools")
-    
+
     def _register_tool(
         self,
         name: str,
@@ -684,11 +677,11 @@ class MCPHandler:
             description=description,
             input_schema=input_schema,
         )
-    
+
     def get_tool_definitions(self) -> list[dict]:
         """
         Get all tool definitions for MCP protocol.
-        
+
         Returns:
             List of tool definitions with name, description, and input schema
         """
@@ -700,18 +693,18 @@ class MCPHandler:
             }
             for defn in self._tool_definitions.values()
         ]
-    
+
     def _validate_tool_inputs(self, tool_name: str, arguments: dict) -> None:
         """
         Validate tool inputs against their schemas with detailed field-level feedback.
-        
+
         Args:
             tool_name: Name of the tool being invoked
             arguments: Tool arguments to validate
-        
+
         Raises:
             ValidationError: If validation fails with detailed field-level error
-        
+
         Requirements: 16.3
         """
         try:
@@ -738,7 +731,7 @@ class MCPHandler:
                     field_name="force_refresh",
                     required=False,
                 )
-            
+
             elif tool_name == "find_untagged_resources":
                 InputValidator.validate_resource_types(
                     arguments.get("resource_types"),
@@ -757,13 +750,13 @@ class MCPHandler:
                     arguments.get("min_cost_threshold"),
                     required=False,
                 )
-            
+
             elif tool_name == "validate_resource_tags":
                 InputValidator.validate_resource_arns(
                     arguments.get("resource_arns"),
                     required=True,
                 )
-            
+
             elif tool_name == "get_cost_attribution_gap":
                 InputValidator.validate_resource_types(
                     arguments.get("resource_types"),
@@ -782,7 +775,7 @@ class MCPHandler:
                     arguments.get("filters"),
                     required=False,
                 )
-            
+
             elif tool_name == "suggest_tags":
                 InputValidator.validate_string(
                     arguments.get("resource_arn"),
@@ -791,11 +784,11 @@ class MCPHandler:
                     max_length=InputValidator.MAX_STRING_LENGTH,
                     pattern=InputValidator.ARN_PATTERN,
                 )
-            
+
             elif tool_name == "get_tagging_policy":
                 # No parameters to validate
                 pass
-            
+
             elif tool_name == "generate_compliance_report":
                 InputValidator.validate_resource_types(
                     arguments.get("resource_types"),
@@ -810,7 +803,7 @@ class MCPHandler:
                     field_name="include_recommendations",
                     required=False,
                 )
-            
+
             elif tool_name == "get_violation_history":
                 InputValidator.validate_integer(
                     arguments.get("days_back", 30),
@@ -825,9 +818,9 @@ class MCPHandler:
                     required=False,
                     valid_options=InputValidator.VALID_HISTORY_GROUP_BY,
                 )
-            
+
             logger.debug(f"Input validation passed for tool: {tool_name}")
-        
+
         except ValidationError as e:
             # Re-raise with tool context
             logger.warning(
@@ -835,26 +828,26 @@ class MCPHandler:
                 f"field='{e.field}', message='{e.message}'"
             )
             raise
-    
+
     async def invoke_tool(self, name: str, arguments: dict) -> MCPToolResult:
         """
         Invoke an MCP tool by name with the given arguments.
-        
+
         Args:
             name: Name of the tool to invoke
             arguments: Tool arguments as a dictionary
-        
+
         Returns:
             MCPToolResult with the tool output
-        
+
         Raises:
             ValueError: If the tool name is not recognized
-        
+
         Requirements: 14.5, 15.3, 15.4, 15.5, 16.3, 16.4
         """
         session_id = get_correlation_id()
         security_service = get_security_service()
-        
+
         # Check if tool is registered (Requirement 16.4)
         if name not in self._tools:
             # Log unknown tool attempt for security monitoring
@@ -864,9 +857,9 @@ class MCPHandler:
                     "tool_name": name,
                     "session_id": session_id,
                     "correlation_id": session_id,
-                }
+                },
             )
-            
+
             # Log to security service
             if security_service:
                 await security_service.log_unknown_tool_attempt(
@@ -874,13 +867,15 @@ class MCPHandler:
                     session_id=session_id,
                     parameters=arguments,
                 )
-                
+
                 # Check rate limit for unknown tool attempts (Requirement 16.4)
-                is_blocked, current_count, max_attempts = await security_service.check_unknown_tool_rate_limit(
-                    session_id=session_id,
-                    tool_name=name,
+                is_blocked, current_count, max_attempts = (
+                    await security_service.check_unknown_tool_rate_limit(
+                        session_id=session_id,
+                        tool_name=name,
+                    )
                 )
-                
+
                 if is_blocked:
                     # Rate limit exceeded - block the request
                     logger.error(
@@ -891,9 +886,9 @@ class MCPHandler:
                             "tool_name": name,
                             "attempts": current_count,
                             "max_attempts": max_attempts,
-                        }
+                        },
                     )
-                    
+
                     # Log to audit service
                     if self.audit_service:
                         self.audit_service.log_invocation(
@@ -902,23 +897,27 @@ class MCPHandler:
                             status=AuditStatus.FAILURE,
                             error_message=f"Rate limit exceeded: {current_count}/{max_attempts} unknown tool attempts",
                         )
-                    
+
                     return MCPToolResult(
-                        content=[{
-                            "type": "text",
-                            "text": json.dumps({
-                                "error": "Rate limit exceeded",
-                                "message": "Too many attempts to invoke unknown tools. Please verify the tool name and try again later.",
-                                "details": {
-                                    "attempts": current_count,
-                                    "max_attempts": max_attempts,
-                                    "window_seconds": security_service.window_seconds,
-                                },
-                            }),
-                        }],
+                        content=[
+                            {
+                                "type": "text",
+                                "text": json.dumps(
+                                    {
+                                        "error": "Rate limit exceeded",
+                                        "message": "Too many attempts to invoke unknown tools. Please verify the tool name and try again later.",
+                                        "details": {
+                                            "attempts": current_count,
+                                            "max_attempts": max_attempts,
+                                            "window_seconds": security_service.window_seconds,
+                                        },
+                                    }
+                                ),
+                            }
+                        ],
                         is_error=True,
                     )
-            
+
             # Log to audit service
             if self.audit_service:
                 self.audit_service.log_invocation(
@@ -927,21 +926,25 @@ class MCPHandler:
                     status=AuditStatus.FAILURE,
                     error_message=f"Unknown tool: {name}",
                 )
-            
+
             # Return explicit rejection (Requirement 16.4)
             return MCPToolResult(
-                content=[{
-                    "type": "text",
-                    "text": json.dumps({
-                        "error": "Unknown tool",
-                        "message": f"Tool '{name}' is not registered in this MCP server.",
-                        "details": "Please check the tool name and ensure it is one of the registered tools.",
-                        "registered_tools": list(self._tools.keys()),
-                    }),
-                }],
+                content=[
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "error": "Unknown tool",
+                                "message": f"Tool '{name}' is not registered in this MCP server.",
+                                "details": "Please check the tool name and ensure it is one of the registered tools.",
+                                "registered_tools": list(self._tools.keys()),
+                            }
+                        ),
+                    }
+                ],
                 is_error=True,
             )
-        
+
         # Check parameter size limits before validation (Requirement 16.3)
         try:
             InputValidator.check_parameter_size_limits(arguments, "arguments")
@@ -954,9 +957,9 @@ class MCPHandler:
                     "tool_name": name,
                     "violation_type": e.violation_type,
                     "correlation_id": session_id,
-                }
+                },
             )
-            
+
             # Log to security service (Requirement 16.4)
             if security_service:
                 await security_service.log_validation_bypass_attempt(
@@ -964,7 +967,7 @@ class MCPHandler:
                     violation_type=e.violation_type,
                     session_id=session_id,
                 )
-            
+
             if self.audit_service:
                 self.audit_service.log_invocation(
                     tool_name=name,
@@ -972,19 +975,23 @@ class MCPHandler:
                     status=AuditStatus.FAILURE,
                     error_message=error_message,
                 )
-            
+
             return MCPToolResult(
-                content=[{
-                    "type": "text",
-                    "text": json.dumps({
-                        "error": "Security violation detected",
-                        "message": "Request rejected due to security policy violation",
-                        "details": "The request contains parameters that exceed security limits or contain suspicious patterns.",
-                    }),
-                }],
+                content=[
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "error": "Security violation detected",
+                                "message": "Request rejected due to security policy violation",
+                                "details": "The request contains parameters that exceed security limits or contain suspicious patterns.",
+                            }
+                        ),
+                    }
+                ],
                 is_error=True,
             )
-        
+
         # Validate inputs before execution (Requirement 16.3)
         try:
             self._validate_tool_inputs(name, arguments)
@@ -997,9 +1004,9 @@ class MCPHandler:
                     "tool_name": name,
                     "violation_type": e.violation_type,
                     "correlation_id": session_id,
-                }
+                },
             )
-            
+
             # Log to security service (Requirement 16.4)
             if security_service:
                 await security_service.log_injection_attempt(
@@ -1008,7 +1015,7 @@ class MCPHandler:
                     field_name="unknown",  # Field name not available in this context
                     session_id=session_id,
                 )
-            
+
             if self.audit_service:
                 self.audit_service.log_invocation(
                     tool_name=name,
@@ -1016,23 +1023,27 @@ class MCPHandler:
                     status=AuditStatus.FAILURE,
                     error_message=error_message,
                 )
-            
+
             return MCPToolResult(
-                content=[{
-                    "type": "text",
-                    "text": json.dumps({
-                        "error": "Security violation detected",
-                        "message": "Request rejected due to security policy violation",
-                        "details": "The request contains potentially malicious content or injection attempts.",
-                    }),
-                }],
+                content=[
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "error": "Security violation detected",
+                                "message": "Request rejected due to security policy violation",
+                                "details": "The request contains potentially malicious content or injection attempts.",
+                            }
+                        ),
+                    }
+                ],
                 is_error=True,
             )
         except ValidationError as e:
             # Return detailed validation error with field-level feedback
             error_message = f"Validation error for '{e.field}': {e.message}"
             logger.warning(f"Input validation failed for tool '{name}': {error_message}")
-            
+
             if self.audit_service:
                 self.audit_service.log_invocation(
                     tool_name=name,
@@ -1040,24 +1051,28 @@ class MCPHandler:
                     status=AuditStatus.FAILURE,
                     error_message=error_message,
                 )
-            
+
             return MCPToolResult(
-                content=[{
-                    "type": "text",
-                    "text": json.dumps({
-                        "error": "Input validation failed",
-                        "field": e.field,
-                        "message": e.message,
-                        "details": "Please check the input schema and ensure all parameters are valid.",
-                    }),
-                }],
+                content=[
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "error": "Input validation failed",
+                                "field": e.field,
+                                "message": e.message,
+                                "details": "Please check the input schema and ensure all parameters are valid.",
+                            }
+                        ),
+                    }
+                ],
                 is_error=True,
             )
-        
+
         # Check budget before executing tool (Requirement 15.3)
         budget_tracker = get_budget_tracker()
         session_id = get_correlation_id()
-        
+
         if budget_tracker and session_id:
             try:
                 success, current_count, max_calls = await budget_tracker.consume_budget(session_id)
@@ -1071,7 +1086,7 @@ class MCPHandler:
                     f"Budget exhausted for session {e.session_id}: "
                     f"{e.current_count}/{e.max_calls} calls"
                 )
-                
+
                 # Log budget exhaustion event
                 if self.audit_service:
                     self.audit_service.log_invocation(
@@ -1080,7 +1095,7 @@ class MCPHandler:
                         status=AuditStatus.FAILURE,
                         error_message=f"Budget exhausted: {e.current_count}/{e.max_calls}",
                     )
-                
+
                 # Create graceful degradation response
                 response = BudgetExhaustedResponse.create(
                     session_id=e.session_id,
@@ -1088,15 +1103,15 @@ class MCPHandler:
                     limit=e.max_calls,
                     retry_after_seconds=budget_tracker.session_ttl_seconds,
                 )
-                
+
                 return MCPToolResult(
                     content=response.to_mcp_content(),
                     is_error=False,  # Not an error, graceful degradation
                 )
-        
+
         # Check for loops before executing tool (Requirement 15.4)
         loop_detector = get_loop_detector()
-        
+
         if loop_detector and session_id:
             try:
                 loop_detected, call_count = await loop_detector.record_call(
@@ -1115,7 +1130,7 @@ class MCPHandler:
                     f"Tool '{e.tool_name}' called {e.call_count} times "
                     f"(max: {e.max_calls}), signature={e.call_signature}"
                 )
-                
+
                 # Log loop detection event with detailed information
                 if self.audit_service:
                     self.audit_service.log_invocation(
@@ -1127,25 +1142,25 @@ class MCPHandler:
                             f"signature={e.call_signature}"
                         ),
                     )
-                
+
                 # Create structured response
                 response = LoopDetectedResponse.create(
                     tool_name=e.tool_name,
                     call_count=e.call_count,
                     max_calls=e.max_calls,
                 )
-                
+
                 return MCPToolResult(
                     content=response.to_mcp_content(),
                     is_error=False,  # Not an error, structured message
                 )
-        
+
         handler = self._tools[name]
-        
+
         try:
             # Invoke the tool handler
             result = await handler(arguments)
-            
+
             # Log success
             if self.audit_service:
                 self.audit_service.log_invocation(
@@ -1153,16 +1168,16 @@ class MCPHandler:
                     parameters=arguments,
                     status=AuditStatus.SUCCESS,
                 )
-            
+
             return MCPToolResult(
                 content=[{"type": "text", "text": json.dumps(result, default=str)}],
                 is_error=False,
             )
-        
+
         except Exception as e:
             # Sanitize error before returning to client (Requirement 16.5)
-            from .utils.error_sanitization import sanitize_exception, log_error_safely
-            
+            from .utils.error_sanitization import log_error_safely, sanitize_exception
+
             # Log full error internally
             log_error_safely(
                 e,
@@ -1172,10 +1187,10 @@ class MCPHandler:
                 },
                 logger_instance=logger,
             )
-            
+
             # Sanitize for client response
             sanitized = sanitize_exception(e)
-            
+
             # Log failure with sanitized message
             if self.audit_service:
                 self.audit_service.log_invocation(
@@ -1184,29 +1199,33 @@ class MCPHandler:
                     status=AuditStatus.FAILURE,
                     error_message=sanitized.internal_message,  # Use internal message for audit
                 )
-            
+
             return MCPToolResult(
-                content=[{
-                    "type": "text",
-                    "text": json.dumps({
-                        "error": sanitized.error_code,
-                        "message": sanitized.user_message,
-                    }),
-                }],
+                content=[
+                    {
+                        "type": "text",
+                        "text": json.dumps(
+                            {
+                                "error": sanitized.error_code,
+                                "message": sanitized.user_message,
+                            }
+                        ),
+                    }
+                ],
                 is_error=True,
             )
-    
+
     # Tool handlers
-    
+
     async def _handle_check_tag_compliance(self, arguments: dict) -> dict:
         """Handle check_tag_compliance tool invocation."""
         if not self.compliance_service:
             raise ValueError("ComplianceService not initialized")
-        
+
         # Only pass history_service if store_snapshot is True
         store_snapshot = arguments.get("store_snapshot", False)
         force_refresh = arguments.get("force_refresh", False)
-        
+
         result = await check_tag_compliance(
             compliance_service=self.compliance_service,
             resource_types=arguments["resource_types"],
@@ -1216,7 +1235,7 @@ class MCPHandler:
             store_snapshot=store_snapshot,
             force_refresh=force_refresh,
         )
-        
+
         return {
             "compliance_score": result.compliance_score,
             "total_resources": result.total_resources,
@@ -1239,14 +1258,14 @@ class MCPHandler:
             "scan_timestamp": result.scan_timestamp.isoformat(),
             "stored_in_history": store_snapshot,
         }
-    
+
     async def _handle_find_untagged_resources(self, arguments: dict) -> dict:
         """Handle find_untagged_resources tool invocation."""
         if not self.aws_client or not self.policy_service:
             raise ValueError("AWSClient or PolicyService not initialized")
-        
+
         include_costs = arguments.get("include_costs", False)
-        
+
         result = await find_untagged_resources(
             aws_client=self.aws_client,
             policy_service=self.policy_service,
@@ -1255,7 +1274,7 @@ class MCPHandler:
             min_cost_threshold=arguments.get("min_cost_threshold"),
             include_costs=include_costs,
         )
-        
+
         # Build resource list - only include cost fields if costs were requested
         resources = []
         for r in result.resources:
@@ -1273,32 +1292,32 @@ class MCPHandler:
                 resource_data["monthly_cost_estimate"] = r.monthly_cost_estimate
                 resource_data["cost_source"] = r.cost_source
             resources.append(resource_data)
-        
+
         response = {
             "total_untagged": result.total_untagged,
             "resources": resources,
             "scan_timestamp": result.scan_timestamp.isoformat(),
         }
-        
+
         # Only include cost summary if costs were requested
         if include_costs:
             response["total_monthly_cost"] = result.total_monthly_cost
             if result.cost_data_note:
                 response["cost_data_note"] = result.cost_data_note
-        
+
         return response
-    
+
     async def _handle_validate_resource_tags(self, arguments: dict) -> dict:
         """Handle validate_resource_tags tool invocation."""
         if not self.aws_client or not self.policy_service:
             raise ValueError("AWSClient or PolicyService not initialized")
-        
+
         result = await validate_resource_tags(
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arns=arguments["resource_arns"],
         )
-        
+
         return {
             "total_resources": result.total_resources,
             "compliant_resources": result.compliant_resources,
@@ -1327,12 +1346,12 @@ class MCPHandler:
             ],
             "validation_timestamp": result.validation_timestamp.isoformat(),
         }
-    
+
     async def _handle_get_cost_attribution_gap(self, arguments: dict) -> dict:
         """Handle get_cost_attribution_gap tool invocation."""
         if not self.aws_client or not self.policy_service:
             raise ValueError("AWSClient or PolicyService not initialized")
-        
+
         result = await get_cost_attribution_gap(
             aws_client=self.aws_client,
             policy_service=self.policy_service,
@@ -1341,7 +1360,7 @@ class MCPHandler:
             group_by=arguments.get("group_by"),
             filters=arguments.get("filters"),
         )
-        
+
         breakdown = None
         if result.breakdown:
             breakdown = {
@@ -1352,7 +1371,7 @@ class MCPHandler:
                 }
                 for key, value in result.breakdown.items()
             }
-        
+
         return {
             "total_spend": result.total_spend,
             "attributable_spend": result.attributable_spend,
@@ -1362,36 +1381,36 @@ class MCPHandler:
             "breakdown": breakdown,
             "scan_timestamp": result.scan_timestamp.isoformat(),
         }
-    
+
     async def _handle_suggest_tags(self, arguments: dict) -> dict:
         """Handle suggest_tags tool invocation."""
         if not self.aws_client or not self.policy_service:
             raise ValueError("AWSClient or PolicyService not initialized")
-        
+
         result = await suggest_tags(
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arn=arguments["resource_arn"],
         )
 
-        return result.model_dump(mode='json')
-    
+        return result.model_dump(mode="json")
+
     async def _handle_get_tagging_policy(self, arguments: dict) -> dict:
         """Handle get_tagging_policy tool invocation."""
         if not self.policy_service:
             raise ValueError("PolicyService not initialized")
-        
+
         result = await get_tagging_policy(
             policy_service=self.policy_service,
         )
 
-        return result.model_dump(mode='json')
-    
+        return result.model_dump(mode="json")
+
     async def _handle_generate_compliance_report(self, arguments: dict) -> dict:
         """Handle generate_compliance_report tool invocation."""
         if not self.compliance_service:
             raise ValueError("ComplianceService not initialized")
-        
+
         # First, run a compliance check to get the data
         compliance_result = await check_tag_compliance(
             compliance_service=self.compliance_service,
@@ -1400,16 +1419,16 @@ class MCPHandler:
             severity="all",
             history_service=self.history_service,
         )
-        
+
         # Get actual cost attribution gap from cost service
         # The compliance service doesn't have per-resource cost data, so we need
         # to call the cost service to get the real cost attribution gap
         if self.aws_client and self.policy_service:
             try:
                 from .services.cost_service import CostService
+
                 cost_service = CostService(
-                    aws_client=self.aws_client,
-                    policy_service=self.policy_service
+                    aws_client=self.aws_client, policy_service=self.policy_service
                 )
                 cost_result = await cost_service.calculate_attribution_gap(
                     resource_types=arguments["resource_types"],
@@ -1417,11 +1436,13 @@ class MCPHandler:
                 )
                 # Update the compliance result with the actual cost attribution gap
                 compliance_result.cost_attribution_gap = cost_result.attribution_gap
-                logger.info(f"Updated cost_attribution_gap from cost service: ${cost_result.attribution_gap:.2f}")
+                logger.info(
+                    f"Updated cost_attribution_gap from cost service: ${cost_result.attribution_gap:.2f}"
+                )
             except Exception as e:
                 # Log but don't fail - report can still be generated without cost data
                 logger.warning(f"Failed to get cost attribution gap: {str(e)}")
-        
+
         # Then generate the report
         result = await generate_compliance_report(
             compliance_result=compliance_result,
@@ -1429,8 +1450,8 @@ class MCPHandler:
             include_recommendations=arguments.get("include_recommendations", True),
         )
 
-        return result.model_dump(mode='json')
-    
+        return result.model_dump(mode="json")
+
     async def _handle_get_violation_history(self, arguments: dict) -> dict:
         """Handle get_violation_history tool invocation."""
         # Use the history_service's db_path if available, otherwise use default
@@ -1440,9 +1461,9 @@ class MCPHandler:
             logger.debug(f"Using history_service db_path: {db_path}")
         else:
             logger.warning("history_service is None, using default db_path")
-        
+
         logger.info(f"get_violation_history using db_path: {db_path}")
-        
+
         result = await get_violation_history(
             history_service=self.history_service,
             days_back=arguments.get("days_back", 30),
@@ -1450,4 +1471,4 @@ class MCPHandler:
             db_path=db_path,
         )
 
-        return result.model_dump(mode='json')
+        return result.model_dump(mode="json")

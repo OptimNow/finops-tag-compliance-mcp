@@ -1,9 +1,9 @@
 """Pytest configuration and shared fixtures."""
 
-import os
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -15,6 +15,7 @@ def anyio_backend():
 # =============================================================================
 # Environment and Configuration Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def test_env(monkeypatch):
@@ -34,6 +35,7 @@ def test_env(monkeypatch):
 # =============================================================================
 # AWS and External Service Mocks
 # =============================================================================
+
 
 @pytest.fixture
 def mock_aws_client():
@@ -73,6 +75,7 @@ def mock_sqlite_connection():
 # =============================================================================
 # Test Data Fixtures
 # =============================================================================
+
 
 @pytest.fixture
 def sample_violation_data():
@@ -160,6 +163,7 @@ def sample_resource_data():
 # =============================================================================
 # Pytest Hooks for Test Reporting
 # =============================================================================
+
 
 def pytest_collection_modifyitems(config, items):
     """Automatically mark tests based on their location."""

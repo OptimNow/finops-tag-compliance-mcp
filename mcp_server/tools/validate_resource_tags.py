@@ -5,10 +5,10 @@
 """MCP tool for validating resource tags against policy."""
 
 import logging
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from ..models.validation import ResourceValidationResult, ValidateResourceTagsResult
 from ..clients.aws_client import AWSClient
+from ..models.validation import ResourceValidationResult, ValidateResourceTagsResult
 from ..services.policy_service import PolicyService
 from ..utils.arn_utils import is_valid_arn, parse_arn
 
@@ -125,11 +125,7 @@ async def validate_resource_tags(
             try:
                 parsed = parse_arn(arn)
             except ValueError:
-                parsed = {
-                    "resource_type": "unknown",
-                    "resource_id": arn,
-                    "region": "unknown"
-                }
+                parsed = {"resource_type": "unknown", "resource_id": arn, "region": "unknown"}
 
             result = ResourceValidationResult(
                 resource_arn=arn,

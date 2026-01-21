@@ -7,9 +7,7 @@
 import logging
 from datetime import datetime
 
-from pydantic import BaseModel, Field, computed_field
-
-from typing import Optional
+from pydantic import BaseModel, Field
 
 from ..models.compliance import ComplianceResult
 from ..models.report import ComplianceReport, ReportFormat
@@ -26,13 +24,9 @@ class ReportSummary(BaseModel):
     )
     total_resources: int = Field(..., description="Total resources scanned")
     compliant_resources: int = Field(..., description="Number of compliant resources")
-    non_compliant_resources: int = Field(
-        ..., description="Number of non-compliant resources"
-    )
+    non_compliant_resources: int = Field(..., description="Number of non-compliant resources")
     total_violations: int = Field(..., description="Total number of violations")
-    cost_attribution_gap: float = Field(
-        ..., description="Dollar amount of unattributable spend"
-    )
+    cost_attribution_gap: float = Field(..., description="Dollar amount of unattributable spend")
 
 
 class GenerateComplianceReportResult(BaseModel):
@@ -72,7 +66,7 @@ async def generate_compliance_report(
     compliance_result: ComplianceResult,
     format: str = "json",
     include_recommendations: bool = True,
-    report_service: Optional[ReportService] = None,
+    report_service: ReportService | None = None,
 ) -> GenerateComplianceReportResult:
     """
     Generate a comprehensive compliance report in the specified format.
@@ -118,9 +112,7 @@ async def generate_compliance_report(
     try:
         report_format = ReportFormat(format.lower())
     except ValueError:
-        raise ValueError(
-            f"Invalid format '{format}'. Must be one of: json, csv, markdown"
-        )
+        raise ValueError(f"Invalid format '{format}'. Must be one of: json, csv, markdown")
 
     # Use injected service or create one
     service = report_service

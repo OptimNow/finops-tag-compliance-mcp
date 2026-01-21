@@ -13,8 +13,7 @@ Requirements: 14.2, 14.5
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import timezone
-from typing import Optional
+from datetime import UTC
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,28 +21,32 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
-from .config import settings
-from .models import HealthStatus, BudgetHealthInfo
-from .models.audit import AuditStatus
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
-from .services.audit_service import AuditService
-from .services.policy_service import PolicyService
-from .services.compliance_service import ComplianceService
-from .services.history_service import HistoryService
-from .services.security_service import SecurityService, set_security_service, configure_security_logging
-from .mcp_handler import MCPHandler, MCPToolResult
-from .utils.cloudwatch_logger import configure_cloudwatch_logging, CorrelationIDFilter
-from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
+from .config import settings
+from .mcp_handler import MCPHandler
 from .middleware.budget_middleware import (
     BudgetTracker,
-    set_budget_tracker,
     get_budget_tracker,
+    set_budget_tracker,
 )
+from .models import HealthStatus
+from .models.audit import AuditStatus
+from .services.audit_service import AuditService
+from .services.compliance_service import ComplianceService
+from .services.history_service import HistoryService
+from .services.policy_service import PolicyService
+from .services.security_service import (
+    SecurityService,
+    configure_security_logging,
+    set_security_service,
+)
+from .utils.cloudwatch_logger import CorrelationIDFilter, configure_cloudwatch_logging
+from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
 from .utils.loop_detection import (
     LoopDetector,
-    set_loop_detector,
     get_loop_detector,
+    set_loop_detector,
 )
 
 # Configure logging with correlation ID support
@@ -70,31 +73,34 @@ logger = logging.getLogger(__name__)
 configure_cloudwatch_logging()
 
 # Global instances
-redis_cache: Optional[RedisCache] = None
-audit_service: Optional[AuditService] = None
-history_service: Optional[HistoryService] = None
-aws_client: Optional[AWSClient] = None
-policy_service: Optional[PolicyService] = None
-compliance_service: Optional[ComplianceService] = None
-security_service: Optional[SecurityService] = None
-mcp_handler: Optional[MCPHandler] = None
+redis_cache: RedisCache | None = None
+audit_service: AuditService | None = None
+history_service: HistoryService | None = None
+aws_client: AWSClient | None = None
+policy_service: PolicyService | None = None
+compliance_service: ComplianceService | None = None
+security_service: SecurityService | None = None
+mcp_handler: MCPHandler | None = None
 
 
 # Request/Response models for MCP protocol
 class MCPToolCallRequest(BaseModel):
     """Request model for MCP tool invocation."""
+
     name: str
     arguments: dict = {}
 
 
 class MCPToolCallResponse(BaseModel):
     """Response model for MCP tool invocation."""
+
     content: list[dict]
     is_error: bool = False
 
 
 class MCPListToolsResponse(BaseModel):
     """Response model for listing available tools."""
+
     tools: list[dict]
 
 
@@ -102,7 +108,7 @@ class MCPListToolsResponse(BaseModel):
 async def lifespan(app: FastAPI):
     """
     Manage application lifecycle - startup and shutdown.
-    
+
     Initializes all services on startup:
     - Redis cache for caching compliance data
     - Audit service for logging tool invocations
@@ -111,20 +117,20 @@ async def lifespan(app: FastAPI):
     - Policy service for tagging policy management
     - Compliance service for compliance checking
     - MCP handler for tool registration and invocation
-    
+
     Cleans up on shutdown.
-    
+
     Requirements: 14.2
     """
     global redis_cache, audit_service, history_service, aws_client, policy_service
     global compliance_service, security_service, mcp_handler
-    
+
     # Startup
     logger.info("Starting FinOps Tag Compliance MCP Server")
-    
+
     # Get settings instance
     app_settings = settings()
-    
+
     # Initialize Redis cache
     try:
         redis_cache = await RedisCache.create(redis_url=app_settings.redis_url)
@@ -132,7 +138,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize Redis cache: {e}")
         redis_cache = None
-    
+
     # Initialize audit service
     try:
         audit_service = AuditService(db_path=app_settings.audit_db_path)
@@ -140,7 +146,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.error(f"Failed to initialize audit service: {e}")
         audit_service = None
-    
+
     # Initialize history service
     try:
         history_service = HistoryService(db_path=app_settings.history_db_path)
@@ -148,7 +154,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize history service: {e}")
         history_service = None
-    
+
     # Initialize AWS client
     try:
         aws_client = AWSClient(region=app_settings.aws_region)
@@ -156,7 +162,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize AWS client: {e}")
         aws_client = None
-    
+
     # Initialize policy service
     try:
         policy_service = PolicyService(policy_path=app_settings.policy_path)
@@ -164,7 +170,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"Failed to initialize policy service: {e}")
         policy_service = None
-    
+
     # Initialize compliance service
     if aws_client and policy_service:
         try:
@@ -177,7 +183,7 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to initialize compliance service: {e}")
             compliance_service = None
-    
+
     # Initialize budget tracker (Requirements: 15.3)
     budget_tracker = None
     if app_settings.budget_tracking_enabled:
@@ -197,7 +203,7 @@ async def lifespan(app: FastAPI):
             budget_tracker = None
     else:
         logger.info("Budget tracking is disabled")
-    
+
     # Initialize loop detector (Requirements: 15.4)
     loop_detector = None
     if app_settings.loop_detection_enabled:
@@ -217,7 +223,7 @@ async def lifespan(app: FastAPI):
             loop_detector = None
     else:
         logger.info("Loop detection is disabled")
-    
+
     # Initialize security service (Requirements: 16.4)
     security_service = None
     if app_settings.security_monitoring_enabled:
@@ -228,7 +234,7 @@ async def lifespan(app: FastAPI):
                 log_stream=app_settings.security_log_stream,
                 region=app_settings.aws_region,
             )
-            
+
             security_service = SecurityService(
                 redis_cache=redis_cache,
                 max_unknown_tool_attempts=app_settings.max_unknown_tool_attempts,
@@ -244,7 +250,7 @@ async def lifespan(app: FastAPI):
             security_service = None
     else:
         logger.info("Security monitoring is disabled")
-    
+
     # Initialize MCP handler with all services
     mcp_handler = MCPHandler(
         aws_client=aws_client,
@@ -255,11 +261,11 @@ async def lifespan(app: FastAPI):
         history_service=history_service,
     )
     logger.info("MCP handler initialized with 8 tools")
-    
+
     logger.info(f"MCP Server v{__version__} started successfully on port {app_settings.port}")
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down FinOps Tag Compliance MCP Server")
     if redis_cache:
@@ -295,6 +301,7 @@ app.add_middleware(
 # Add request sanitization middleware for security (Requirements: 16.2, 16.5)
 # This validates headers, enforces size limits, and prevents injection attacks
 from .middleware.sanitization_middleware import RequestSanitizationMiddleware
+
 app.add_middleware(RequestSanitizationMiddleware)
 
 # Add correlation ID middleware for request tracing
@@ -307,15 +314,15 @@ app.add_middleware(CorrelationIDMiddleware)
 async def global_exception_handler(request: Request, exc: Exception):
     """
     Global exception handler for unhandled errors.
-    
+
     Logs the full error internally and returns a sanitized error response
     that does not expose sensitive information like paths, credentials, or
     stack traces.
-    
+
     Requirements: 16.5
     """
-    from .utils.error_sanitization import sanitize_exception, log_error_safely
-    
+    from .utils.error_sanitization import log_error_safely, sanitize_exception
+
     # Log the full error internally with all details
     log_error_safely(
         exc,
@@ -326,10 +333,10 @@ async def global_exception_handler(request: Request, exc: Exception):
         },
         logger_instance=logger,
     )
-    
+
     # Sanitize the error for user response
     sanitized_error = sanitize_exception(exc)
-    
+
     # Log to audit service if available
     if audit_service:
         audit_service.log_invocation(
@@ -338,7 +345,7 @@ async def global_exception_handler(request: Request, exc: Exception):
             status=AuditStatus.FAILURE,
             error_message=sanitized_error.internal_message,
         )
-    
+
     return JSONResponse(
         status_code=500,
         content={
@@ -352,26 +359,27 @@ async def global_exception_handler(request: Request, exc: Exception):
 async def health_check() -> HealthStatus:
     """
     Health check endpoint for monitoring server status.
-    
+
     Returns:
         HealthStatus with server status, version, connectivity, budget info, loop detection info, and security info
-    
+
     Requirements: 13.1, 13.2, 15.3, 15.4, 16.4
     """
     from .models.health import BudgetHealthInfo, LoopDetectionHealthInfo, SecurityHealthInfo
     from .services.security_service import get_security_service
-    
+
     # Check Redis connectivity
     redis_connected = False
     if redis_cache:
         redis_connected = await redis_cache.is_connected()
-    
+
     # Check SQLite connectivity
     sqlite_connected = False
     if audit_service:
         try:
             # Try to query the audit database
             import sqlite3
+
             conn = sqlite3.connect(audit_service.db_path)
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
@@ -380,12 +388,12 @@ async def health_check() -> HealthStatus:
         except Exception as e:
             logger.warning(f"SQLite connectivity check failed: {e}")
             sqlite_connected = False
-    
+
     # Get budget tracking info (Requirement 15.3)
     budget_info = None
     budget_tracker = get_budget_tracker()
     app_settings = settings()
-    
+
     if budget_tracker:
         try:
             active_sessions = await budget_tracker.get_active_session_count()
@@ -418,11 +426,11 @@ async def health_check() -> HealthStatus:
             session_ttl_seconds=0,
             active_sessions=0,
         )
-    
+
     # Get loop detection info (Requirement 15.4)
     loop_detection_info = None
     loop_detector = get_loop_detector()
-    
+
     if loop_detector:
         try:
             stats = await loop_detector.get_loop_detection_stats()
@@ -465,11 +473,11 @@ async def health_check() -> HealthStatus:
             loops_detected_total=0,
             loops_by_tool={},
         )
-    
+
     # Get security monitoring info (Requirement 16.4)
     security_info = None
     security_svc = get_security_service()
-    
+
     if security_svc:
         try:
             metrics = await security_svc.get_security_metrics()
@@ -518,7 +526,7 @@ async def health_check() -> HealthStatus:
             recent_events_count=0,
             redis_enabled=False,
         )
-    
+
     # Determine overall status
     # Server is healthy if core services are available
     # Degraded if some optional services (Redis) are unavailable
@@ -526,7 +534,7 @@ async def health_check() -> HealthStatus:
         status = "healthy" if redis_connected else "degraded"
     else:
         status = "unhealthy"
-    
+
     return HealthStatus(
         status=status,
         version=__version__,
@@ -543,132 +551,159 @@ async def health_check() -> HealthStatus:
 async def metrics_endpoint() -> Response:
     """
     Prometheus-compatible metrics endpoint for observability.
-    
+
     Returns metrics in Prometheus text format including:
     - Tool call counts and execution times
     - Error rates by tool
     - Budget utilization metrics
     - Loop detection metrics
     - Session metrics
-    
+
     Requirements: 15.2
     """
-    from .services.metrics_service import MetricsService
     from datetime import datetime
-    
+
+    from .services.metrics_service import MetricsService
+
     if not audit_service:
         return Response(
             content="# No metrics available - audit service not initialized\n",
-            media_type="text/plain; charset=utf-8"
+            media_type="text/plain; charset=utf-8",
         )
-    
+
     # Create metrics service instance
     metrics_service = MetricsService(
         audit_service=audit_service,
         budget_tracker=get_budget_tracker(),
         loop_detector=get_loop_detector(),
     )
-    
+
     # Get global metrics
     global_metrics = await metrics_service.get_global_metrics()
-    
+
     # Build Prometheus format output
     lines = []
     lines.append("# HELP mcp_server_uptime_seconds Server uptime in seconds")
     lines.append("# TYPE mcp_server_uptime_seconds gauge")
     lines.append(f"mcp_server_uptime_seconds {global_metrics.uptime_seconds}")
-    
+
     lines.append("# HELP mcp_server_total_sessions Total number of sessions created")
     lines.append("# TYPE mcp_server_total_sessions counter")
     lines.append(f"mcp_server_total_sessions {global_metrics.total_sessions}")
-    
+
     lines.append("# HELP mcp_server_active_sessions Number of currently active sessions")
     lines.append("# TYPE mcp_server_active_sessions gauge")
     lines.append(f"mcp_server_active_sessions {global_metrics.active_sessions}")
-    
+
     lines.append("# HELP mcp_tool_invocations_total Total number of tool invocations")
     lines.append("# TYPE mcp_tool_invocations_total counter")
     lines.append(f"mcp_tool_invocations_total {global_metrics.total_tool_invocations}")
-    
+
     lines.append("# HELP mcp_tool_successes_total Total number of successful tool invocations")
     lines.append("# TYPE mcp_tool_successes_total counter")
     lines.append(f"mcp_tool_successes_total {global_metrics.total_tool_successes}")
-    
+
     lines.append("# HELP mcp_tool_failures_total Total number of failed tool invocations")
     lines.append("# TYPE mcp_tool_failures_total counter")
     lines.append(f"mcp_tool_failures_total {global_metrics.total_tool_failures}")
-    
+
     lines.append("# HELP mcp_tool_error_rate Overall error rate as a fraction")
     lines.append("# TYPE mcp_tool_error_rate gauge")
     lines.append(f"mcp_tool_error_rate {global_metrics.overall_error_rate}")
-    
+
     lines.append("# HELP mcp_tool_execution_time_ms_total Total execution time in milliseconds")
     lines.append("# TYPE mcp_tool_execution_time_ms_total counter")
     lines.append(f"mcp_tool_execution_time_ms_total {global_metrics.total_execution_time_ms}")
-    
+
     lines.append("# HELP mcp_tool_execution_time_ms_average Average execution time in milliseconds")
     lines.append("# TYPE mcp_tool_execution_time_ms_average gauge")
     lines.append(f"mcp_tool_execution_time_ms_average {global_metrics.average_execution_time_ms}")
-    
+
     # Per-tool metrics
     lines.append("# HELP mcp_tool_invocations Tool invocation count by tool name")
     lines.append("# TYPE mcp_tool_invocations counter")
     for tool_stat in global_metrics.tool_stats:
-        lines.append(f'mcp_tool_invocations{{tool="{tool_stat.tool_name}"}} {tool_stat.invocation_count}')
-    
+        lines.append(
+            f'mcp_tool_invocations{{tool="{tool_stat.tool_name}"}} {tool_stat.invocation_count}'
+        )
+
     lines.append("# HELP mcp_tool_successes Tool success count by tool name")
     lines.append("# TYPE mcp_tool_successes counter")
     for tool_stat in global_metrics.tool_stats:
-        lines.append(f'mcp_tool_successes{{tool="{tool_stat.tool_name}"}} {tool_stat.success_count}')
-    
+        lines.append(
+            f'mcp_tool_successes{{tool="{tool_stat.tool_name}"}} {tool_stat.success_count}'
+        )
+
     lines.append("# HELP mcp_tool_failures Tool failure count by tool name")
     lines.append("# TYPE mcp_tool_failures counter")
     for tool_stat in global_metrics.tool_stats:
         lines.append(f'mcp_tool_failures{{tool="{tool_stat.tool_name}"}} {tool_stat.failure_count}')
-    
+
     lines.append("# HELP mcp_tool_error_rate_by_tool Error rate by tool name")
     lines.append("# TYPE mcp_tool_error_rate_by_tool gauge")
     for tool_stat in global_metrics.tool_stats:
-        lines.append(f'mcp_tool_error_rate_by_tool{{tool="{tool_stat.tool_name}"}} {tool_stat.error_rate}')
-    
-    lines.append("# HELP mcp_tool_execution_time_ms_average_by_tool Average execution time by tool name")
+        lines.append(
+            f'mcp_tool_error_rate_by_tool{{tool="{tool_stat.tool_name}"}} {tool_stat.error_rate}'
+        )
+
+    lines.append(
+        "# HELP mcp_tool_execution_time_ms_average_by_tool Average execution time by tool name"
+    )
     lines.append("# TYPE mcp_tool_execution_time_ms_average_by_tool gauge")
     for tool_stat in global_metrics.tool_stats:
-        lines.append(f'mcp_tool_execution_time_ms_average_by_tool{{tool="{tool_stat.tool_name}"}} {tool_stat.average_execution_time_ms}')
-    
+        lines.append(
+            f'mcp_tool_execution_time_ms_average_by_tool{{tool="{tool_stat.tool_name}"}} {tool_stat.average_execution_time_ms}'
+        )
+
     # Budget metrics
     if global_metrics.budget_metrics:
         lines.append("# HELP mcp_budget_max_calls_per_session Maximum tool calls per session")
         lines.append("# TYPE mcp_budget_max_calls_per_session gauge")
         lines.append(f"mcp_budget_max_calls_per_session {global_metrics.budget_metrics.max_budget}")
-        
-        lines.append("# HELP mcp_budget_active_sessions Number of active sessions with budget tracking")
+
+        lines.append(
+            "# HELP mcp_budget_active_sessions Number of active sessions with budget tracking"
+        )
         lines.append("# TYPE mcp_budget_active_sessions gauge")
-        lines.append(f"mcp_budget_active_sessions {global_metrics.budget_metrics.active_sessions_count}")
-        
-        lines.append("# HELP mcp_budget_sessions_exhausted Number of sessions that exhausted their budget")
+        lines.append(
+            f"mcp_budget_active_sessions {global_metrics.budget_metrics.active_sessions_count}"
+        )
+
+        lines.append(
+            "# HELP mcp_budget_sessions_exhausted Number of sessions that exhausted their budget"
+        )
         lines.append("# TYPE mcp_budget_sessions_exhausted counter")
-        lines.append(f"mcp_budget_sessions_exhausted {global_metrics.budget_metrics.sessions_exhausted_count}")
-    
+        lines.append(
+            f"mcp_budget_sessions_exhausted {global_metrics.budget_metrics.sessions_exhausted_count}"
+        )
+
     # Loop detection metrics
     if global_metrics.loop_detection_metrics:
         lines.append("# HELP mcp_loop_detection_total Total loops detected")
         lines.append("# TYPE mcp_loop_detection_total counter")
-        lines.append(f"mcp_loop_detection_total {global_metrics.loop_detection_metrics.total_loops_detected}")
-        
+        lines.append(
+            f"mcp_loop_detection_total {global_metrics.loop_detection_metrics.total_loops_detected}"
+        )
+
         lines.append("# HELP mcp_loop_detection_active_sessions Active sessions with loop tracking")
         lines.append("# TYPE mcp_loop_detection_active_sessions gauge")
-        lines.append(f"mcp_loop_detection_active_sessions {global_metrics.loop_detection_metrics.active_sessions_with_loops}")
-        
+        lines.append(
+            f"mcp_loop_detection_active_sessions {global_metrics.loop_detection_metrics.active_sessions_with_loops}"
+        )
+
         lines.append("# HELP mcp_loop_detection_by_tool Loops detected by tool name")
         lines.append("# TYPE mcp_loop_detection_by_tool counter")
         for tool_name, count in global_metrics.loop_detection_metrics.loops_by_tool.items():
             lines.append(f'mcp_loop_detection_by_tool{{tool="{tool_name}"}} {count}')
-        
-        lines.append("# HELP mcp_loop_detection_max_identical_calls_threshold Max identical calls threshold")
+
+        lines.append(
+            "# HELP mcp_loop_detection_max_identical_calls_threshold Max identical calls threshold"
+        )
         lines.append("# TYPE mcp_loop_detection_max_identical_calls_threshold gauge")
-        lines.append(f"mcp_loop_detection_max_identical_calls_threshold {global_metrics.loop_detection_metrics.max_identical_calls_threshold}")
-    
+        lines.append(
+            f"mcp_loop_detection_max_identical_calls_threshold {global_metrics.loop_detection_metrics.max_identical_calls_threshold}"
+        )
+
     # Error metrics
     if global_metrics.error_metrics:
         lines.append("# HELP mcp_error_trend Error trend direction")
@@ -677,24 +712,21 @@ async def metrics_endpoint() -> Response:
             global_metrics.error_metrics.error_trend, 0
         )
         lines.append(f"mcp_error_trend {trend_value}")
-        
+
         lines.append("# HELP mcp_errors_by_type Error count by error type")
         lines.append("# TYPE mcp_errors_by_type counter")
         for error_type, count in global_metrics.error_metrics.errors_by_type.items():
             lines.append(f'mcp_errors_by_type{{type="{error_type}"}} {count}')
-        
+
         lines.append("# HELP mcp_errors_by_tool Error count by tool name")
         lines.append("# TYPE mcp_errors_by_tool counter")
         for tool_name, count in global_metrics.error_metrics.errors_by_tool.items():
             lines.append(f'mcp_errors_by_tool{{tool="{tool_name}"}} {count}')
-    
+
     # Add timestamp
-    lines.append(f"# Generated at {datetime.now(timezone.utc).isoformat()}")
-    
-    return Response(
-        content="\n".join(lines) + "\n",
-        media_type="text/plain; charset=utf-8"
-    )
+    lines.append(f"# Generated at {datetime.now(UTC).isoformat()}")
+
+    return Response(content="\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
 
 
 @app.get("/")
@@ -716,14 +748,15 @@ async def root():
 
 # MCP Protocol Endpoints
 
+
 @app.get("/mcp/tools", response_model=MCPListToolsResponse)
 async def list_tools() -> MCPListToolsResponse:
     """
     List all available MCP tools.
-    
+
     Returns the definitions of all 8 registered tools including
     their names, descriptions, and input schemas.
-    
+
     Requirements: 14.5
     """
     if not mcp_handler:
@@ -731,7 +764,7 @@ async def list_tools() -> MCPListToolsResponse:
             status_code=503,
             detail="MCP handler not initialized",
         )
-    
+
     tools = mcp_handler.get_tool_definitions()
     return MCPListToolsResponse(tools=tools)
 
@@ -740,17 +773,17 @@ async def list_tools() -> MCPListToolsResponse:
 async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
     """
     Invoke an MCP tool by name.
-    
+
     This endpoint handles tool invocations from AI assistants.
     It validates the tool name, invokes the appropriate handler,
     and returns the result.
-    
+
     Args:
         request: MCPToolCallRequest with tool name and arguments
-    
+
     Returns:
         MCPToolCallResponse with tool output or error
-    
+
     Requirements: 14.5
     """
     if not mcp_handler:
@@ -758,14 +791,14 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
             status_code=503,
             detail="MCP handler not initialized",
         )
-    
+
     logger.info(f"MCP tool call: {request.name} with args: {request.arguments}")
-    
+
     result = await mcp_handler.invoke_tool(
         name=request.name,
         arguments=request.arguments,
     )
-    
+
     return MCPToolCallResponse(
         content=result.content,
         is_error=result.is_error,
@@ -774,20 +807,21 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
 
 # Tool-specific endpoints for direct HTTP access (optional)
 
+
 @app.post("/api/v1/compliance/check")
 async def api_check_compliance(
     resource_types: list[str],
-    filters: Optional[dict] = None,
+    filters: dict | None = None,
     severity: str = "all",
 ):
     """
     Direct API endpoint for compliance checking.
-    
+
     This provides an alternative to the MCP protocol for direct HTTP access.
     """
     if not mcp_handler:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    
+
     result = await mcp_handler.invoke_tool(
         name="check_tag_compliance",
         arguments={
@@ -796,10 +830,10 @@ async def api_check_compliance(
             "severity": severity,
         },
     )
-    
+
     if result.is_error:
         raise HTTPException(status_code=400, detail=result.content[0]["text"])
-    
+
     return JSONResponse(content={"result": result.content[0]["text"]})
 
 
@@ -810,13 +844,13 @@ async def api_get_policy():
     """
     if not mcp_handler:
         raise HTTPException(status_code=503, detail="Service not initialized")
-    
+
     result = await mcp_handler.invoke_tool(
         name="get_tagging_policy",
         arguments={},
     )
-    
+
     if result.is_error:
         raise HTTPException(status_code=400, detail=result.content[0]["text"])
-    
+
     return JSONResponse(content={"result": result.content[0]["text"]})
