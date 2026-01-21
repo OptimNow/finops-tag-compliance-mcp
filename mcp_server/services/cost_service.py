@@ -221,19 +221,65 @@ class CostService:
             service_total = service_costs.get(service_name, 0.0)
             
             if resource_type in ["ec2:instance", "rds:db"]:
-                # Use per-resource costs where available
+                # STEP 1: Assign actual costs from Cost Explorer where available
                 for resource in resources:
                     rid = resource["resource_id"]
                     if rid in resource_costs:
                         resource_cost_map[rid] = resource_costs[rid]
-                    elif resources:
-                        resources_without_costs = [r for r in resources if r["resource_id"] not in resource_costs]
-                        if resources_without_costs:
-                            known_costs = sum(resource_costs.get(r["resource_id"], 0) for r in resources)
-                            remaining = max(0, service_total - known_costs)
+
+                # STEP 2: Handle resources without Cost Explorer data
+                resources_without_costs = [
+                    r for r in resources
+                    if r["resource_id"] not in resource_costs
+                ]
+
+                if resources_without_costs:
+                    known_costs = sum(
+                        resource_costs.get(r["resource_id"], 0)
+                        for r in resources
+                    )
+                    remaining = max(0, service_total - known_costs)
+
+                    if resource_type == "ec2:instance":
+                        # State-aware cost distribution for EC2
+                        stopped_instances = [
+                            r for r in resources_without_costs
+                            if r.get("instance_state") in [
+                                "stopped", "stopping", "terminated", "shutting-down"
+                            ]
+                        ]
+                        running_instances = [
+                            r for r in resources_without_costs
+                            if r.get("instance_state") not in [
+                                "stopped", "stopping", "terminated", "shutting-down"
+                            ]
+                        ]
+
+                        # Assign $0 to stopped instances (compute only)
+                        for resource in stopped_instances:
+                            resource_cost_map[resource["resource_id"]] = 0.0
+
+                        # Distribute remaining cost among running instances only
+                        if running_instances:
+                            per_running = remaining / len(running_instances)
+                            for resource in running_instances:
+                                resource_cost_map[resource["resource_id"]] = per_running
+                        elif remaining > 0:
+                            # Edge case: No running instances but service has costs
+                            # This suggests Cost Explorer data is incomplete
+                            # Distribute proportionally as fallback
+                            logger.warning(
+                                f"EC2 service has ${remaining:.2f} costs but no running instances found. "
+                                "This may indicate incomplete Cost Explorer data or other EC2 costs (NAT, EBS, etc.)."
+                            )
                             per_resource = remaining / len(resources_without_costs)
-                            if rid not in resource_costs:
-                                resource_cost_map[rid] = per_resource
+                            for resource in resources_without_costs:
+                                resource_cost_map[resource["resource_id"]] = per_resource
+                    else:
+                        # RDS: keep equal distribution (no state awareness for RDS yet)
+                        per_resource = remaining / len(resources_without_costs)
+                        for resource in resources_without_costs:
+                            resource_cost_map[resource["resource_id"]] = per_resource
             else:
                 # Distribute service total evenly among resources
                 if resources and service_total > 0:
@@ -404,19 +450,65 @@ class CostService:
             service_total = service_costs.get(service_name, 0.0)
             
             if resource_type in ["ec2:instance", "rds:db"]:
-                # Use per-resource costs where available
+                # STEP 1: Assign actual costs from Cost Explorer where available
                 for resource in resources:
                     rid = resource["resource_id"]
                     if rid in resource_costs:
                         resource_cost_map[rid] = resource_costs[rid]
-                    elif resources:
-                        resources_without_costs = [r for r in resources if r["resource_id"] not in resource_costs]
-                        if resources_without_costs:
-                            known_costs = sum(resource_costs.get(r["resource_id"], 0) for r in resources)
-                            remaining = max(0, service_total - known_costs)
+
+                # STEP 2: Handle resources without Cost Explorer data
+                resources_without_costs = [
+                    r for r in resources
+                    if r["resource_id"] not in resource_costs
+                ]
+
+                if resources_without_costs:
+                    known_costs = sum(
+                        resource_costs.get(r["resource_id"], 0)
+                        for r in resources
+                    )
+                    remaining = max(0, service_total - known_costs)
+
+                    if resource_type == "ec2:instance":
+                        # State-aware cost distribution for EC2
+                        stopped_instances = [
+                            r for r in resources_without_costs
+                            if r.get("instance_state") in [
+                                "stopped", "stopping", "terminated", "shutting-down"
+                            ]
+                        ]
+                        running_instances = [
+                            r for r in resources_without_costs
+                            if r.get("instance_state") not in [
+                                "stopped", "stopping", "terminated", "shutting-down"
+                            ]
+                        ]
+
+                        # Assign $0 to stopped instances (compute only)
+                        for resource in stopped_instances:
+                            resource_cost_map[resource["resource_id"]] = 0.0
+
+                        # Distribute remaining cost among running instances only
+                        if running_instances:
+                            per_running = remaining / len(running_instances)
+                            for resource in running_instances:
+                                resource_cost_map[resource["resource_id"]] = per_running
+                        elif remaining > 0:
+                            # Edge case: No running instances but service has costs
+                            # This suggests Cost Explorer data is incomplete
+                            # Distribute proportionally as fallback
+                            logger.warning(
+                                f"EC2 service has ${remaining:.2f} costs but no running instances found. "
+                                "This may indicate incomplete Cost Explorer data or other EC2 costs (NAT, EBS, etc.)."
+                            )
                             per_resource = remaining / len(resources_without_costs)
-                            if rid not in resource_costs:
-                                resource_cost_map[rid] = per_resource
+                            for resource in resources_without_costs:
+                                resource_cost_map[resource["resource_id"]] = per_resource
+                    else:
+                        # RDS: keep equal distribution (no state awareness for RDS yet)
+                        per_resource = remaining / len(resources_without_costs)
+                        for resource in resources_without_costs:
+                            resource_cost_map[resource["resource_id"]] = per_resource
             else:
                 # Distribute service total evenly among resources
                 if resources and service_total > 0:

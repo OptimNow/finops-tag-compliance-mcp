@@ -1235,3 +1235,133 @@ All 8 MCP tools tested through Claude Desktop with real AWS resources:
 **Date**: January 9, 2026
 **Signed**: Jean (FinOps Practitioner)
 
+---
+
+## January 21, 2026: State-Aware Cost Attribution Fix
+
+### Post-Phase 1 Enhancement: Accurate Cost Distribution for EC2 Instances
+
+**The Problem Discovered:**
+
+During production use, users noticed that stopped EC2 instances were being assigned full compute costs in the cost attribution gap calculations. For example:
+- 4 EC2 instances, $100 total spend
+- Current logic: $100 ÷ 4 = $25 per instance
+- Reality: 2 running ($50 + $50), 2 stopped ($0 + $0)
+- **Result**: Stopped instances incorrectly assigned $25 each, creating misleading cost attribution gaps
+
+This was a fundamental flaw in the cost distribution logic that undermined the accuracy of financial reporting.
+
+**What Kiro Did:**
+
+Working with Claude (claude.ai/code), I described the issue in plain language during a real dialogue where the system was attributing costs to stopped instances. Kiro:
+
+1. **Analyzed the problem** by exploring the cost attribution logic across multiple files
+2. **Designed a comprehensive 3-phase solution**:
+   - Phase 1: Capture instance state and type metadata
+   - Phase 2: Implement intelligent state-aware cost distribution
+   - Phase 3: Enhance transparency with clear cost source tracking
+3. **Asked clarifying questions** about implementation approach:
+   - Should we estimate EBS costs or assign $0 to stopped instances?
+   - How should we handle unknown/missing state information?
+   - What level of cost source transparency is needed?
+   - Should implementation be incremental or all at once?
+4. **Created a detailed implementation plan** covering all aspects
+5. **Implemented all three phases** with comprehensive testing
+
+**The Solution Implemented:**
+
+**Phase 1: Capture Instance Metadata**
+- Added optional `instance_state` and `instance_type` fields to Resource and UntaggedResource models
+- Extended AWS client to extract State and InstanceType from EC2 DescribeInstances API
+- Backward compatible (optional fields with safe defaults)
+
+**Phase 2: Intelligent Cost Distribution**
+Three-tier approach for EC2 instances:
+- **Tier 1 - Actual Costs**: Uses Cost Explorer per-resource data when available (most accurate)
+- **Tier 2 - State-Aware Distribution**: For instances without Cost Explorer data:
+  - Stopped instances (stopped, stopping, terminated, shutting-down) → $0 (compute only)
+  - Running instances (running, pending, unknown) → Share remaining costs proportionally
+  - Conservative handling: Unknown states treated as running to avoid underestimation
+- **Tier 3 - Proportional Fallback**: When all instances are stopped but service has costs, distributes proportionally with warning (suggests incomplete Cost Explorer data or other EC2 costs like NAT, EBS)
+
+Applied to 3 cost calculation methods in `cost_service.py` and `find_untagged_resources.py`.
+
+**Phase 3: Enhanced Transparency**
+- Updated cost notes with clear state-aware explanations
+- Simplified cost source tracking: "actual", "estimated", "stopped"
+- Instance state and type automatically included in JSON outputs via model fields
+
+**Testing Coverage:**
+
+✅ **7 new unit tests** (all passing):
+- 3 AWS client tests for state/type extraction:
+  - `test_get_ec2_instances_extracts_state_and_type`
+  - `test_get_ec2_instances_stopped_state`
+  - `test_get_ec2_instances_mixed_states`
+- 4 cost service tests for state-aware distribution:
+  - `test_stopped_instances_get_zero_cost`
+  - `test_mixed_cost_explorer_and_state`
+  - `test_all_stopped_with_service_costs`
+  - `test_unknown_state_treated_as_running`
+
+All existing tests remain passing (backward compatible).
+
+**Example Impact:**
+
+**Before** (4 instances, $100 total):
+- i-running-1: $25 ❌ (underestimated)
+- i-running-2: $25 ❌ (underestimated)
+- i-stopped-1: $25 ❌ (incorrect!)
+- i-stopped-2: $25 ❌ (incorrect!)
+
+**After** (4 instances, $100 total):
+- i-running-1: $50 ✅ (accurate)
+- i-running-2: $50 ✅ (accurate)
+- i-stopped-1: $0 ✅ (compute only)
+- i-stopped-2: $0 ✅ (compute only)
+
+**Files Modified:**
+- `mcp_server/models/resource.py` - Added optional fields
+- `mcp_server/models/untagged.py` - Added optional fields
+- `mcp_server/clients/aws_client.py` - State/type extraction
+- `mcp_server/services/cost_service.py` - State-aware cost distribution (3 methods)
+- `mcp_server/tools/find_untagged_resources.py` - State-aware estimates + cost notes
+- `tests/unit/test_aws_client.py` - 3 new tests
+- `tests/unit/test_cost_service.py` - 4 new tests
+- `CLAUDE.md` - Updated cost attribution documentation
+
+**What I Learned:**
+
+1. **Real-world usage reveals edge cases**: The stopped instance issue only became apparent through actual production use with mixed instance states
+
+2. **Conservative defaults are critical**: Treating unknown states as "running" prevents underestimating costs, which is safer than overestimating gaps
+
+3. **Transparency builds trust**: Clear cost source labels ("actual", "estimated", "stopped") help users understand methodology and trust the numbers
+
+4. **Backward compatibility is essential**: Making new fields optional ensures existing code continues to work while enabling new functionality
+
+5. **Comprehensive testing catches issues early**: Testing edge cases (all stopped, mixed states, unknown states) prevented production bugs
+
+**Kiro's Strengths Demonstrated:**
+
+- **Problem understanding**: Quickly grasped the core issue from my explanation of stopped instances being incorrectly charged
+- **Comprehensive planning**: Created a detailed 3-phase plan before writing any code
+- **User-centric design**: Asked clarifying questions to align implementation with user preferences
+- **Quality focus**: Added 7 comprehensive tests covering all edge cases
+- **Documentation discipline**: Updated both CLAUDE.md and this development journal
+- **Backward compatibility**: Ensured changes didn't break existing functionality
+
+**Outcome:**
+
+✅ Cost attribution gaps now accurately reflect actual cloud spend
+✅ Stopped instances no longer incorrectly assigned compute costs
+✅ Clear methodology documentation for FinOps practitioners
+✅ Comprehensive test coverage for confidence in accuracy
+✅ Backward compatible - no breaking changes
+
+This fix significantly improves the accuracy and trustworthiness of the financial reporting features, making the tool more valuable for FinOps teams making budget decisions based on cost attribution gap analysis.
+
+**Implementation Time**: ~4 hours (design, implementation, testing, documentation)
+**Complexity**: Medium (required changes across 7 files with comprehensive testing)
+**User Impact**: High (directly affects financial reporting accuracy)
+

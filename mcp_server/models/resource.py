@@ -26,3 +26,11 @@ class Resource(BaseModel):
         None,
         description="Full ARN of the resource"
     )
+    instance_state: str | None = Field(
+        None,
+        description="Instance state (running, stopped, terminated, etc.) - EC2 only"
+    )
+    instance_type: str | None = Field(
+        None,
+        description="Instance type (t3.medium, m5.large, etc.) - EC2 only"
+    )
