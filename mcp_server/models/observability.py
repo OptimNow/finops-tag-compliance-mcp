@@ -225,9 +225,7 @@ class GlobalMetrics(BaseModel):
     tool_stats: list[ToolUsageStats] = Field(
         default_factory=list, description="Usage statistics for each tool"
     )
-    error_metrics: ErrorRateMetrics | None = Field(
-        default=None, description="Error rate metrics"
-    )
+    error_metrics: ErrorRateMetrics | None = Field(default=None, description="Error rate metrics")
     budget_metrics: BudgetUtilizationMetrics | None = Field(
         default=None, description="Global budget utilization metrics"
     )

@@ -5,8 +5,6 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from mcp_server.utils.resource_utils import (
-    SUPPORTED_RESOURCE_TYPES,
-    TAGGING_API_RESOURCE_TYPES,
     extract_account_from_arn,
     fetch_all_resources_via_tagging_api,
     fetch_resources_by_type,

@@ -11,7 +11,6 @@ and return a graceful degradation response explaining the limit was reached.
 The response SHALL NOT be an error but a structured message indicating budget exhaustion.
 """
 
-
 import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
