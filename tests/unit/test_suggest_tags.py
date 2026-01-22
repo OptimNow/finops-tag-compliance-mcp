@@ -3,13 +3,12 @@
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from mcp_server.tools.suggest_tags import (
-    suggest_tags,
-    _is_valid_arn,
-    _parse_arn,
-    _service_to_resource_type,
-    _extract_resource_id,
-    SuggestTagsResult,
+from mcp_server.tools.suggest_tags import suggest_tags, SuggestTagsResult
+from mcp_server.utils.arn_utils import (
+    is_valid_arn,
+    parse_arn,
+    service_to_resource_type,
+    extract_resource_id,
 )
 from mcp_server.clients.aws_client import AWSClient
 from mcp_server.services.policy_service import PolicyService
@@ -51,49 +50,49 @@ def mock_policy_service():
 # Tests for ARN validation and parsing functions
 
 
-def test_is_valid_arn_valid_ec2():
+def testis_valid_arn_valid_ec2():
     """Test ARN validation with valid EC2 ARN."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
-def test_is_valid_arn_valid_s3():
+def testis_valid_arn_valid_s3():
     """Test ARN validation with valid S3 ARN."""
     arn = "arn:aws:s3:::my-bucket"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
-def test_is_valid_arn_valid_rds():
+def testis_valid_arn_valid_rds():
     """Test ARN validation with valid RDS ARN."""
     arn = "arn:aws:rds:us-east-1:123456789012:db:mydb"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
-def test_is_valid_arn_valid_lambda():
+def testis_valid_arn_valid_lambda():
     """Test ARN validation with valid Lambda ARN."""
     arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
-    assert _is_valid_arn(arn) is True
+    assert is_valid_arn(arn) is True
 
 
-def test_is_valid_arn_invalid_format():
+def testis_valid_arn_invalid_format():
     """Test ARN validation with invalid format."""
-    assert _is_valid_arn("not-an-arn") is False
+    assert is_valid_arn("not-an-arn") is False
 
 
-def test_is_valid_arn_empty_string():
+def testis_valid_arn_empty_string():
     """Test ARN validation with empty string."""
-    assert _is_valid_arn("") is False
+    assert is_valid_arn("") is False
 
 
-def test_is_valid_arn_none():
+def testis_valid_arn_none():
     """Test ARN validation with None."""
-    assert _is_valid_arn(None) is False
+    assert is_valid_arn(None) is False
 
 
-def test_parse_arn_ec2_instance():
+def testparse_arn_ec2_instance():
     """Test parsing EC2 instance ARN."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0"
-    parsed = _parse_arn(arn)
+    parsed = parse_arn(arn)
 
     assert parsed["service"] == "ec2"
     assert parsed["region"] == "us-east-1"
@@ -102,10 +101,10 @@ def test_parse_arn_ec2_instance():
     assert parsed["resource_id"] == "i-1234567890abcdef0"
 
 
-def test_parse_arn_s3_bucket():
+def testparse_arn_s3_bucket():
     """Test parsing S3 bucket ARN."""
     arn = "arn:aws:s3:::my-bucket"
-    parsed = _parse_arn(arn)
+    parsed = parse_arn(arn)
 
     assert parsed["service"] == "s3"
     assert parsed["region"] == "global"
@@ -113,10 +112,10 @@ def test_parse_arn_s3_bucket():
     assert parsed["resource_id"] == "my-bucket"
 
 
-def test_parse_arn_rds_database():
+def testparse_arn_rds_database():
     """Test parsing RDS database ARN."""
     arn = "arn:aws:rds:us-west-2:123456789012:db:mydb"
-    parsed = _parse_arn(arn)
+    parsed = parse_arn(arn)
 
     assert parsed["service"] == "rds"
     assert parsed["region"] == "us-west-2"
@@ -124,10 +123,10 @@ def test_parse_arn_rds_database():
     assert parsed["resource_id"] == "mydb"
 
 
-def test_parse_arn_lambda_function():
+def testparse_arn_lambda_function():
     """Test parsing Lambda function ARN."""
     arn = "arn:aws:lambda:eu-west-1:123456789012:function:my-function"
-    parsed = _parse_arn(arn)
+    parsed = parse_arn(arn)
 
     assert parsed["service"] == "lambda"
     assert parsed["region"] == "eu-west-1"
@@ -135,63 +134,63 @@ def test_parse_arn_lambda_function():
     assert parsed["resource_id"] == "my-function"
 
 
-def test_parse_arn_invalid_format():
+def testparse_arn_invalid_format():
     """Test parsing invalid ARN format."""
     with pytest.raises(ValueError, match="Invalid ARN format"):
-        _parse_arn("invalid-arn")
+        parse_arn("invalid-arn")
 
 
-def test_service_to_resource_type_ec2():
+def testservice_to_resource_type_ec2():
     """Test service to resource type mapping for EC2."""
-    resource_type = _service_to_resource_type("ec2", "instance/i-12345")
+    resource_type = service_to_resource_type("ec2", "instance/i-12345")
     assert resource_type == "ec2:instance"
 
 
-def test_service_to_resource_type_s3():
+def testservice_to_resource_type_s3():
     """Test service to resource type mapping for S3."""
-    resource_type = _service_to_resource_type("s3", "my-bucket")
+    resource_type = service_to_resource_type("s3", "my-bucket")
     assert resource_type == "s3:bucket"
 
 
-def test_service_to_resource_type_rds():
+def testservice_to_resource_type_rds():
     """Test service to resource type mapping for RDS."""
-    resource_type = _service_to_resource_type("rds", "db:mydb")
+    resource_type = service_to_resource_type("rds", "db:mydb")
     assert resource_type == "rds:db"
 
 
-def test_service_to_resource_type_lambda():
+def testservice_to_resource_type_lambda():
     """Test service to resource type mapping for Lambda."""
-    resource_type = _service_to_resource_type("lambda", "function:my-func")
+    resource_type = service_to_resource_type("lambda", "function:my-func")
     assert resource_type == "lambda:function"
 
 
-def test_service_to_resource_type_ecs():
+def testservice_to_resource_type_ecs():
     """Test service to resource type mapping for ECS."""
-    resource_type = _service_to_resource_type("ecs", "service/my-cluster/my-service")
+    resource_type = service_to_resource_type("ecs", "service/my-cluster/my-service")
     assert resource_type == "ecs:service"
 
 
-def test_extract_resource_id_with_slash():
+def testextract_resource_id_with_slash():
     """Test extracting resource ID with slash separator."""
-    resource_id = _extract_resource_id("instance/i-12345")
+    resource_id = extract_resource_id("instance/i-12345")
     assert resource_id == "i-12345"
 
 
-def test_extract_resource_id_with_colon():
+def testextract_resource_id_with_colon():
     """Test extracting resource ID with colon separator."""
-    resource_id = _extract_resource_id("db:mydb")
+    resource_id = extract_resource_id("db:mydb")
     assert resource_id == "mydb"
 
 
-def test_extract_resource_id_simple():
+def testextract_resource_id_simple():
     """Test extracting simple resource ID."""
-    resource_id = _extract_resource_id("my-bucket")
+    resource_id = extract_resource_id("my-bucket")
     assert resource_id == "my-bucket"
 
 
-def test_extract_resource_id_multiple_slashes():
+def testextract_resource_id_multiple_slashes():
     """Test extracting resource ID with multiple slashes."""
-    resource_id = _extract_resource_id("service/cluster/my-service")
+    resource_id = extract_resource_id("service/cluster/my-service")
     assert resource_id == "my-service"
 
 
