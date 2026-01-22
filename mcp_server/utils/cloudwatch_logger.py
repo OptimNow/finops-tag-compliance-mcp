@@ -7,7 +7,6 @@
 import json
 import logging
 import os
-from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -18,30 +17,30 @@ from .correlation import get_correlation_id
 class CorrelationIDFilter(logging.Filter):
     """
     Logging filter that adds correlation ID to all log records.
-    
+
     This filter automatically injects the correlation ID from the
     current context into every log record, making it available for
     formatting and structured logging.
-    
+
     Requirements: 15.1
     """
-    
+
     def filter(self, record: logging.LogRecord) -> bool:
         """
         Add correlation ID to the log record.
-        
+
         Args:
             record: The log record to filter
-        
+
         Returns:
             True to allow the record to be logged
         """
         # Get correlation ID from context
         correlation_id = get_correlation_id()
-        
+
         # Add to record (will be empty string if not set)
         record.correlation_id = correlation_id if correlation_id else "-"
-        
+
         return True
 
 
@@ -91,6 +90,7 @@ class CloudWatchHandler(logging.Handler):
         except Exception as e:
             # Log to stderr if CloudWatch setup fails
             import sys
+
             print(f"Failed to setup CloudWatch logging: {e}", file=sys.stderr)
 
     def emit(self, record: logging.LogRecord) -> None:
@@ -104,10 +104,10 @@ class CloudWatchHandler(logging.Handler):
             # Format the message
             message = self.format(record)
             timestamp = int(record.created * 1000)
-            
+
             # Get correlation ID from context
             correlation_id = get_correlation_id()
-            
+
             # Create structured log entry with correlation ID
             # CloudWatch supports structured JSON in messages
             structured_message = {
@@ -116,15 +116,15 @@ class CloudWatchHandler(logging.Handler):
                 "logger": record.name,
                 "timestamp": record.created,
             }
-            
+
             # Add correlation ID if present
             if correlation_id:
                 structured_message["correlation_id"] = correlation_id
-            
+
             # Add any extra fields from the log record
             if hasattr(record, "correlation_id"):
                 structured_message["correlation_id"] = record.correlation_id
-            
+
             # Convert to JSON string for CloudWatch
             json_message = json.dumps(structured_message)
 
@@ -142,12 +142,13 @@ class CloudWatchHandler(logging.Handler):
             # Don't raise exceptions from logging handler
             # Instead, log to stderr
             import sys
+
             print(f"Failed to send log to CloudWatch: {e}", file=sys.stderr)
 
 
 def configure_cloudwatch_logging(
-    log_group: Optional[str] = None,
-    log_stream: Optional[str] = None,
+    log_group: str | None = None,
+    log_stream: str | None = None,
     region: str = "us-east-1",
     enable: bool = True,
 ) -> None:
@@ -195,7 +196,7 @@ def configure_cloudwatch_logging(
             "%(asctime)s - %(name)s - %(levelname)s - [%(correlation_id)s] - %(message)s"
         )
         handler.setFormatter(formatter)
-        
+
         # Add correlation ID filter to CloudWatch handler
         correlation_filter = CorrelationIDFilter()
         handler.addFilter(correlation_filter)
@@ -206,10 +207,9 @@ def configure_cloudwatch_logging(
 
         # Log that CloudWatch logging is configured
         logger = logging.getLogger(__name__)
-        logger.info(
-            f"CloudWatch logging configured: group={log_group}, stream={log_stream}"
-        )
+        logger.info(f"CloudWatch logging configured: group={log_group}, stream={log_stream}")
     except Exception as e:
         # Log to stderr if CloudWatch setup fails
         import sys
+
         print(f"Failed to configure CloudWatch logging: {e}", file=sys.stderr)

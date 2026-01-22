@@ -6,9 +6,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
+from datetime import UTC, datetime
 
 from ..models.audit import AuditLogEntry, AuditStatus
 from ..utils.correlation import get_correlation_id
@@ -69,9 +67,9 @@ class AuditService:
         tool_name: str,
         parameters: dict,
         status: AuditStatus,
-        error_message: Optional[str] = None,
-        execution_time_ms: Optional[float] = None,
-        correlation_id: Optional[str] = None,
+        error_message: str | None = None,
+        execution_time_ms: float | None = None,
+        correlation_id: str | None = None,
     ) -> AuditLogEntry:
         """
         Log a tool invocation to the audit database.
@@ -87,8 +85,8 @@ class AuditService:
         Returns:
             AuditLogEntry with the logged data including generated ID
         """
-        timestamp = datetime.now(timezone.utc)
-        
+        timestamp = datetime.now(UTC)
+
         # Capture correlation ID from context if not explicitly provided
         if correlation_id is None:
             correlation_id = get_correlation_id() or None
@@ -130,9 +128,9 @@ class AuditService:
 
     def get_logs(
         self,
-        tool_name: Optional[str] = None,
-        status: Optional[AuditStatus] = None,
-        correlation_id: Optional[str] = None,
+        tool_name: str | None = None,
+        status: AuditStatus | None = None,
+        correlation_id: str | None = None,
         limit: int = 100,
     ) -> list[AuditLogEntry]:
         """

@@ -2,12 +2,12 @@
 
 from .check_tag_compliance import check_tag_compliance
 from .find_untagged_resources import find_untagged_resources
-from .validate_resource_tags import validate_resource_tags
+from .generate_compliance_report import GenerateComplianceReportResult, generate_compliance_report
 from .get_cost_attribution_gap import get_cost_attribution_gap
-from .suggest_tags import suggest_tags, SuggestTagsResult
-from .get_tagging_policy import get_tagging_policy, GetTaggingPolicyResult
-from .generate_compliance_report import generate_compliance_report, GenerateComplianceReportResult
-from .get_violation_history import get_violation_history, GetViolationHistoryResult
+from .get_tagging_policy import GetTaggingPolicyResult, get_tagging_policy
+from .get_violation_history import GetViolationHistoryResult, get_violation_history
+from .suggest_tags import SuggestTagsResult, suggest_tags
+from .validate_resource_tags import validate_resource_tags
 
 __all__ = [
     "check_tag_compliance",

@@ -6,19 +6,13 @@ for observability and monitoring.
 Requirements: 15.2
 """
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 
 from mcp_server.main import app
-from mcp_server.models.observability import (
-    GlobalMetrics,
-    ToolUsageStats,
-    ErrorRateMetrics,
-    BudgetUtilizationMetrics,
-    LoopDetectionMetrics,
-)
 from mcp_server.models.audit import AuditLogEntry, AuditStatus
 
 
@@ -32,12 +26,12 @@ def client():
 def mock_audit_service():
     """Create a mock audit service with sample data."""
     mock_service = MagicMock()
-    
+
     # Create sample audit logs
     sample_logs = [
         AuditLogEntry(
             id=1,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["ec2"]},
             status=AuditStatus.SUCCESS,
@@ -48,7 +42,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=2,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="find_untagged_resources",
             parameters={"resource_types": ["s3"]},
             status=AuditStatus.SUCCESS,
@@ -59,7 +53,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=3,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["rds"]},
             status=AuditStatus.FAILURE,
@@ -69,7 +63,7 @@ def mock_audit_service():
             error_message="AWS API error",
         ),
     ]
-    
+
     mock_service.get_logs.return_value = sample_logs
     return mock_service
 
@@ -94,7 +88,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for Prometheus format markers
             assert "# HELP" in content
             assert "# TYPE" in content
@@ -105,7 +99,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             assert "mcp_server_uptime_seconds" in content
             # Should have a numeric value
             lines = content.split("\n")
@@ -120,7 +114,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for session metrics
             assert "mcp_server_total_sessions" in content
             assert "mcp_server_active_sessions" in content
@@ -130,7 +124,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for tool invocation metrics
             assert "mcp_tool_invocations_total" in content
             assert "mcp_tool_successes_total" in content
@@ -142,7 +136,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for execution time metrics
             assert "mcp_tool_execution_time_ms_total" in content
             assert "mcp_tool_execution_time_ms_average" in content
@@ -152,7 +146,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for budget metrics (if budget tracking is enabled)
             if "mcp_budget_max_calls_per_session" in content:
                 assert "mcp_budget_active_sessions" in content
@@ -163,7 +157,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for loop detection metrics (if loop detection is enabled)
             if "mcp_loop_detection_total" in content:
                 assert "mcp_loop_detection_active_sessions" in content
@@ -174,7 +168,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for error metrics
             if "mcp_error_trend" in content:
                 assert "mcp_errors_by_type" in content or "mcp_errors_by_tool" in content
@@ -184,7 +178,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Count HELP lines
             help_lines = [l for l in content.split("\n") if l.startswith("# HELP")]
             assert len(help_lines) > 0
@@ -194,7 +188,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Count TYPE lines
             type_lines = [l for l in content.split("\n") if l.startswith("# TYPE")]
             assert len(type_lines) > 0
@@ -204,7 +198,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for timestamp comment
             assert "Generated at" in content
 
@@ -213,7 +207,7 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             # Check for per-tool metrics with labels
             if "mcp_tool_invocations{" in content:
                 # Should have tool labels
@@ -224,22 +218,22 @@ class TestMetricsEndpoint:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             lines = content.split("\n")
-            
+
             # Parse and validate Prometheus format
             for line in lines:
                 if not line or line.startswith("#"):
                     # Comments and empty lines are OK
                     continue
-                
+
                 # Metric lines should have format: metric_name{labels} value
                 # or metric_name value
                 if line.strip():
                     # Should have at least a metric name and value
                     parts = line.split()
                     assert len(parts) >= 2, f"Invalid metric line: {line}"
-                    
+
                     # Value should be numeric or special values like +Inf, -Inf, NaN
                     try:
                         float(parts[-1])
@@ -251,7 +245,7 @@ class TestMetricsEndpoint:
         """Test that metrics endpoint handles empty data gracefully."""
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
-            
+
             # Should still return 200 even with no tool invocations
             assert response.status_code == 200
             assert len(response.text) > 0
@@ -264,7 +258,7 @@ class TestMetricsEndpointIntegration:
         """Test that metrics endpoint is listed in root endpoint."""
         response = client.get("/")
         data = response.json()
-        
+
         assert "metrics" in data
         assert data["metrics"] == "/metrics"
 
@@ -273,21 +267,19 @@ class TestMetricsEndpointIntegration:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response1 = client.get("/metrics")
             response2 = client.get("/metrics")
-            
+
             # Both should be valid Prometheus format
             assert "# HELP" in response1.text
             assert "# HELP" in response2.text
-            
+
             # Both should have the same metric names
             metrics1 = set(
-                l.split()[0] for l in response1.text.split("\n")
-                if l and not l.startswith("#")
+                l.split()[0] for l in response1.text.split("\n") if l and not l.startswith("#")
             )
             metrics2 = set(
-                l.split()[0] for l in response2.text.split("\n")
-                if l and not l.startswith("#")
+                l.split()[0] for l in response2.text.split("\n") if l and not l.startswith("#")
             )
-            
+
             # Should have same metric names (values may differ)
             assert metrics1 == metrics2
 
@@ -296,17 +288,17 @@ class TestMetricsEndpointIntegration:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             lines = content.split("\n")
             for line in lines:
                 if not line or line.startswith("#"):
                     continue
-                
+
                 if line.strip():
                     # Extract the value (last token)
                     parts = line.split()
                     value = parts[-1]
-                    
+
                     # Should be numeric
                     try:
                         float(value)
@@ -319,15 +311,15 @@ class TestMetricsEndpointIntegration:
         with patch("mcp_server.main.audit_service", mock_audit_service):
             response = client.get("/metrics")
             content = response.text
-            
+
             lines = content.split("\n")
             for line in lines:
                 if "{" in line and "}" in line:
                     # Extract labels section
                     start = line.index("{")
                     end = line.index("}")
-                    labels = line[start+1:end]
-                    
+                    labels = line[start + 1 : end]
+
                     # All label values should be quoted
                     if "=" in labels:
                         parts = labels.split(",")
@@ -335,5 +327,6 @@ class TestMetricsEndpointIntegration:
                             if "=" in part:
                                 key, value = part.split("=", 1)
                                 # Value should be quoted
-                                assert value.startswith('"') and value.endswith('"'), \
-                                    f"Unquoted label value: {part}"
+                                assert value.startswith('"') and value.endswith(
+                                    '"'
+                                ), f"Unquoted label value: {part}"

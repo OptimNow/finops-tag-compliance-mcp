@@ -5,12 +5,11 @@
 """MCP tool for suggesting tags for AWS resources."""
 
 import logging
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from ..models.suggestions import TagSuggestion
 from ..clients.aws_client import AWSClient
+from ..models.suggestions import TagSuggestion
 from ..services.policy_service import PolicyService
 from ..services.suggestion_service import SuggestionService
 from ..utils.arn_utils import is_valid_arn, parse_arn
@@ -40,7 +39,7 @@ async def suggest_tags(
     aws_client: AWSClient,
     policy_service: PolicyService,
     resource_arn: str,
-    suggestion_service: Optional[SuggestionService] = None,
+    suggestion_service: SuggestionService | None = None,
 ) -> SuggestTagsResult:
     """
     Suggest appropriate tags for an AWS resource.
@@ -200,19 +199,19 @@ async def _fetch_similar_resources(
     """
     try:
         # Use Resource Groups Tagging API to fetch resources of the same type
-        resources = await aws_client.get_all_tagged_resources(
-            resource_type_filters=[resource_type]
-        )
+        resources = await aws_client.get_all_tagged_resources(resource_type_filters=[resource_type])
 
         similar = []
         for resource in resources:
             if resource["resource_id"] != exclude_resource_id:
                 # Only include resources that have tags
                 if resource.get("tags"):
-                    similar.append({
-                        "resource_id": resource["resource_id"],
-                        "tags": resource.get("tags", {}),
-                    })
+                    similar.append(
+                        {
+                            "resource_id": resource["resource_id"],
+                            "tags": resource.get("tags", {}),
+                        }
+                    )
 
             # Limit to 10 similar resources for performance
             if len(similar) >= 10:
