@@ -179,9 +179,10 @@ async def find_untagged_resources(
 
         # If there are missing tags, this is an untagged/partially tagged resource
         if missing_tags:
-            # Calculate resource age
-            age_days = _calculate_age_days(resource.get("created_at"))
-
+            # Calculate resource age (only if created_at is available)
+            created_at = resource.get("created_at")
+            age_days = _calculate_age_days(created_at) if created_at else None
+            
             # Get cost estimate and source (only if costs requested)
             monthly_cost = cost_data.get(resource_id, None) if include_costs else None
             cost_source = cost_sources.get(resource_id, None) if include_costs else None
@@ -202,7 +203,7 @@ async def find_untagged_resources(
                 monthly_cost_estimate=monthly_cost,
                 cost_source=cost_source,
                 age_days=age_days,
-                created_at=resource.get("created_at"),
+                created_at=created_at,
                 instance_state=resource.get("instance_state"),
                 instance_type=resource.get("instance_type"),
             )

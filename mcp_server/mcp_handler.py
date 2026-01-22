@@ -1285,8 +1285,10 @@ class MCPHandler:
                 "arn": r.arn,
                 "current_tags": r.current_tags,
                 "missing_required_tags": r.missing_required_tags,
-                "age_days": r.age_days,
             }
+            # Only include age_days if creation date was available
+            if r.age_days is not None:
+                resource_data["age_days"] = r.age_days
             # Only include cost fields if costs were requested and available
             if include_costs and r.monthly_cost_estimate is not None:
                 resource_data["monthly_cost_estimate"] = r.monthly_cost_estimate

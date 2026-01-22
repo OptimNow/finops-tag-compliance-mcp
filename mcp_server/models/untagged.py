@@ -37,7 +37,20 @@ class UntaggedResource(BaseModel):
             "'actual' = from Cost Explorer per-resource data (EC2/RDS), "
             "'service_average' = service total divided by resource count (rough estimate), "
             "'estimated' = placeholder (Cost Explorer unavailable)"
-        ),
+        )
+    )
+    age_days: int | None = Field(
+        None,
+        description=(
+            "Age of the resource in days since creation. "
+            "Only populated when creation date is available from AWS API. "
+            "Note: Resource Groups Tagging API does not provide creation dates, "
+            "so this field will be None for resources discovered via that API."
+        )
+    )
+    created_at: datetime | None = Field(
+        None,
+        description="When the resource was created"
     )
     age_days: int = Field(0, description="Age of the resource in days")
     created_at: datetime | None = Field(None, description="When the resource was created")

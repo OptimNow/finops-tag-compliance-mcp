@@ -8,7 +8,7 @@
 
 ## What's This About?
 
-Ever wished you could just ask Claude "Hey, which of my AWS resources are missing cost center tags?" and get an instant, intelligent answer? That's exactly what this MCP server does.
+Ever wished you could just ask Claude "Hey, which of my AWS resources are missing cost center tags?" and get an instant, intelligent answer? That's exactly what this MCP server does. 
 
 **MCP (Model Context Protocol)** is like giving Claude a phone line to your infrastructure. Instead of Claude being limited to just chatting, it can now actively query your AWS environment, validate your tagging policies, calculate cost impacts, and even suggest fixes—all through natural conversation.
 

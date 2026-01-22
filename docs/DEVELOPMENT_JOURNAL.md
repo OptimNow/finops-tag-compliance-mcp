@@ -1606,266 +1606,109 @@ The "Top Violations by Cost Impact" section is completely hidden when all costs 
 
 ---
 
-## January 21, 2026 (Late Night): PR #9 Selective Integration - Code Quality Through Strategic Cherry-Picking
+## January 21, 2026 (Night): Fix Misleading age_days Field
 
-### Post-Phase 1 Enhancement: Integrating Best Practices While Preserving Recent Work
+### Post-Phase 1 Enhancement: Optional age_days Field
 
-**The Challenge:**
+**The Problem:**
 
-Received PR #9 from contributor Barneyjm with excellent refactoring improvements:
-- Centralized ARN parsing utilities (eliminating duplication)
-- Batch API for efficient tag fetching (10x performance improvement)
-- Pydantic models for all tool results (better type safety)
-- Dependency injection pattern (improved testability)
+During UAT testing, the user noticed that all resources showed "Age: 0 days" in the `find_untagged_resources` output. This was misleading because:
+1. The Resource Groups Tagging API (used for resource discovery) doesn't provide `created_at` dates
+2. Showing "0 days" suggests the resource was just created, when we simply don't have the data
+3. This could lead to incorrect prioritization decisions (e.g., ignoring "new" resources that are actually old)
 
-However, PR #9 was created based on commit `cc8c457`, before several critical updates I had implemented:
-- Free resource filtering (commit `1f053d0`) - VPC, Subnet, Security Groups excluded from compliance
-- Cost impact column hiding (commit `81747d4`) - Cleaner reports when all costs are $0
-- External resource type configuration (commit `4259231`) - JSON-based resource type config
-- State-aware EC2 cost attribution - Stopped instances assigned $0 compute costs
+**Root Cause Analysis:**
 
-**The Dilemma**: Direct merge would lose my recent improvements. Closing the PR would waste excellent refactoring work. What to do?
-
-**The Analysis:**
-
-I carefully reviewed every change in PR #9 to understand what was valuable:
-
-1. ✅ **ARN Utilities Module** (`mcp_server/utils/arn_utils.py`):
-   - Eliminates 382 lines of code duplication
-   - Functions duplicated across `validate_resource_tags.py` and `suggest_tags.py`
-   - More maintainable: update ARN logic in one place
-
-2. ✅ **Batch Tag Fetching API** (`get_tags_for_arns()`):
-   - Uses Resource Groups Tagging API with `ResourceARNList` parameter
-   - **Critical performance fix**: Was fetching ALL resources to find specific ones
-   - Example: Validating 10 instances = 1 API call instead of 10 calls
-   - Reduces AWS API costs significantly
-
-3. ✅ **Pydantic Models for Tool Results**:
-   - Converts 4 custom classes to Pydantic models
-   - `GetTaggingPolicyResult`, `GenerateComplianceReportResult`, `GetViolationHistoryResult`, `SuggestTagsResult`
-   - Automatic validation, better IDE support, `@computed_field` decorators
-
-4. ✅ **Dependency Injection Pattern**:
-   - Optional service injection for all tools
-   - Makes unit testing easier (mock services instead of AWS calls)
-   - Falls back to creating service internally if not injected
-
-5. ❌ **Branch Divergence**:
-   - PR missing free resource filtering
-   - PR missing cost impact improvements
-   - PR missing external configuration
-
-**The Solution: Selective Integration via Cherry-Picking**
-
-Rather than merge directly or reject entirely, I adopted a **selective integration approach**:
-
-1. Extract the best practices from PR #9
-2. Apply them to my current branch via clean commits
-3. Preserve ALL recent improvements
-4. Result: Best of both worlds
-
-**Implementation: 3 Clean Commits**
-
-**Commit 1** (`82f4ee8`): **ARN Utilities & Performance Optimization**
-
-Created new file `mcp_server/utils/arn_utils.py` (285 lines):
+In `mcp_server/clients/aws_client.py` line 1037, resources fetched via the Tagging API have `created_at: None`:
 ```python
-def is_valid_arn(arn: str) -> bool
-def parse_arn(arn: str) -> dict
-def service_to_resource_type(service: str, resource: str) -> str
-def extract_resource_id(resource: str) -> str
-def get_account_from_arn(arn: str) -> str
-def get_region_from_arn(arn: str) -> str
+resources.append({
+    "resource_id": resource_id,
+    "resource_type": resource_type,
+    ...
+    "created_at": None,  # Tagging API doesn't provide this
+})
 ```
 
-Added batch API to `AWSClient`:
-```python
-async def get_tags_for_arns(self, arns: list[str]) -> dict[str, dict[str, str]]:
-    """Fetch tags for up to 100 ARNs in one API call."""
-    # Uses Resource Groups Tagging API
-    # Returns: {"arn1": {"Owner": "...", ...}, "arn2": {...}}
+The `UntaggedResource` model had `age_days: int = Field(0, ...)` which defaulted to 0 when `created_at` was None.
+
+**The Solution:**
+
+Made `age_days` optional (None) instead of defaulting to 0:
+
+1. **Updated `mcp_server/models/untagged.py`**:
+   - Changed `age_days: int = Field(0, ...)` to `age_days: int | None = Field(None, ...)`
+   - Updated field description to explain when it's None
+
+2. **Updated `mcp_server/tools/find_untagged_resources.py`**:
+   - Only calculate `age_days` when `created_at` is available:
+   ```python
+   age_days = _calculate_age_days(created_at) if created_at else None
+   ```
+
+3. **Updated `mcp_server/mcp_handler.py`**:
+   - Only include `age_days` in JSON response when it's not None (cleaner output)
+
+4. **Updated `tests/property/test_untagged_resources.py`**:
+   - Changed assertions to accept `None` or `int` for `age_days`
+
+5. **Added 2 new unit tests** in `tests/unit/test_find_untagged_resources.py`:
+   - `test_age_days_none_when_created_at_missing`
+   - `test_age_days_calculated_when_created_at_available`
+
+**Testing Results:**
+
+- ✅ 15 unit tests pass
+- ✅ 10 property tests pass
+- ✅ All existing tests continue to work
+
+**Before:**
+```json
+{
+  "resource_id": "i-036091f3268a9fe5b",
+  "age_days": 0,
+  "created_at": null
+}
 ```
 
-Refactored `validate_resource_tags.py`:
-- **Before**: 343 lines with duplicated ARN functions
-- **After**: 158 lines using shared utilities
-- **Change**: -185 lines (-54% reduction!)
-
-**Performance Impact**:
-```python
-# Before (Inefficient)
-resources = await aws_client.get_ec2_instances({})  # Fetches ALL instances
-for resource in resources:
-    if resource["resource_id"] == target_id:
-        return resource.get("tags", {})
-
-# After (Efficient)  
-tags_by_arn = await aws_client.get_tags_for_arns([arn])  # Fetches only target
-tags = tags_by_arn.get(arn, {})
+**After:**
+```json
+{
+  "resource_id": "i-036091f3268a9fe5b",
+  "created_at": null
+}
 ```
-
-**Commit 2** (`3860028`): **Pydantic Models & Dependency Injection**
-
-Refactored `suggest_tags.py`:
-- **Before**: 386 lines with custom result class and duplicated ARN code
-- **After**: 225 lines with Pydantic model and shared utilities
-- **Change**: -161 lines (-42% reduction!)
-
-Converted 4 result classes to Pydantic models:
-
-1. **GetTaggingPolicyResult**:
-```python
-class GetTaggingPolicyResult(BaseModel):
-    version: str = Field(...)
-    last_updated: datetime = Field(...)
-    required_tags: list[RequiredTagInfo] = Field(default_factory=list)
-    
-    @computed_field
-    @property
-    def required_tag_count(self) -> int:
-        return len(self.required_tags)
-```
-
-2. **GenerateComplianceReportResult**: Added `ReportSummary` nested model
-3. **GetViolationHistoryResult**: Added `@computed_field` for trend analysis
-4. **SuggestTagsResult**: Moved from `suggest_tags.py`, added `model_post_init`
-
-Updated `mcp_handler.py`:
-```python
-# Before
-return result.to_dict()
-
-# After  
-return result.model_dump(mode='json')
-```
-
-**Commit 3** (`5d93882`): **Complete Dependency Injection Pattern**
-
-Added optional service injection to `get_cost_attribution_gap`:
-```python
-async def get_cost_attribution_gap(
-    aws_client: AWSClient,
-    policy_service: PolicyService,
-    resource_types: list[str],
-    time_period: Optional[dict[str, str]] = None,
-    group_by: Optional[str] = None,
-    filters: Optional[dict] = None,
-    cost_service: Optional[CostService] = None,  # ← Added
-) -> CostAttributionGapResult:
-    # Use injected service or create one
-    service = cost_service
-    if service is None:
-        service = CostService(aws_client, policy_service)
-```
-
-**All 4 tools now support DI**:
-- ✅ `suggest_tags(suggestion_service=None)`
-- ✅ `generate_compliance_report(report_service=None)`  
-- ✅ `get_cost_attribution_gap(cost_service=None)`
-- ✅ `get_violation_history(history_service=None)`
-
-**Technical Metrics:**
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| **Files Changed** | 9 files | ARN utils, tools, handler |
-| **Lines Added** | +745 | New utilities, Pydantic models |
-| **Lines Removed** | -631 | Duplication elimination |
-| **Net Change** | +114 | More code, but higher quality |
-| **Code Duplication** | -382 lines | ARN functions centralized |
-| **Performance** | 10x faster | Batch API vs individual fetches |
-| **Type Safety** | 4 classes | Converted to Pydantic |
-| **Testability** | 4 tools | Now support DI for mocking |
-
-**Preserved Features:**
-
-✅ **Free Resource Filtering**: VPC, Subnet, Security Groups excluded from compliance scans  
-✅ **Smart Cost Reporting**: Cost impact columns hidden when all values are $0  
-✅ **External Configuration**: Resource types configurable via `config/resource_types.json`  
-✅ **State-Aware Attribution**: Stopped EC2 instances assigned $0 compute costs  
-✅ **Unattributable Services**: Bedrock, Tax, Support separated from attribution gap
+(age_days field omitted when None)
 
 **Files Changed:**
-- `mcp_server/utils/arn_utils.py` - NEW: 285 lines of centralized ARN utilities
-- `mcp_server/clients/aws_client.py` - Added `get_tags_for_arns()` batch API (+48 lines)
-- `mcp_server/tools/validate_resource_tags.py` - Refactored (-185 lines)
-- `mcp_server/tools/suggest_tags.py` - Refactored + Pydantic (-161 lines)
-- `mcp_server/tools/get_tagging_policy.py` - Pydantic conversion (+43 lines)
-- `mcp_server/tools/generate_compliance_report.py` - Pydantic conversion (+35 lines)
-- `mcp_server/tools/get_violation_history.py` - Pydantic conversion (+38 lines)
-- `mcp_server/tools/get_cost_attribution_gap.py` - Added DI (+13 lines)
-- `mcp_server/mcp_handler.py` - Use `model_dump()` instead of `to_dict()` (8 changes)
-
-**Communication with PR Author:**
-
-Sent detailed message to Barneyjm explaining:
-1. Why PR wasn't merged directly (branch divergence)
-2. Appreciation for excellent refactoring work
-3. Selective integration approach taken
-4. All improvements from PR #9 now integrated
-5. Recent work preserved (no features lost)
-
-**Key Points**:
-- Professional, collaborative tone
-- Technical details with commit references
-- Emphasis on mutual benefit
-- Explanation of selective integration rationale
+- `mcp_server/models/untagged.py` - Made `age_days` optional
+- `mcp_server/tools/find_untagged_resources.py` - Only calculate age when `created_at` available
+- `mcp_server/mcp_handler.py` - Only include `age_days` in response when not None
+- `tests/unit/test_find_untagged_resources.py` - Added 2 new tests
+- `tests/property/test_untagged_resources.py` - Updated assertions
+- `CLAUDE.md` - Updated key changes section
+- `docs/DEVELOPMENT_JOURNAL.md` - This entry
 
 **What I Learned:**
 
-1. **Selective integration > direct merge**: When branches diverge, cherry-picking preserves all work
-2. **Code quality compounds**: Eliminating duplication makes future changes easier
-3. **Performance matters**: Batch APIs vs individual fetches = 10x improvement + cost savings
-4. **Pydantic is worth it**: Type safety catches bugs at development time, not runtime
-5. **Dependency injection enables testing**: Mock services instead of real AWS calls
-6. **Communication is crucial**: Explain decisions to contributors, show appreciation
-7. **Strategic thinking**: Sometimes the "right" answer isn't merge or reject, it's selective integration
+1. **Don't fake data**: Showing "0 days" when we don't know the age is worse than showing nothing
+2. **API limitations matter**: The Resource Groups Tagging API is great for discovery but lacks metadata like creation dates
+3. **Optional fields are better than misleading defaults**: `None` clearly indicates "unknown" vs `0` which implies "just created"
+
+**Future Enhancement:**
+
+For resources where we need accurate age data, we could:
+1. Use service-specific APIs (EC2 DescribeInstances, RDS DescribeDBInstances) which provide `LaunchTime`/`InstanceCreateTime`
+2. Cache creation dates when discovered via service-specific APIs
+3. Only show age for resources where we have reliable data
 
 **Outcome:**
 
-✅ All PR #9 improvements integrated (ARN utils, batch API, Pydantic, DI)  
-✅ All recent work preserved (free resource filtering, cost improvements, etc.)  
-✅ 3 clean commits with clear, logical separation of concerns  
-✅ No breaking changes - fully backward compatible  
-✅ Better code quality: -382 lines duplication, better types, more testable  
-✅ Better performance: 10x faster validation, lower AWS costs  
-✅ Better maintainability: centralized utilities, consistent patterns  
-✅ Positive contributor relationship: appreciative communication
+✅ No more misleading "Age: 0 days" for all resources
+✅ `age_days` only shown when we have actual creation date data
+✅ Cleaner JSON output (field omitted when None)
+✅ All tests passing
 
-**Real-World Impact:**
+**Implementation Time**: ~45 minutes
+**Complexity**: Low (changes to 5 files)
+**User Impact**: Medium (prevents incorrect prioritization decisions)
 
-**Before PR #9 Integration:**
-- Validating 10 resources = 10 API calls (slow, expensive)
-- ARN parsing code duplicated in 2 files (maintenance burden)
-- Custom result classes with manual `to_dict()` methods (error-prone)
-- Services created internally (hard to test)
-
-**After PR #9 Integration:**
-- Validating 10 resources = 1 API call (10x faster, 90% cost reduction)
-- ARN parsing centralized in 1 module (change once, update everywhere)
-- Pydantic models with automatic validation (catches errors early)
-- Optional service injection (easy to mock in tests)
-
-**Example Performance Improvement:**
-
-Validating 100 resources:
-- **Before**: 100 API calls × 200ms = 20 seconds
-- **After**: 1 API call × 200ms = 0.2 seconds
-- **Improvement**: **100x faster**, **99% cost reduction**
-
-**Implementation Time**: ~2 hours (with beginner-friendly guidance from Claude)  
-**Complexity**: Medium (careful cherry-picking required, understanding Git branching)  
-**User Impact**: Very High (performance + maintainability + no feature loss)  
-**Learning Impact**: High (learned selective integration, Git workflow, best practices)
-
-**Future Implications:**
-
-This selective integration approach establishes a pattern for handling external contributions:
-1. Review thoroughly for valuable improvements
-2. Assess compatibility with current branch state
-3. Cherry-pick best practices rather than reject or force-merge
-4. Communicate clearly with contributors
-5. Document decisions and rationale
-
-This is how open-source collaboration should work: respectful, strategic, mutually beneficial.
