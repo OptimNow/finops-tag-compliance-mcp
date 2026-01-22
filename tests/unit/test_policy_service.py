@@ -5,13 +5,12 @@ Tests the policy loading, validation, and retrieval functionality.
 """
 
 import json
-import pytest
-from pathlib import Path
-from unittest.mock import mock_open, patch, MagicMock
 
+import pytest
+
+from mcp_server.models import OptionalTag, RequiredTag, TagPolicy
 from mcp_server.services import PolicyService
-from mcp_server.services.policy_service import PolicyValidationError, PolicyNotFoundError
-from mcp_server.models import TagPolicy, RequiredTag, OptionalTag
+from mcp_server.services.policy_service import PolicyNotFoundError, PolicyValidationError
 
 
 class TestPolicyServiceLoading:

@@ -6,15 +6,12 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, Field
 
 from ..models.history import (
     ComplianceHistoryResult,
-    ComplianceHistoryEntry,
     GroupBy,
-    TrendDirection,
 )
 from ..services.history_service import HistoryService
 
@@ -84,7 +81,7 @@ class GetViolationHistoryResult(BaseModel):
 
 
 async def get_violation_history(
-    history_service: Optional[HistoryService] = None,
+    history_service: HistoryService | None = None,
     days_back: int = 30,
     group_by: str = "day",
     db_path: str = "compliance_history.db",

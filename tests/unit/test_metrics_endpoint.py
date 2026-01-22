@@ -6,19 +6,13 @@ for observability and monitoring.
 Requirements: 15.2
 """
 
+from datetime import UTC, datetime
+from unittest.mock import MagicMock, patch
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, timezone
 
 from mcp_server.main import app
-from mcp_server.models.observability import (
-    GlobalMetrics,
-    ToolUsageStats,
-    ErrorRateMetrics,
-    BudgetUtilizationMetrics,
-    LoopDetectionMetrics,
-)
 from mcp_server.models.audit import AuditLogEntry, AuditStatus
 
 
@@ -37,7 +31,7 @@ def mock_audit_service():
     sample_logs = [
         AuditLogEntry(
             id=1,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["ec2"]},
             status=AuditStatus.SUCCESS,
@@ -48,7 +42,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=2,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="find_untagged_resources",
             parameters={"resource_types": ["s3"]},
             status=AuditStatus.SUCCESS,
@@ -59,7 +53,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=3,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["rds"]},
             status=AuditStatus.FAILURE,

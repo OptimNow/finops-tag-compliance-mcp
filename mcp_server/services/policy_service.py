@@ -11,7 +11,7 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from ..models import TagPolicy, RequiredTag, OptionalTag, Violation, ViolationType, Severity
+from ..models import OptionalTag, RequiredTag, Severity, TagPolicy, Violation, ViolationType
 
 
 class PolicyValidationError(Exception):
@@ -82,7 +82,7 @@ class PolicyService:
 
         # Read and parse JSON
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 policy_data = json.load(f)
         except json.JSONDecodeError as e:
             raise PolicyValidationError(f"Invalid JSON in policy file {path}: {e}") from e

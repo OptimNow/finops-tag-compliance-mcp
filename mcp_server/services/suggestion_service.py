@@ -4,13 +4,11 @@
 
 """Tag suggestion service for intelligent tag recommendations."""
 
-import re
 import logging
-from typing import Optional
+import re
 
 from ..models import TagSuggestion
 from ..services.policy_service import PolicyService
-
 
 logger = logging.getLogger(__name__)
 
@@ -85,9 +83,9 @@ class SuggestionService:
         resource_type: str,
         resource_name: str,
         current_tags: dict[str, str],
-        vpc_name: Optional[str] = None,
-        iam_role: Optional[str] = None,
-        similar_resources: Optional[list[dict]] = None,
+        vpc_name: str | None = None,
+        iam_role: str | None = None,
+        similar_resources: list[dict] | None = None,
     ) -> list[TagSuggestion]:
         """
         Generate tag suggestions for a resource.
@@ -148,8 +146,8 @@ class SuggestionService:
         self,
         resource_arn: str,
         resource_name: str,
-        vpc_name: Optional[str],
-        iam_role: Optional[str],
+        vpc_name: str | None,
+        iam_role: str | None,
     ) -> dict[str, str]:
         """
         Build a context dictionary from all available resource information.
@@ -178,11 +176,11 @@ class SuggestionService:
     async def _suggest_tag_value(
         self,
         tag_name: str,
-        allowed_values: Optional[list[str]],
-        validation_regex: Optional[str],
+        allowed_values: list[str] | None,
+        validation_regex: str | None,
         context: dict[str, str],
-        similar_resources: Optional[list[dict]],
-    ) -> Optional[TagSuggestion]:
+        similar_resources: list[dict] | None,
+    ) -> TagSuggestion | None:
         """
         Suggest a value for a specific tag.
 
@@ -234,8 +232,8 @@ class SuggestionService:
         return None
 
     def _suggest_from_patterns(
-        self, tag_name: str, allowed_values: Optional[list[str]], context: dict[str, str]
-    ) -> Optional[TagSuggestion]:
+        self, tag_name: str, allowed_values: list[str] | None, context: dict[str, str]
+    ) -> TagSuggestion | None:
         """
         Suggest tag value based on pattern matching.
 
@@ -267,7 +265,7 @@ class SuggestionService:
 
     def _match_environment_pattern(
         self, combined_context: str, context: dict[str, str]
-    ) -> Optional[TagSuggestion]:
+    ) -> TagSuggestion | None:
         """
         Match environment patterns in context.
 
@@ -295,7 +293,7 @@ class SuggestionService:
 
     def _match_cost_center_pattern(
         self, combined_context: str, context: dict[str, str]
-    ) -> Optional[TagSuggestion]:
+    ) -> TagSuggestion | None:
         """
         Match cost center patterns in context.
 
@@ -322,7 +320,7 @@ class SuggestionService:
 
     def _match_data_classification_pattern(
         self, combined_context: str, context: dict[str, str]
-    ) -> Optional[TagSuggestion]:
+    ) -> TagSuggestion | None:
         """
         Match data classification patterns in context.
 
@@ -385,8 +383,8 @@ class SuggestionService:
         return self.CONFIDENCE_DEFAULT, "resource context"
 
     def _suggest_from_similar_resources(
-        self, tag_name: str, allowed_values: Optional[list[str]], similar_resources: list[dict]
-    ) -> Optional[TagSuggestion]:
+        self, tag_name: str, allowed_values: list[str] | None, similar_resources: list[dict]
+    ) -> TagSuggestion | None:
         """
         Suggest tag value based on similar resources.
 
@@ -450,10 +448,10 @@ class SuggestionService:
     def _suggest_from_inference(
         self,
         tag_name: str,
-        allowed_values: Optional[list[str]],
-        validation_regex: Optional[str],
+        allowed_values: list[str] | None,
+        validation_regex: str | None,
         context: dict[str, str],
-    ) -> Optional[TagSuggestion]:
+    ) -> TagSuggestion | None:
         """
         Suggest tag value based on inference from context.
 
@@ -478,8 +476,8 @@ class SuggestionService:
         return None
 
     def _infer_application_name(
-        self, context: dict[str, str], validation_regex: Optional[str]
-    ) -> Optional[TagSuggestion]:
+        self, context: dict[str, str], validation_regex: str | None
+    ) -> TagSuggestion | None:
         """
         Infer application name from resource name.
 
@@ -541,8 +539,8 @@ class SuggestionService:
         return None
 
     def _infer_owner(
-        self, context: dict[str, str], validation_regex: Optional[str]
-    ) -> Optional[TagSuggestion]:
+        self, context: dict[str, str], validation_regex: str | None
+    ) -> TagSuggestion | None:
         """
         Infer owner from IAM role or resource context.
 
@@ -594,7 +592,7 @@ class SuggestionService:
         return None
 
     async def suggest_tags_for_resource(
-        self, resource: dict, similar_resources: Optional[list[dict]] = None
+        self, resource: dict, similar_resources: list[dict] | None = None
     ) -> list[TagSuggestion]:
         """
         Convenience method to suggest tags for a resource dictionary.

@@ -11,23 +11,20 @@ and return a graceful degradation response explaining the limit was reached.
 The response SHALL NOT be an error but a structured message indicating budget exhaustion.
 """
 
+
 import pytest
-from hypothesis import given, strategies as st, settings, assume
-from unittest.mock import AsyncMock, MagicMock, patch
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 from mcp_server.middleware.budget_middleware import (
-    BudgetTracker,
     BudgetExhaustedError,
-    DEFAULT_MAX_TOOL_CALLS_PER_SESSION,
-    DEFAULT_SESSION_TTL_SECONDS,
+    BudgetTracker,
 )
 from mcp_server.models.budget import (
-    BudgetExhaustedResponse,
-    BudgetStatus,
     BudgetConfiguration,
+    BudgetExhaustedResponse,
     BudgetHealthInfo,
 )
-
 
 # =============================================================================
 # Strategies for generating test data

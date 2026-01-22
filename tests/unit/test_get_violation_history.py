@@ -1,19 +1,20 @@
 """Unit tests for get_violation_history tool."""
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_server.tools.get_violation_history import (
-    get_violation_history,
-    GetViolationHistoryResult,
-)
-from mcp_server.services.history_service import HistoryService
+import pytest
+
 from mcp_server.models.history import (
     ComplianceHistoryEntry,
     ComplianceHistoryResult,
     GroupBy,
     TrendDirection,
+)
+from mcp_server.services.history_service import HistoryService
+from mcp_server.tools.get_violation_history import (
+    GetViolationHistoryResult,
+    get_violation_history,
 )
 
 

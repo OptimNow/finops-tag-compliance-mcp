@@ -10,8 +10,8 @@ when repeated tool calls are detected.
 Requirements: 15.4
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -35,7 +35,7 @@ class LoopDetectedResponse(BaseModel):
     )
     max_calls: int = Field(..., ge=0, description="Maximum identical calls allowed")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp when loop was detected",
     )
     suggestion: str = Field(

@@ -14,7 +14,6 @@ Requirements: 15.1
 import contextvars
 import logging
 import uuid
-from typing import Optional
 
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware

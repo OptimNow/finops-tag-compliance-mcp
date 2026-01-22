@@ -11,20 +11,21 @@ and age in days. Resources with no tags or missing required tags SHALL be
 included in untagged searches.
 """
 
-from hypothesis import given, strategies as st, settings, assume
-import pytest
 from datetime import datetime, timedelta
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
-from mcp_server.tools.find_untagged_resources import (
-    find_untagged_resources,
-    _get_required_tags_for_resource,
-    _calculate_age_days,
-)
-from mcp_server.models.untagged import UntaggedResource, UntaggedResourcesResult
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
+
 from mcp_server.clients.aws_client import AWSClient
+from mcp_server.models.untagged import UntaggedResourcesResult
 from mcp_server.services.policy_service import PolicyService
-
+from mcp_server.tools.find_untagged_resources import (
+    _calculate_age_days,
+    _get_required_tags_for_resource,
+    find_untagged_resources,
+)
 
 # =============================================================================
 # Strategies for generating test data
@@ -96,7 +97,7 @@ def create_mock_aws_client():
 
 def create_mock_policy_service(required_tags: list[dict] = None):
     """Create a mock policy service with configurable required tags."""
-    from mcp_server.models.policy import TagPolicy, RequiredTag
+    from mcp_server.models.policy import RequiredTag, TagPolicy
 
     if required_tags is None:
         required_tags = [
@@ -766,7 +767,7 @@ class TestGetRequiredTagsForResource:
 
         The function SHALL return a list of required tag names for the resource type.
         """
-        from mcp_server.models.policy import TagPolicy, RequiredTag
+        from mcp_server.models.policy import RequiredTag, TagPolicy
 
         policy = TagPolicy(
             version="1.0",

@@ -1,19 +1,18 @@
 """Tests for correlation ID generation and context management."""
 
 import logging
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 from mcp_server.utils.correlation import (
+    CorrelationIDMiddleware,
     generate_correlation_id,
-    set_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
-    CorrelationIDMiddleware,
+    set_correlation_id,
 )
-from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 
 
 class TestGenerateCorrelationId:

@@ -6,16 +6,14 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
-from ..models.untagged import UntaggedResourcesResult, UntaggedResource
-from ..models.policy import TagPolicy
 from ..clients.aws_client import AWSClient
+from ..models.policy import TagPolicy
+from ..models.untagged import UntaggedResource, UntaggedResourcesResult
 from ..services.policy_service import PolicyService
 from ..utils.resource_utils import (
     fetch_resources_by_type,
     get_supported_resource_types,
-    get_tagging_api_resource_types,
 )
 
 logger = logging.getLogger(__name__)
@@ -25,8 +23,8 @@ async def find_untagged_resources(
     aws_client: AWSClient,
     policy_service: PolicyService,
     resource_types: list[str],
-    regions: Optional[list[str]] = None,
-    min_cost_threshold: Optional[float] = None,
+    regions: list[str] | None = None,
+    min_cost_threshold: float | None = None,
     include_costs: bool = False,
 ) -> UntaggedResourcesResult:
     """
@@ -370,7 +368,7 @@ async def _get_cost_estimates(
     except Exception as e:
         logger.warning(f"Failed to fetch cost data: {str(e)}")
         # Return zero costs with estimated source if cost data unavailable
-        return ({rid: 0.0 for rid in resource_ids}, {rid: "estimated" for rid in resource_ids})
+        return (dict.fromkeys(resource_ids, 0.0), dict.fromkeys(resource_ids, "estimated"))
 
 
 def _get_required_tags_for_resource(policy: TagPolicy, resource_type: str) -> list[str]:
@@ -396,7 +394,7 @@ def _get_required_tags_for_resource(policy: TagPolicy, resource_type: str) -> li
     return required_tags
 
 
-def _calculate_age_days(created_at: Optional[datetime]) -> int:
+def _calculate_age_days(created_at: datetime | None) -> int:
     """
     Calculate resource age in days.
 

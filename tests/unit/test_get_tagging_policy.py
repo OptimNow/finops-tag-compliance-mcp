@@ -1,16 +1,15 @@
 """Unit tests for get_tagging_policy tool."""
 
-import pytest
 import json
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
-from mcp_server.tools.get_tagging_policy import (
-    get_tagging_policy,
-    GetTaggingPolicyResult,
-)
+import pytest
+
+from mcp_server.models.policy import TagNamingRules, TagPolicy
 from mcp_server.services.policy_service import PolicyService
-from mcp_server.models.policy import TagPolicy, RequiredTag, OptionalTag, TagNamingRules
+from mcp_server.tools.get_tagging_policy import (
+    GetTaggingPolicyResult,
+    get_tagging_policy,
+)
 
 
 @pytest.fixture

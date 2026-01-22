@@ -5,7 +5,6 @@
 """MCP tool for checking tag compliance."""
 
 import logging
-from typing import Optional
 
 from ..models.compliance import ComplianceResult
 from ..services.compliance_service import ComplianceService
@@ -18,9 +17,9 @@ logger = logging.getLogger(__name__)
 async def check_tag_compliance(
     compliance_service: ComplianceService,
     resource_types: list[str],
-    filters: Optional[dict] = None,
+    filters: dict | None = None,
     severity: str = "all",
-    history_service: Optional[HistoryService] = None,
+    history_service: HistoryService | None = None,
     store_snapshot: bool = False,
     force_refresh: bool = False,
 ) -> ComplianceResult:
@@ -152,8 +151,8 @@ async def check_tag_compliance(
             )
     elif not store_snapshot:
         logger.debug(
-            f"Compliance check complete (not stored in history). "
-            f"Set store_snapshot=True to record this result for trend tracking."
+            "Compliance check complete (not stored in history). "
+            "Set store_snapshot=True to record this result for trend tracking."
         )
 
     return result

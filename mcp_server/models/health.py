@@ -4,8 +4,8 @@
 
 """Health check data models."""
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -39,10 +39,10 @@ class LoopDetectionHealthInfo(BaseModel):
     loops_by_tool: dict = Field(
         default_factory=dict, description="Loop detection counts by tool name"
     )
-    last_loop_detected_at: Optional[str] = Field(
+    last_loop_detected_at: str | None = Field(
         default=None, description="Timestamp of the last loop detection event"
     )
-    last_loop_tool_name: Optional[str] = Field(
+    last_loop_tool_name: str | None = Field(
         default=None, description="Tool name that triggered the last loop detection"
     )
 
@@ -78,7 +78,7 @@ class HealthStatus(BaseModel):
     )
     version: str = Field(..., description="Version of the MCP server", examples=["0.1.0"])
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp when health check was performed",
     )
     cloud_providers: list[str] = Field(
@@ -86,13 +86,13 @@ class HealthStatus(BaseModel):
     )
     redis_connected: bool = Field(..., description="Whether Redis cache is connected")
     sqlite_connected: bool = Field(..., description="Whether SQLite database is accessible")
-    budget_tracking: Optional[BudgetHealthInfo] = Field(
+    budget_tracking: BudgetHealthInfo | None = Field(
         default=None, description="Budget tracking configuration and status"
     )
-    loop_detection: Optional[LoopDetectionHealthInfo] = Field(
+    loop_detection: LoopDetectionHealthInfo | None = Field(
         default=None, description="Loop detection configuration and status"
     )
-    security_monitoring: Optional[SecurityHealthInfo] = Field(
+    security_monitoring: SecurityHealthInfo | None = Field(
         default=None, description="Security monitoring configuration and status"
     )
 

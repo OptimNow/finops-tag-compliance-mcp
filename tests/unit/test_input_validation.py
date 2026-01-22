@@ -3,12 +3,14 @@
 Requirements: 16.3
 """
 
-import pytest
 import re
+
+import pytest
+
 from mcp_server.utils.input_validation import (
     InputValidator,
-    ValidationError,
     SecurityViolationError,
+    ValidationError,
 )
 
 

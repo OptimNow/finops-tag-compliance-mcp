@@ -6,16 +6,15 @@ while preserving useful information for debugging.
 Requirements: 16.5
 """
 
-import pytest
 from mcp_server.utils.error_sanitization import (
-    detect_sensitive_info,
-    redact_sensitive_info,
-    sanitize_exception,
-    sanitize_error_response,
-    create_safe_error_response,
     SanitizedError,
+    create_safe_error_response,
+    detect_sensitive_info,
     handle_aws_error,
     handle_database_error,
+    redact_sensitive_info,
+    sanitize_error_response,
+    sanitize_exception,
 )
 
 

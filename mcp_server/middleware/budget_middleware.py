@@ -11,7 +11,6 @@ Requirements: 15.3
 """
 
 import logging
-from typing import Optional
 from datetime import timedelta
 
 from ..clients.cache import RedisCache
@@ -28,7 +27,7 @@ class BudgetExhaustedError(Exception):
     """Raised when a session's tool-call budget is exhausted."""
 
     def __init__(
-        self, session_id: str, current_count: int, max_calls: int, message: Optional[str] = None
+        self, session_id: str, current_count: int, max_calls: int, message: str | None = None
     ):
         self.session_id = session_id
         self.current_count = current_count
@@ -55,7 +54,7 @@ class BudgetTracker:
 
     def __init__(
         self,
-        redis_cache: Optional[RedisCache] = None,
+        redis_cache: RedisCache | None = None,
         max_calls_per_session: int = DEFAULT_MAX_TOOL_CALLS_PER_SESSION,
         session_ttl_seconds: int = DEFAULT_SESSION_TTL_SECONDS,
     ):
@@ -291,10 +290,10 @@ class BudgetTracker:
 
 
 # Global budget tracker instance
-_budget_tracker: Optional[BudgetTracker] = None
+_budget_tracker: BudgetTracker | None = None
 
 
-def get_budget_tracker() -> Optional[BudgetTracker]:
+def get_budget_tracker() -> BudgetTracker | None:
     """Get the global budget tracker instance."""
     return _budget_tracker
 
@@ -305,7 +304,7 @@ def set_budget_tracker(tracker: BudgetTracker) -> None:
     _budget_tracker = tracker
 
 
-async def check_and_consume_budget(session_id: Optional[str] = None) -> tuple[bool, int, int]:
+async def check_and_consume_budget(session_id: str | None = None) -> tuple[bool, int, int]:
     """
     Check and consume budget for the current session.
 

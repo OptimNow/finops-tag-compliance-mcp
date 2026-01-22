@@ -1,18 +1,19 @@
 """Unit tests for suggest_tags tool."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from mcp_server.tools.suggest_tags import suggest_tags, SuggestTagsResult
+import pytest
+
+from mcp_server.clients.aws_client import AWSClient
+from mcp_server.models.suggestions import TagSuggestion
+from mcp_server.services.policy_service import PolicyService
+from mcp_server.tools.suggest_tags import SuggestTagsResult, suggest_tags
 from mcp_server.utils.arn_utils import (
+    extract_resource_id,
     is_valid_arn,
     parse_arn,
     service_to_resource_type,
-    extract_resource_id,
 )
-from mcp_server.clients.aws_client import AWSClient
-from mcp_server.services.policy_service import PolicyService
-from mcp_server.models.suggestions import TagSuggestion
 
 
 @pytest.fixture

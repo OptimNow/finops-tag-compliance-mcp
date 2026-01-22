@@ -11,15 +11,16 @@ When an error occurs, the error message SHALL be included in the log entry.
 """
 
 import os
-import tempfile
 import re
-from datetime import datetime, timezone
-from hypothesis import given, strategies as st, settings
+import tempfile
+from datetime import UTC, datetime
+
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from mcp_server.models.audit import AuditLogEntry, AuditStatus
+from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
-
 
 # =============================================================================
 # Strategies for generating test data
@@ -131,7 +132,7 @@ class TestAuditLogCompleteness:
         try:
             service = AuditService(db_path=temp_db)
 
-            before_log = datetime.now(timezone.utc)
+            before_log = datetime.now(UTC)
 
             entry = service.log_invocation(
                 tool_name=tool_name,
@@ -139,7 +140,7 @@ class TestAuditLogCompleteness:
                 status=AuditStatus.SUCCESS,
             )
 
-            after_log = datetime.now(timezone.utc)
+            after_log = datetime.now(UTC)
 
             # Entry must have a timestamp
             assert entry.timestamp is not None, "Audit entry must have a timestamp"

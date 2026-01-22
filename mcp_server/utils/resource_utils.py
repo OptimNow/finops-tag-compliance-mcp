@@ -13,11 +13,11 @@ for easy maintenance. See ResourceTypeConfig for details.
 """
 
 import logging
-from typing import Optional
 
 from .resource_type_config import (
-    get_resource_type_config,
     get_supported_resource_types as _get_supported,
+)
+from .resource_type_config import (
     get_tagging_api_resource_types as _get_tagging_api,
 )
 
@@ -83,7 +83,7 @@ def expand_all_to_supported_types(resource_types: list[str]) -> list[str]:
 
 
 async def fetch_resources_by_type(
-    aws_client, resource_type: str, filters: Optional[dict] = None
+    aws_client, resource_type: str, filters: dict | None = None
 ) -> list[dict]:
     """
     Fetch resources of a specific type from AWS.
@@ -128,7 +128,7 @@ async def fetch_resources_by_type(
 
 
 async def fetch_all_resources_via_tagging_api(
-    aws_client, filters: Optional[dict] = None
+    aws_client, filters: dict | None = None
 ) -> list[dict]:
     """
     Fetch all taggable resources using AWS Resource Groups Tagging API.
@@ -164,7 +164,7 @@ async def fetch_all_resources_via_tagging_api(
 
 
 async def fetch_resources_via_tagging_api(
-    aws_client, resource_types: list[str], filters: Optional[dict] = None
+    aws_client, resource_types: list[str], filters: dict | None = None
 ) -> list[dict]:
     """
     Fetch specific resource types using AWS Resource Groups Tagging API.

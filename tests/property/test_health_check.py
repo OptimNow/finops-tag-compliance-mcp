@@ -1,9 +1,11 @@
 """Property-based tests for health check endpoint."""
 
-import pytest
 from datetime import datetime
+
+import pytest
 from fastapi.testclient import TestClient
-from hypothesis import given, strategies as st, settings
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 from mcp_server.main import app
 from mcp_server.models import HealthStatus

@@ -7,15 +7,14 @@
 import hashlib
 import json
 import logging
-from typing import Optional
 
-from ..clients.cache import RedisCache
 from ..clients.aws_client import AWSClient
+from ..clients.cache import RedisCache
 from ..models.compliance import ComplianceResult
 from ..models.violations import Violation
 from ..services.policy_service import PolicyService
-from ..utils.resource_utils import fetch_resources_by_type, extract_account_from_arn
 from ..utils.resource_type_config import get_resource_type_config
+from ..utils.resource_utils import extract_account_from_arn, fetch_resources_by_type
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +49,7 @@ class ComplianceService:
         self.cache_ttl = cache_ttl
 
     def _generate_cache_key(
-        self, resource_types: list[str], filters: Optional[dict] = None, severity: str = "all"
+        self, resource_types: list[str], filters: dict | None = None, severity: str = "all"
     ) -> str:
         """
         Generate a deterministic cache key from query parameters.
@@ -82,7 +81,7 @@ class ComplianceService:
     async def check_compliance(
         self,
         resource_types: list[str],
-        filters: Optional[dict] = None,
+        filters: dict | None = None,
         severity: str = "all",
         force_refresh: bool = False,
     ) -> ComplianceResult:
@@ -116,7 +115,7 @@ class ComplianceService:
                 return cached_result
 
         # Cache miss or force refresh - perform actual scan
-        logger.info(f"Cache miss or force refresh - scanning resources")
+        logger.info("Cache miss or force refresh - scanning resources")
         result = await self._scan_and_validate(resource_types, filters, severity)
 
         # Cache the result
@@ -124,7 +123,7 @@ class ComplianceService:
 
         return result
 
-    async def _get_from_cache(self, cache_key: str) -> Optional[ComplianceResult]:
+    async def _get_from_cache(self, cache_key: str) -> ComplianceResult | None:
         """
         Retrieve compliance result from cache.
 
@@ -169,7 +168,7 @@ class ComplianceService:
             # Don't raise - caching failure shouldn't break the operation
 
     async def _scan_and_validate(
-        self, resource_types: list[str], filters: Optional[dict], severity: str
+        self, resource_types: list[str], filters: dict | None, severity: str
     ) -> ComplianceResult:
         """
         Scan resources and validate against policy.
@@ -275,7 +274,7 @@ class ComplianceService:
             cost_attribution_gap=cost_attribution_gap,
         )
 
-    def _apply_resource_filters(self, resources: list[dict], filters: Optional[dict]) -> list[dict]:
+    def _apply_resource_filters(self, resources: list[dict], filters: dict | None) -> list[dict]:
         """
         Apply filters to resources after fetching.
 
@@ -322,7 +321,7 @@ class ComplianceService:
         return filtered
 
     async def _fetch_resources_by_type(
-        self, resource_type: str, filters: Optional[dict]
+        self, resource_type: str, filters: dict | None
     ) -> list[dict]:
         """
         Fetch resources of a specific type from AWS.
@@ -384,7 +383,7 @@ class ComplianceService:
             return violations
 
     async def invalidate_cache(
-        self, resource_types: Optional[list[str]] = None, filters: Optional[dict] = None
+        self, resource_types: list[str] | None = None, filters: dict | None = None
     ) -> bool:
         """
         Invalidate cached compliance results.

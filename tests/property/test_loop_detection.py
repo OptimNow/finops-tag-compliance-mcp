@@ -10,25 +10,20 @@ when the same tool is called with identical parameters more than N times
 SHALL return a message explaining the loop was detected.
 """
 
-import pytest
-from hypothesis import given, strategies as st, settings, assume
-from datetime import datetime, timedelta
-import hashlib
 import json
-from typing import Optional
 
-from mcp_server.utils.loop_detection import (
-    LoopDetector,
-    LoopDetectedError,
-    DEFAULT_MAX_IDENTICAL_CALLS,
-    DEFAULT_SLIDING_WINDOW_SECONDS,
-)
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
+
 from mcp_server.models.loop_detection import (
     LoopDetectedResponse,
     LoopDetectionConfiguration,
-    LoopDetectionHealthInfo,
 )
-
+from mcp_server.utils.loop_detection import (
+    LoopDetectedError,
+    LoopDetector,
+)
 
 # Strategies for generating test data
 tool_name_strategy = st.text(
@@ -162,7 +157,7 @@ class TestLoopDetectionProperty:
                 parameters=params,
             )
             # Each parameter set should have its own count
-            assert not loop_detected, f"Loop should not be detected with alternating params"
+            assert not loop_detected, "Loop should not be detected with alternating params"
 
     @pytest.mark.asyncio
     @given(
@@ -541,4 +536,4 @@ class TestLoopDetectionReset:
         for i in range(max_calls):
             loop_detected, count = await detector.record_call(session_id, tool_name, parameters)
             assert not loop_detected, f"After reset, call {i + 1} should not trigger loop"
-            assert count == i + 1, f"After reset, count should restart from 1"
+            assert count == i + 1, "After reset, count should restart from 1"

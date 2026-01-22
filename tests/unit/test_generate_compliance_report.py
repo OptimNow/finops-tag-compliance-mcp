@@ -1,16 +1,17 @@
 """Unit tests for generate_compliance_report tool."""
 
-import pytest
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from mcp_server.tools.generate_compliance_report import (
-    generate_compliance_report,
-    GenerateComplianceReportResult,
-)
+import pytest
+
 from mcp_server.models.compliance import ComplianceResult
-from mcp_server.models.violations import Violation, ViolationType, Severity
 from mcp_server.models.report import ReportFormat
+from mcp_server.models.violations import Severity, Violation, ViolationType
+from mcp_server.tools.generate_compliance_report import (
+    GenerateComplianceReportResult,
+    generate_compliance_report,
+)
 
 
 @pytest.fixture

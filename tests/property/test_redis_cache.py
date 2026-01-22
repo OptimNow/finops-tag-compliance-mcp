@@ -1,12 +1,12 @@
 """Property-based tests for Redis cache wrapper."""
 
-import pytest
-from hypothesis import given, strategies as st, settings
-from unittest.mock import MagicMock, AsyncMock, patch
-import json
 from datetime import timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_server.clients.cache import RedisCache, CacheError
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from mcp_server.clients.cache import RedisCache
 
 
 # Strategies for generating test data

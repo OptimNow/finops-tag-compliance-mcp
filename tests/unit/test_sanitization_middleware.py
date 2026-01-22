@@ -5,22 +5,21 @@ Requirements: 16.2, 16.5
 
 import pytest
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
 from starlette.datastructures import Headers
 
 from mcp_server.middleware.sanitization_middleware import (
-    RequestSanitizationMiddleware,
+    MAX_HEADER_COUNT,
+    MAX_HEADER_SIZE_BYTES,
+    MAX_PATH_LENGTH,
+    MAX_QUERY_STRING_LENGTH,
+    MAX_REQUEST_SIZE_BYTES,
     RequestSanitizationError,
-    sanitize_string,
+    RequestSanitizationMiddleware,
     sanitize_json_value,
+    sanitize_string,
     validate_headers,
     validate_request_size,
     validate_url,
-    MAX_REQUEST_SIZE_BYTES,
-    MAX_HEADER_SIZE_BYTES,
-    MAX_HEADER_COUNT,
-    MAX_QUERY_STRING_LENGTH,
-    MAX_PATH_LENGTH,
 )
 
 

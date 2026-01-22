@@ -11,15 +11,15 @@ The trend direction SHALL be calculated correctly: "improving" if latest
 score > earliest score, "declining" if latest < earliest, "stable" otherwise.
 """
 
-import asyncio
 from datetime import datetime, timedelta
-from hypothesis import given, strategies as st, settings, assume
+
 import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
-from mcp_server.services.history_service import HistoryService
-from mcp_server.models.history import GroupBy, TrendDirection, ComplianceHistoryResult
 from mcp_server.models.compliance import ComplianceResult
-
+from mcp_server.models.history import ComplianceHistoryResult, GroupBy, TrendDirection
+from mcp_server.services.history_service import HistoryService
 
 # =============================================================================
 # Strategies for generating test data

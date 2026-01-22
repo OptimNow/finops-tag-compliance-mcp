@@ -1,13 +1,14 @@
 """Unit tests for find_untagged_resources tool."""
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_server.tools.find_untagged_resources import find_untagged_resources
+import pytest
+
 from mcp_server.clients.aws_client import AWSClient
+from mcp_server.models.policy import RequiredTag, TagPolicy
 from mcp_server.services.policy_service import PolicyService
-from mcp_server.models.policy import TagPolicy, RequiredTag
+from mcp_server.tools.find_untagged_resources import find_untagged_resources
 
 
 @pytest.fixture

@@ -1,16 +1,17 @@
 """Unit tests for ComplianceService caching logic."""
 
-import pytest
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
 
-from mcp_server.services.compliance_service import ComplianceService
-from mcp_server.clients.cache import RedisCache
+import pytest
+
 from mcp_server.clients.aws_client import AWSClient
-from mcp_server.services.policy_service import PolicyService
+from mcp_server.clients.cache import RedisCache
 from mcp_server.models.compliance import ComplianceResult
+from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
+from mcp_server.services.compliance_service import ComplianceService
+from mcp_server.services.policy_service import PolicyService
 
 
 @pytest.fixture

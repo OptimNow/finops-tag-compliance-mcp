@@ -1,9 +1,9 @@
 """Pytest configuration and shared fixtures."""
 
-import os
-import pytest
-from unittest.mock import MagicMock, AsyncMock
 from datetime import datetime
+from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture

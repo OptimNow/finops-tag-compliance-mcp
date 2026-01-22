@@ -22,24 +22,21 @@ Each tag with value restrictions SHALL include:
 
 import json
 import tempfile
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 
-from hypothesis import given, strategies as st, settings, assume, HealthCheck
 import pytest
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
 from mcp_server.models import (
-    TagPolicy,
-    RequiredTag,
-    OptionalTag,
     TagNamingRules,
 )
 from mcp_server.services.policy_service import (
+    PolicyNotFoundError,
     PolicyService,
     PolicyValidationError,
-    PolicyNotFoundError,
 )
-
 
 # =============================================================================
 # Strategies for generating test data
@@ -1206,4 +1203,4 @@ class TestPolicyValidationCorrectness:
 
 
 # Import ViolationType and Severity for the new tests
-from mcp_server.models import ViolationType, Severity
+from mcp_server.models import Severity, ViolationType

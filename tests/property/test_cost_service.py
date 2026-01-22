@@ -12,16 +12,14 @@ gaps SHALL equal the total gap.
 """
 
 import math
-from hypothesis import given, strategies as st, settings, assume
-import pytest
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock
 
-from mcp_server.services.cost_service import CostService, CostAttributionResult
-from mcp_server.services.policy_service import PolicyService
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
 from mcp_server.clients.aws_client import AWSClient
-from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
-
+from mcp_server.services.cost_service import CostAttributionResult, CostService
+from mcp_server.services.policy_service import PolicyService
 
 # =============================================================================
 # Helper functions to create mocks

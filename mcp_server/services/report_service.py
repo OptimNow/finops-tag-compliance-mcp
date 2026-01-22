@@ -9,16 +9,14 @@ import io
 import json
 import logging
 from collections import defaultdict
-from typing import Optional
 
 from ..models.compliance import ComplianceResult
 from ..models.report import (
-    ComplianceReport,
     ComplianceRecommendation,
+    ComplianceReport,
     ReportFormat,
     ViolationRanking,
 )
-from ..models.enums import Severity
 
 logger = logging.getLogger(__name__)
 

@@ -2,9 +2,7 @@
 
 import logging
 import os
-from unittest.mock import MagicMock, patch, call
-
-import pytest
+from unittest.mock import MagicMock, patch
 
 from mcp_server.utils.cloudwatch_logger import (
     CloudWatchHandler,

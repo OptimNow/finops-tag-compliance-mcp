@@ -14,7 +14,6 @@ import logging
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +31,7 @@ class ResourceTypeConfig:
     3. Unattributable services: Have costs but no taggable resources (Bedrock API, Tax, etc.)
     """
 
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: str | None = None):
         """
         Initialize resource type configuration.
 
@@ -43,7 +42,7 @@ class ResourceTypeConfig:
         self.config_path = config_path or os.environ.get(
             "RESOURCE_TYPES_CONFIG_PATH", DEFAULT_CONFIG_PATH
         )
-        self._config: Optional[dict] = None
+        self._config: dict | None = None
         self._load_config()
 
     def _load_config(self) -> None:
@@ -58,7 +57,7 @@ class ResourceTypeConfig:
 
             for path in paths_to_try:
                 if path.exists():
-                    with open(path, "r", encoding="utf-8") as f:
+                    with open(path, encoding="utf-8") as f:
                         self._config = json.load(f)
                     logger.info(f"Loaded resource type config from {path}")
                     return

@@ -1,11 +1,12 @@
 """Unit tests for Redis cache wrapper."""
 
-import pytest
 import json
-from unittest.mock import MagicMock, AsyncMock, patch
-from redis.exceptions import ConnectionError as RedisConnectionError, RedisError
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from mcp_server.clients.cache import RedisCache, CacheError
+import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+from mcp_server.clients.cache import CacheError, RedisCache
 
 
 class TestRedisCacheInitialization:

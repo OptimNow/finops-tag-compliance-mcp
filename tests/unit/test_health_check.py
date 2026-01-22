@@ -1,8 +1,8 @@
 """Unit tests for health check endpoint."""
 
+
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
 
 from mcp_server.main import app
 from mcp_server.models import HealthStatus

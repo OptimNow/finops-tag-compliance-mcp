@@ -13,11 +13,11 @@ Requirements: 16.2, 16.5
 
 import logging
 import re
-from typing import Optional
-from fastapi import Request, Response
+
+from fastapi import Request
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.datastructures import Headers
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from ..services.security_service import get_security_service
 from ..utils.correlation import get_correlation_id
@@ -144,7 +144,7 @@ def validate_headers(headers: Headers) -> None:
             raise RequestSanitizationError(f"Null byte detected in header {name}")
 
 
-def validate_request_size(content_length: Optional[int]) -> None:
+def validate_request_size(content_length: int | None) -> None:
     """
     Validate request body size.
 

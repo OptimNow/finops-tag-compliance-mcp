@@ -1,19 +1,20 @@
 """Unit tests for validate_resource_tags tool."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
+
+from mcp_server.clients.aws_client import AWSClient
+from mcp_server.models.enums import Severity, ViolationType
+from mcp_server.models.violations import Violation
+from mcp_server.services.policy_service import PolicyService
 from mcp_server.tools.validate_resource_tags import validate_resource_tags
 from mcp_server.utils.arn_utils import (
+    extract_resource_id,
     is_valid_arn,
     parse_arn,
     service_to_resource_type,
-    extract_resource_id,
 )
-from mcp_server.clients.aws_client import AWSClient
-from mcp_server.services.policy_service import PolicyService
-from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
 
 
 @pytest.fixture

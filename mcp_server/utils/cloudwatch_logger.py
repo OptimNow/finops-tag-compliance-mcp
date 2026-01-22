@@ -7,7 +7,6 @@
 import json
 import logging
 import os
-from typing import Optional
 
 import boto3
 from botocore.exceptions import ClientError
@@ -148,8 +147,8 @@ class CloudWatchHandler(logging.Handler):
 
 
 def configure_cloudwatch_logging(
-    log_group: Optional[str] = None,
-    log_stream: Optional[str] = None,
+    log_group: str | None = None,
+    log_stream: str | None = None,
     region: str = "us-east-1",
     enable: bool = True,
 ) -> None:

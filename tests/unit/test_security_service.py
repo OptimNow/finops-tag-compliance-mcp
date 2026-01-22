@@ -5,11 +5,13 @@ Tests security event logging, rate limiting, and metrics collection.
 Requirements: 16.4
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
+
 from mcp_server.services.security_service import (
-    SecurityService,
     SecurityEvent,
+    SecurityService,
     configure_security_logging,
 )
 

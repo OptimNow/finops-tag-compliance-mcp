@@ -1,10 +1,11 @@
 """Unit tests for AWS client wrapper."""
 
-import pytest
-from datetime import datetime, UTC
-from moto import mock_aws
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, patch
+
 import boto3
-from unittest.mock import patch, AsyncMock
+import pytest
+from moto import mock_aws
 
 from mcp_server.clients import AWSClient
 from mcp_server.clients.aws_client import AWSAPIError

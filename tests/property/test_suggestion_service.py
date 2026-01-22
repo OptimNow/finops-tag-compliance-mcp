@@ -12,14 +12,14 @@ Property 6 states:
 - non-empty reasoning string explaining the basis for the suggestion
 """
 
-import pytest
-from hypothesis import given, strategies as st, settings, assume, HealthCheck
 import asyncio
 
-from mcp_server.services.suggestion_service import SuggestionService
-from mcp_server.services.policy_service import PolicyService
-from mcp_server.models import TagSuggestion
+from hypothesis import HealthCheck, assume, given, settings
+from hypothesis import strategies as st
 
+from mcp_server.models import TagSuggestion
+from mcp_server.services.policy_service import PolicyService
+from mcp_server.services.suggestion_service import SuggestionService
 
 # =============================================================================
 # Strategies for generating test data

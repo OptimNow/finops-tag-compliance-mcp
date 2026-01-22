@@ -4,7 +4,7 @@
 
 """Compliance result data model."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 

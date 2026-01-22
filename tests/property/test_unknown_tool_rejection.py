@@ -9,14 +9,14 @@ the request SHALL be rejected with an error response. The rejection SHALL be
 logged with the attempted tool name for security monitoring.
 """
 
-import pytest
-from hypothesis import given, strategies as st, settings, assume
-from unittest.mock import AsyncMock, MagicMock, patch
 import json
-from typing import Optional
+from unittest.mock import AsyncMock, MagicMock, patch
+
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 from mcp_server.mcp_handler import MCPHandler, MCPToolResult
-
 
 # =============================================================================
 # Strategies for generating test data

@@ -6,11 +6,12 @@
 
 import json
 import logging
-from typing import Any, Optional
 from datetime import timedelta
+from typing import Any
 
 import redis.asyncio as redis
-from redis.exceptions import RedisError, ConnectionError as RedisConnectionError
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import RedisError
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class RedisCache:
 
         self.redis_url = redis_url
         self.default_ttl = default_ttl
-        self._client: Optional[redis.Redis] = None
+        self._client: redis.Redis | None = None
         self._connected = False
 
     @classmethod
@@ -111,7 +112,7 @@ class RedisCache:
             self._connected = False
             return False
 
-    async def get(self, key: str) -> Optional[Any]:
+    async def get(self, key: str) -> Any | None:
         """
         Retrieve a value from cache.
 
@@ -160,7 +161,7 @@ class RedisCache:
             logger.error(f"Unexpected error getting cache value for {key}: {str(e)}")
             return None
 
-    async def set(self, key: str, value: Any, ttl: Optional[int] = None) -> bool:
+    async def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
         """
         Store a value in cache with optional TTL.
 

@@ -14,13 +14,12 @@ dedicated monitoring and alerting.
 Requirements: 16.4
 """
 
-import logging
-import json
-import os
-from datetime import datetime
-from typing import Optional
-from collections import defaultdict
 import asyncio
+import json
+import logging
+import os
+from collections import defaultdict
+from datetime import datetime
 
 from ..clients.cache import RedisCache
 
@@ -33,8 +32,8 @@ security_logger = logging.getLogger("security")
 
 
 def configure_security_logging(
-    log_group: Optional[str] = None,
-    log_stream: Optional[str] = None,
+    log_group: str | None = None,
+    log_stream: str | None = None,
     region: str = "us-east-1",
 ) -> None:
     """
@@ -104,10 +103,10 @@ class SecurityEvent:
         event_type: str,
         severity: str,
         message: str,
-        details: Optional[dict] = None,
-        session_id: Optional[str] = None,
-        tool_name: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        details: dict | None = None,
+        session_id: str | None = None,
+        tool_name: str | None = None,
+        timestamp: datetime | None = None,
     ):
         """
         Initialize a security event.
@@ -154,7 +153,7 @@ class SecurityService:
 
     def __init__(
         self,
-        redis_cache: Optional[RedisCache] = None,
+        redis_cache: RedisCache | None = None,
         max_unknown_tool_attempts: int = 10,
         window_seconds: int = 60,
     ):
@@ -195,9 +194,9 @@ class SecurityService:
         event_type: str,
         severity: str,
         message: str,
-        details: Optional[dict] = None,
-        session_id: Optional[str] = None,
-        tool_name: Optional[str] = None,
+        details: dict | None = None,
+        session_id: str | None = None,
+        tool_name: str | None = None,
     ) -> SecurityEvent:
         """
         Log a security event.
@@ -372,8 +371,8 @@ class SecurityService:
     async def log_unknown_tool_attempt(
         self,
         tool_name: str,
-        session_id: Optional[str] = None,
-        parameters: Optional[dict] = None,
+        session_id: str | None = None,
+        parameters: dict | None = None,
     ) -> SecurityEvent:
         """
         Log an attempt to invoke an unknown tool.
@@ -406,7 +405,7 @@ class SecurityService:
         tool_name: str,
         violation_type: str,
         field_name: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> SecurityEvent:
         """
         Log a detected injection attempt.
@@ -439,7 +438,7 @@ class SecurityService:
         self,
         tool_name: str,
         violation_type: str,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> SecurityEvent:
         """
         Log an attempt to bypass validation.
@@ -490,8 +489,8 @@ class SecurityService:
     async def get_recent_events(
         self,
         limit: int = 20,
-        event_type: Optional[str] = None,
-        session_id: Optional[str] = None,
+        event_type: str | None = None,
+        session_id: str | None = None,
     ) -> list[dict]:
         """
         Get recent security events with optional filtering.
@@ -553,10 +552,10 @@ class SecurityService:
 
 
 # Global security service instance
-_security_service: Optional[SecurityService] = None
+_security_service: SecurityService | None = None
 
 
-def get_security_service() -> Optional[SecurityService]:
+def get_security_service() -> SecurityService | None:
     """Get the global security service instance."""
     return _security_service
 

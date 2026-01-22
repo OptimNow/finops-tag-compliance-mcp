@@ -10,8 +10,8 @@ and graceful degradation responses.
 Requirements: 15.3, 15.5
 """
 
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
+
 from pydantic import BaseModel, Field
 
 
@@ -48,14 +48,14 @@ class BudgetExhaustedResponse(BaseModel):
     current_usage: int = Field(..., ge=0, description="Current number of tool calls made")
     limit: int = Field(..., ge=0, description="Maximum tool calls allowed per session")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
+        default_factory=lambda: datetime.now(UTC),
         description="Timestamp when budget exhaustion occurred",
     )
     suggestion: str = Field(
         default="Please start a new session or wait for the current session to expire.",
         description="Suggestion for the user on how to proceed",
     )
-    retry_after_seconds: Optional[int] = Field(
+    retry_after_seconds: int | None = Field(
         default=None, description="Seconds until the session budget resets (if applicable)"
     )
 
@@ -65,7 +65,7 @@ class BudgetExhaustedResponse(BaseModel):
         session_id: str,
         current_usage: int,
         limit: int,
-        retry_after_seconds: Optional[int] = None,
+        retry_after_seconds: int | None = None,
     ) -> "BudgetExhaustedResponse":
         """
         Create a budget exhausted response with a helpful message.

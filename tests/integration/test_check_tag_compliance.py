@@ -1,17 +1,18 @@
 """Integration tests for check_tag_compliance tool."""
 
-import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock
-from datetime import datetime, UTC
 
-from mcp_server.tools.check_tag_compliance import check_tag_compliance
-from mcp_server.services.compliance_service import ComplianceService
-from mcp_server.clients.cache import RedisCache
+import pytest
+
 from mcp_server.clients.aws_client import AWSClient
-from mcp_server.services.policy_service import PolicyService
+from mcp_server.clients.cache import RedisCache
 from mcp_server.models.compliance import ComplianceResult
+from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
+from mcp_server.services.compliance_service import ComplianceService
+from mcp_server.services.policy_service import PolicyService
+from mcp_server.tools.check_tag_compliance import check_tag_compliance
 
 
 @pytest.fixture
@@ -646,7 +647,6 @@ class TestCheckTagComplianceHistoryStorage:
     ):
         """Test that compliance checks automatically store results in history database."""
         from mcp_server.services.history_service import HistoryService
-        from mcp_server.tools.get_violation_history import get_violation_history
 
         # Create an in-memory history service for testing
         history_service = HistoryService(db_path=":memory:")
@@ -716,7 +716,6 @@ class TestCheckTagComplianceHistoryStorage:
         assert stored_entry.violation_count == len(result.violations)
 
         # Verify timestamp is from today (grouped by day, so it's at midnight)
-        from datetime import datetime, timedelta
 
         today = datetime.utcnow().date()
         assert (
@@ -731,8 +730,9 @@ class TestCheckTagComplianceHistoryStorage:
         self, compliance_service, mock_aws_client, mock_policy_service
     ):
         """Test that compliance checks continue working even if history storage fails."""
-        from mcp_server.services.history_service import HistoryService
         from unittest.mock import AsyncMock
+
+        from mcp_server.services.history_service import HistoryService
 
         # Create a mock history service that raises an exception
         history_service = MagicMock(spec=HistoryService)

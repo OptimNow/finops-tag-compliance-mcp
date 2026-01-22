@@ -5,7 +5,6 @@
 """Data models for cost attribution analysis."""
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +24,7 @@ class CostBreakdown(BaseModel):
     resources_non_compliant: int = Field(
         default=0, description="Number of resources missing required tags in this group"
     )
-    note: Optional[str] = Field(
+    note: str | None = Field(
         default=None,
         description="Clarification note when spend is $0 (e.g., no resources found vs resources with $0 cost)",
     )
@@ -44,7 +43,7 @@ class CostAttributionGapResult(BaseModel):
     total_spend: float = Field(
         description="Total cloud spend for the time period in USD (ALL services)"
     )
-    taggable_spend: Optional[float] = Field(
+    taggable_spend: float | None = Field(
         default=None,
         description="Spend from services that have taggable resources (excludes Bedrock API, Tax, etc.)",
     )
@@ -56,11 +55,11 @@ class CostAttributionGapResult(BaseModel):
         description="Gap as percentage of taggable spend (0-100)"
     )
     time_period: dict[str, str] = Field(description="Time period analyzed (Start and End dates)")
-    breakdown: Optional[dict[str, CostBreakdown]] = Field(
+    breakdown: dict[str, CostBreakdown] | None = Field(
         default=None,
         description="Optional breakdown by grouping dimension (resource_type, region, or account)",
     )
-    unattributable_services: Optional[dict[str, float]] = Field(
+    unattributable_services: dict[str, float] | None = Field(
         default=None,
         description="Services with costs but no taggable resources (Bedrock API usage, Tax, Cost Explorer fees, etc.)",
     )

@@ -1,6 +1,6 @@
 """AWS client wrapper module."""
 
-from .aws_client import AWSClient, AWSAPIError
-from .cache import RedisCache, CacheError
+from .aws_client import AWSAPIError, AWSClient
+from .cache import CacheError, RedisCache
 
 __all__ = ["AWSClient", "AWSAPIError", "RedisCache", "CacheError"]

@@ -12,54 +12,45 @@ Requirements: 14.5, 15.3, 15.4, 15.5, 16.4
 
 import json
 import logging
-from datetime import datetime
-from typing import Any, Callable, Optional
+from collections.abc import Callable
+from typing import Optional
+
 from pydantic import BaseModel
 
+from .clients.aws_client import AWSClient
+from .clients.cache import RedisCache
+from .middleware.budget_middleware import (
+    BudgetExhaustedError,
+    get_budget_tracker,
+)
 from .models import (
-    ComplianceResult,
-    UntaggedResourcesResult,
-    ValidateResourceTagsResult,
-    CostAttributionGapResult,
     BudgetExhaustedResponse,
 )
 from .models.audit import AuditStatus
 from .models.loop_detection import LoopDetectedResponse
+from .services import (
+    AuditService,
+    ComplianceService,
+    HistoryService,
+    PolicyService,
+    get_security_service,
+)
 from .tools import (
     check_tag_compliance,
     find_untagged_resources,
-    validate_resource_tags,
-    get_cost_attribution_gap,
-    suggest_tags,
-    get_tagging_policy,
     generate_compliance_report,
+    get_cost_attribution_gap,
+    get_tagging_policy,
     get_violation_history,
-    SuggestTagsResult,
-    GetTaggingPolicyResult,
-    GenerateComplianceReportResult,
-    GetViolationHistoryResult,
-)
-from .services import (
-    PolicyService,
-    ComplianceService,
-    AuditService,
-    HistoryService,
-    get_security_service,
-)
-from .clients.aws_client import AWSClient
-from .clients.cache import RedisCache
-from .middleware.budget_middleware import (
-    BudgetTracker,
-    BudgetExhaustedError,
-    get_budget_tracker,
+    suggest_tags,
+    validate_resource_tags,
 )
 from .utils.correlation import get_correlation_id
+from .utils.input_validation import InputValidator, SecurityViolationError, ValidationError
 from .utils.loop_detection import (
-    LoopDetector,
     LoopDetectedError,
     get_loop_detector,
 )
-from .utils.input_validation import InputValidator, ValidationError, SecurityViolationError
 
 logger = logging.getLogger(__name__)
 
@@ -98,11 +89,11 @@ class MCPHandler:
 
     def __init__(
         self,
-        aws_client: Optional[AWSClient] = None,
-        policy_service: Optional[PolicyService] = None,
-        compliance_service: Optional[ComplianceService] = None,
-        redis_cache: Optional[RedisCache] = None,
-        audit_service: Optional[AuditService] = None,
+        aws_client: AWSClient | None = None,
+        policy_service: PolicyService | None = None,
+        compliance_service: ComplianceService | None = None,
+        redis_cache: RedisCache | None = None,
+        audit_service: AuditService | None = None,
         history_service: Optional["HistoryService"] = None,
     ):
         """
@@ -1185,7 +1176,7 @@ class MCPHandler:
 
         except Exception as e:
             # Sanitize error before returning to client (Requirement 16.5)
-            from .utils.error_sanitization import sanitize_exception, log_error_safely
+            from .utils.error_sanitization import log_error_safely, sanitize_exception
 
             # Log full error internally
             log_error_safely(

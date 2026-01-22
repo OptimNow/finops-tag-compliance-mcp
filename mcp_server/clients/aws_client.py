@@ -6,12 +6,13 @@
 
 import asyncio
 import time
-from typing import Any, Callable
+from collections.abc import Callable
 from datetime import datetime, timedelta
+from typing import Any
 
 import boto3
-from botocore.exceptions import ClientError, BotoCoreError
 from botocore.config import Config
+from botocore.exceptions import BotoCoreError, ClientError
 
 
 class AWSAPIError(Exception):

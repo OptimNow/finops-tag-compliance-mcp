@@ -9,8 +9,6 @@ to ensure consistent behavior and eliminate code duplication.
 """
 
 import re
-from typing import Optional
-
 
 # ARN validation pattern - supports standard AWS ARN formats including:
 # - S3 buckets with empty region/account fields
@@ -18,7 +16,7 @@ from typing import Optional
 ARN_PATTERN = re.compile(r"^arn:aws[a-z-]*:[a-z0-9-]+:[a-z0-9-]*:[0-9]*:.+")
 
 
-def is_valid_arn(arn: Optional[str]) -> bool:
+def is_valid_arn(arn: str | None) -> bool:
     """
     Validate if a string is a valid AWS ARN format.
 

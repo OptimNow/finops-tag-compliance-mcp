@@ -14,16 +14,15 @@ import logging
 import os
 import re
 import tempfile
-from datetime import datetime, timezone
-from unittest.mock import MagicMock, patch
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from hypothesis import given, strategies as st, settings, assume
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from mcp_server.models.audit import AuditLogEntry, AuditStatus
+from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
+from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 from mcp_server.utils.correlation import (
     CorrelationIDMiddleware,
     generate_correlation_id,
@@ -31,8 +30,6 @@ from mcp_server.utils.correlation import (
     get_correlation_id_for_logging,
     set_correlation_id,
 )
-from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
-
 
 # =============================================================================
 # Strategies for generating test data

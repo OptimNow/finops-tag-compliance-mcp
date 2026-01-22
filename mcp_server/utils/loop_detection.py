@@ -7,9 +7,8 @@
 import hashlib
 import json
 import logging
-from typing import Optional
-from datetime import datetime, timedelta
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from ..clients.cache import RedisCache
 from ..utils.correlation import get_correlation_id
@@ -30,7 +29,7 @@ class LoopDetectionEvent:
     call_signature: str
     call_count: int
     max_calls: int
-    correlation_id: Optional[str] = None
+    correlation_id: str | None = None
 
     def to_dict(self) -> dict:
         return {
@@ -54,8 +53,8 @@ class LoopDetectedError(Exception):
         call_signature: str,
         call_count: int,
         max_calls: int,
-        session_id: Optional[str] = None,
-        message: Optional[str] = None,
+        session_id: str | None = None,
+        message: str | None = None,
     ):
         self.tool_name = tool_name
         self.call_signature = call_signature
@@ -80,7 +79,7 @@ class LoopDetector:
 
     def __init__(
         self,
-        redis_cache: Optional[RedisCache] = None,
+        redis_cache: RedisCache | None = None,
         max_identical_calls: int = DEFAULT_MAX_IDENTICAL_CALLS,
         sliding_window_seconds: int = DEFAULT_SLIDING_WINDOW_SECONDS,
     ):
@@ -90,7 +89,7 @@ class LoopDetector:
         self._local_history: dict[str, list[tuple[str, datetime]]] = {}
         self._local_stats: dict[str, int] = {}
         self._total_loops_detected: int = 0
-        self._last_loop_event: Optional[LoopDetectionEvent] = None
+        self._last_loop_event: LoopDetectionEvent | None = None
         self._loop_events_by_tool: dict[str, int] = {}
         self._loop_events_history: list[LoopDetectionEvent] = []
         logger.info(f"LoopDetector initialized: max_identical_calls={max_identical_calls}")
@@ -230,7 +229,7 @@ class LoopDetector:
 
         logger.warning(f"Loop detected: {event.to_dict()}")
 
-    async def get_loop_detection_stats(self, session_id: Optional[str] = None) -> dict:
+    async def get_loop_detection_stats(self, session_id: str | None = None) -> dict:
         """Get loop detection statistics."""
         stats = {
             "enabled": True,
@@ -267,10 +266,10 @@ class LoopDetector:
 
 
 # Global loop detector instance
-_loop_detector: Optional[LoopDetector] = None
+_loop_detector: LoopDetector | None = None
 
 
-def get_loop_detector() -> Optional[LoopDetector]:
+def get_loop_detector() -> LoopDetector | None:
     """Get the global loop detector instance."""
     return _loop_detector
 

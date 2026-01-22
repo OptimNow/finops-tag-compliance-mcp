@@ -13,9 +13,7 @@ Requirements: 16.5
 
 import logging
 import re
-import os
-from typing import Optional, Any, Dict
-from pathlib import Path
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -80,9 +78,9 @@ class SanitizedError:
     def __init__(
         self,
         user_message: str,
-        internal_message: Optional[str] = None,
-        error_code: Optional[str] = None,
-        details: Optional[Dict[str, Any]] = None,
+        internal_message: str | None = None,
+        error_code: str | None = None,
+        details: dict[str, Any] | None = None,
     ):
         """
         Initialize a sanitized error.
@@ -98,7 +96,7 @@ class SanitizedError:
         self.error_code = error_code
         self.details = details or {}
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON response."""
         result = {
             "error": self.error_code or "internal_error",
@@ -115,7 +113,7 @@ class SanitizedError:
         return json.dumps(self.to_dict())
 
 
-def detect_sensitive_info(text: str) -> Dict[str, list]:
+def detect_sensitive_info(text: str) -> dict[str, list]:
     """
     Detect sensitive information in text.
 
@@ -228,7 +226,7 @@ def sanitize_exception(
 def sanitize_error_response(
     error: Any,
     status_code: int = 500,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Sanitize an error into a safe response dictionary.
 
@@ -347,8 +345,8 @@ def _get_user_message(
 def create_safe_error_response(
     error_code: str,
     user_message: str,
-    details: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """
     Create a safe error response with guaranteed no sensitive info.
 
@@ -365,7 +363,7 @@ def create_safe_error_response(
     # Double-check that user_message doesn't contain sensitive info
     if detect_sensitive_info(user_message):
         logger.warning(
-            f"User message contains sensitive information, redacting",
+            "User message contains sensitive information, redacting",
             extra={"error_code": error_code},
         )
         user_message = redact_sensitive_info(user_message)
@@ -390,8 +388,8 @@ def create_safe_error_response(
 
 def log_error_safely(
     error: Exception,
-    context: Optional[Dict[str, Any]] = None,
-    logger_instance: Optional[logging.Logger] = None,
+    context: dict[str, Any] | None = None,
+    logger_instance: logging.Logger | None = None,
 ) -> None:
     """
     Log an error with full details internally while sanitizing for external use.

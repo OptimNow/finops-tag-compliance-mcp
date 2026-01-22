@@ -6,11 +6,10 @@
 
 import logging
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field, computed_field
 
-from ..models.policy import TagPolicy, RequiredTag, OptionalTag, TagNamingRules
+from ..models.policy import TagPolicy
 from ..services.policy_service import PolicyService
 
 logger = logging.getLogger(__name__)
@@ -20,9 +19,9 @@ class RequiredTagInfo(BaseModel):
     """Information about a required tag."""
 
     name: str
-    description: Optional[str] = None
-    allowed_values: Optional[list[str]] = None
-    validation_regex: Optional[str] = None
+    description: str | None = None
+    allowed_values: list[str] | None = None
+    validation_regex: str | None = None
     applies_to: list[str] = Field(default_factory=list)
 
 
@@ -30,8 +29,8 @@ class OptionalTagInfo(BaseModel):
     """Information about an optional tag."""
 
     name: str
-    description: Optional[str] = None
-    allowed_values: Optional[list[str]] = None
+    description: str | None = None
+    allowed_values: list[str] | None = None
 
 
 class TagNamingRulesInfo(BaseModel):

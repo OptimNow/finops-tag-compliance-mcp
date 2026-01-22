@@ -6,9 +6,9 @@ from datetime import datetime
 
 import pytest
 
-from mcp_server.models.audit import AuditLogEntry, AuditStatus
+from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
-from mcp_server.utils.correlation import set_correlation_id, get_correlation_id
+from mcp_server.utils.correlation import set_correlation_id
 
 
 @pytest.fixture

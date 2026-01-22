@@ -11,17 +11,18 @@ resources to total resources. When total resources is zero, the score
 SHALL be 1.0 (fully compliant by default).
 """
 
-from hypothesis import given, strategies as st, settings, HealthCheck
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import MagicMock, AsyncMock
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
-from mcp_server.services.compliance_service import ComplianceService
-from mcp_server.clients.cache import RedisCache
 from mcp_server.clients.aws_client import AWSClient
-from mcp_server.services.policy_service import PolicyService
+from mcp_server.clients.cache import RedisCache
+from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
-
+from mcp_server.services.compliance_service import ComplianceService
+from mcp_server.services.policy_service import PolicyService
 
 # =============================================================================
 # Helper functions to create mocks

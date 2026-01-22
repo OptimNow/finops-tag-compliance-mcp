@@ -13,8 +13,7 @@ Requirements: 14.2, 14.5
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import timezone
-from typing import Optional
+from datetime import UTC
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -22,32 +21,32 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
-from .config import settings
-from .models import HealthStatus, BudgetHealthInfo
-from .models.audit import AuditStatus
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
-from .services.audit_service import AuditService
-from .services.policy_service import PolicyService
-from .services.compliance_service import ComplianceService
-from .services.history_service import HistoryService
-from .services.security_service import (
-    SecurityService,
-    set_security_service,
-    configure_security_logging,
-)
-from .mcp_handler import MCPHandler, MCPToolResult
-from .utils.cloudwatch_logger import configure_cloudwatch_logging, CorrelationIDFilter
-from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
+from .config import settings
+from .mcp_handler import MCPHandler
 from .middleware.budget_middleware import (
     BudgetTracker,
-    set_budget_tracker,
     get_budget_tracker,
+    set_budget_tracker,
 )
+from .models import HealthStatus
+from .models.audit import AuditStatus
+from .services.audit_service import AuditService
+from .services.compliance_service import ComplianceService
+from .services.history_service import HistoryService
+from .services.policy_service import PolicyService
+from .services.security_service import (
+    SecurityService,
+    configure_security_logging,
+    set_security_service,
+)
+from .utils.cloudwatch_logger import CorrelationIDFilter, configure_cloudwatch_logging
+from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
 from .utils.loop_detection import (
     LoopDetector,
-    set_loop_detector,
     get_loop_detector,
+    set_loop_detector,
 )
 
 # Configure logging with correlation ID support
@@ -74,14 +73,14 @@ logger = logging.getLogger(__name__)
 configure_cloudwatch_logging()
 
 # Global instances
-redis_cache: Optional[RedisCache] = None
-audit_service: Optional[AuditService] = None
-history_service: Optional[HistoryService] = None
-aws_client: Optional[AWSClient] = None
-policy_service: Optional[PolicyService] = None
-compliance_service: Optional[ComplianceService] = None
-security_service: Optional[SecurityService] = None
-mcp_handler: Optional[MCPHandler] = None
+redis_cache: RedisCache | None = None
+audit_service: AuditService | None = None
+history_service: HistoryService | None = None
+aws_client: AWSClient | None = None
+policy_service: PolicyService | None = None
+compliance_service: ComplianceService | None = None
+security_service: SecurityService | None = None
+mcp_handler: MCPHandler | None = None
 
 
 # Request/Response models for MCP protocol
@@ -322,7 +321,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
     Requirements: 16.5
     """
-    from .utils.error_sanitization import sanitize_exception, log_error_safely
+    from .utils.error_sanitization import log_error_safely, sanitize_exception
 
     # Log the full error internally with all details
     log_error_safely(
@@ -562,8 +561,9 @@ async def metrics_endpoint() -> Response:
 
     Requirements: 15.2
     """
-    from .services.metrics_service import MetricsService
     from datetime import datetime
+
+    from .services.metrics_service import MetricsService
 
     if not audit_service:
         return Response(
@@ -724,7 +724,7 @@ async def metrics_endpoint() -> Response:
             lines.append(f'mcp_errors_by_tool{{tool="{tool_name}"}} {count}')
 
     # Add timestamp
-    lines.append(f"# Generated at {datetime.now(timezone.utc).isoformat()}")
+    lines.append(f"# Generated at {datetime.now(UTC).isoformat()}")
 
     return Response(content="\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
 
@@ -811,7 +811,7 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
 @app.post("/api/v1/compliance/check")
 async def api_check_compliance(
     resource_types: list[str],
-    filters: Optional[dict] = None,
+    filters: dict | None = None,
     severity: str = "all",
 ):
     """

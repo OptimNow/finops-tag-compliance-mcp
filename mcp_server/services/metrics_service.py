@@ -12,21 +12,20 @@ Requirements: 15.2
 """
 
 import logging
-from datetime import datetime, timezone, timedelta
-from typing import Optional
 from collections import defaultdict
+from datetime import UTC, datetime
 
+from ..middleware.budget_middleware import BudgetTracker, get_budget_tracker
+from ..models.audit import AuditStatus
 from ..models.observability import (
-    ToolUsageStats,
-    ErrorRateMetrics,
     BudgetUtilizationMetrics,
+    ErrorRateMetrics,
+    GlobalMetrics,
     LoopDetectionMetrics,
     SessionMetrics,
-    GlobalMetrics,
+    ToolUsageStats,
 )
-from ..models.audit import AuditStatus
 from ..services.audit_service import AuditService
-from ..middleware.budget_middleware import BudgetTracker, get_budget_tracker
 from ..utils.loop_detection import LoopDetector, get_loop_detector
 
 logger = logging.getLogger(__name__)
@@ -47,9 +46,9 @@ class MetricsService:
     def __init__(
         self,
         audit_service: AuditService,
-        budget_tracker: Optional[BudgetTracker] = None,
-        loop_detector: Optional[LoopDetector] = None,
-        server_start_time: Optional[datetime] = None,
+        budget_tracker: BudgetTracker | None = None,
+        loop_detector: LoopDetector | None = None,
+        server_start_time: datetime | None = None,
     ):
         """
         Initialize the metrics service.
@@ -63,12 +62,12 @@ class MetricsService:
         self._audit_service = audit_service
         self._budget_tracker = budget_tracker or get_budget_tracker()
         self._loop_detector = loop_detector or get_loop_detector()
-        self._server_start_time = server_start_time or datetime.now(timezone.utc)
+        self._server_start_time = server_start_time or datetime.now(UTC)
 
         logger.info("MetricsService initialized")
 
     async def get_tool_usage_stats(
-        self, tool_name: Optional[str] = None, limit: int = 1000
+        self, tool_name: str | None = None, limit: int = 1000
     ) -> list[ToolUsageStats]:
         """
         Get usage statistics for tools.
@@ -228,8 +227,8 @@ class MetricsService:
         )
 
     async def get_budget_utilization_metrics(
-        self, session_id: Optional[str] = None
-    ) -> Optional[BudgetUtilizationMetrics]:
+        self, session_id: str | None = None
+    ) -> BudgetUtilizationMetrics | None:
         """
         Get budget utilization metrics.
 
@@ -277,8 +276,8 @@ class MetricsService:
             )
 
     async def get_loop_detection_metrics(
-        self, session_id: Optional[str] = None
-    ) -> Optional[LoopDetectionMetrics]:
+        self, session_id: str | None = None
+    ) -> LoopDetectionMetrics | None:
         """
         Get loop detection metrics.
 
@@ -329,8 +328,8 @@ class MetricsService:
             # No logs for this session, return empty metrics
             return SessionMetrics(
                 session_id=session_id,
-                created_at=datetime.now(timezone.utc),
-                last_activity_at=datetime.now(timezone.utc),
+                created_at=datetime.now(UTC),
+                last_activity_at=datetime.now(UTC),
             )
 
         # Calculate metrics from logs
@@ -384,7 +383,7 @@ class MetricsService:
         Returns:
             Global metrics
         """
-        current_time = datetime.now(timezone.utc)
+        current_time = datetime.now(UTC)
         uptime_seconds = (current_time - self._server_start_time).total_seconds()
 
         # Get all audit logs

@@ -1,12 +1,13 @@
 """Tests for shared resource utilities."""
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
 from mcp_server.utils.resource_utils import (
-    fetch_resources_by_type,
     extract_account_from_arn,
     fetch_all_resources_via_tagging_api,
+    fetch_resources_by_type,
     fetch_resources_via_tagging_api,
     get_supported_resource_types,
     get_tagging_api_resource_types,

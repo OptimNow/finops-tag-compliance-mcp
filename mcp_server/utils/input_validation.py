@@ -11,10 +11,10 @@ of validation bypass attempts and malicious payload injection.
 Requirements: 16.3
 """
 
-import re
-from typing import Any, Optional
-from datetime import datetime
 import logging
+import re
+from datetime import datetime
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -621,7 +621,7 @@ class InputValidator:
         regions: Any,
         field_name: str = "regions",
         required: bool = False,
-    ) -> Optional[list[str]]:
+    ) -> list[str] | None:
         """
         Validate regions parameter.
 
@@ -682,7 +682,7 @@ class InputValidator:
         filters: Any,
         field_name: str = "filters",
         required: bool = False,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Validate filters parameter.
 
@@ -814,7 +814,7 @@ class InputValidator:
         min_cost_threshold: Any,
         field_name: str = "min_cost_threshold",
         required: bool = False,
-    ) -> Optional[float]:
+    ) -> float | None:
         """
         Validate min_cost_threshold parameter.
 
@@ -880,7 +880,7 @@ class InputValidator:
         time_period: Any,
         field_name: str = "time_period",
         required: bool = False,
-    ) -> Optional[dict]:
+    ) -> dict | None:
         """
         Validate time_period parameter.
 
@@ -988,8 +988,8 @@ class InputValidator:
         group_by: Any,
         field_name: str = "group_by",
         required: bool = False,
-        valid_options: Optional[set[str]] = None,
-    ) -> Optional[str]:
+        valid_options: set[str] | None = None,
+    ) -> str | None:
         """
         Validate group_by parameter.
 
@@ -1162,10 +1162,10 @@ class InputValidator:
         value: Any,
         field_name: str,
         required: bool = False,
-        default: Optional[int] = None,
-        minimum: Optional[int] = None,
-        maximum: Optional[int] = None,
-    ) -> Optional[int]:
+        default: int | None = None,
+        minimum: int | None = None,
+        maximum: int | None = None,
+    ) -> int | None:
         """
         Validate integer parameter.
 
@@ -1228,9 +1228,9 @@ class InputValidator:
         value: Any,
         field_name: str,
         required: bool = False,
-        max_length: Optional[int] = None,
-        pattern: Optional[re.Pattern] = None,
-    ) -> Optional[str]:
+        max_length: int | None = None,
+        pattern: re.Pattern | None = None,
+    ) -> str | None:
         """
         Validate string parameter with sanitization.
 
@@ -1290,7 +1290,7 @@ class InputValidator:
         if pattern is not None and not pattern.match(value):
             raise ValidationError(
                 field_name,
-                f"Does not match required pattern",
+                "Does not match required pattern",
                 value,
             )
 

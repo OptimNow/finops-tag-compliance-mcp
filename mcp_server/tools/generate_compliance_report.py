@@ -7,9 +7,7 @@
 import logging
 from datetime import datetime
 
-from pydantic import BaseModel, Field, computed_field
-
-from typing import Optional
+from pydantic import BaseModel, Field
 
 from ..models.compliance import ComplianceResult
 from ..models.report import ComplianceReport, ReportFormat
@@ -68,7 +66,7 @@ async def generate_compliance_report(
     compliance_result: ComplianceResult,
     format: str = "json",
     include_recommendations: bool = True,
-    report_service: Optional[ReportService] = None,
+    report_service: ReportService | None = None,
 ) -> GenerateComplianceReportResult:
     """
     Generate a comprehensive compliance report in the specified format.

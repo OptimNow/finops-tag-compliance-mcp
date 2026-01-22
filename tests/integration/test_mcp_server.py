@@ -5,23 +5,22 @@ These tests verify the MCP protocol communication and tool invocation flow.
 Requirements: 14.5
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
-from datetime import datetime, UTC
 import json
+from datetime import UTC, datetime
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
-from httpx import AsyncClient, ASGITransport
 
+from mcp_server.clients.aws_client import AWSClient
+from mcp_server.clients.cache import RedisCache
 from mcp_server.main import app
 from mcp_server.mcp_handler import MCPHandler, MCPToolResult
 from mcp_server.models.compliance import ComplianceResult
+from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
-from mcp_server.services.policy_service import PolicyService
 from mcp_server.services.compliance_service import ComplianceService
-from mcp_server.clients.aws_client import AWSClient
-from mcp_server.clients.cache import RedisCache
+from mcp_server.services.policy_service import PolicyService
 
 
 @pytest.fixture
@@ -50,7 +49,7 @@ def mock_policy_service():
     service.validate_resource_tags = MagicMock(return_value=[])
 
     # Mock get_policy to return a valid policy object
-    from mcp_server.models.policy import TagPolicy, RequiredTag, OptionalTag, TagNamingRules
+    from mcp_server.models.policy import OptionalTag, RequiredTag, TagNamingRules, TagPolicy
 
     mock_policy = TagPolicy(
         version="1.0",

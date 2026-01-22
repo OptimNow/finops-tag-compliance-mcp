@@ -6,10 +6,9 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
-from ..models.cost_attribution import CostAttributionGapResult, CostBreakdown
 from ..clients.aws_client import AWSClient
+from ..models.cost_attribution import CostAttributionGapResult, CostBreakdown
 from ..services.cost_service import CostService
 from ..services.policy_service import PolicyService
 
@@ -20,10 +19,10 @@ async def get_cost_attribution_gap(
     aws_client: AWSClient,
     policy_service: PolicyService,
     resource_types: list[str],
-    time_period: Optional[dict[str, str]] = None,
-    group_by: Optional[str] = None,
-    filters: Optional[dict] = None,
-    cost_service: Optional[CostService] = None,
+    time_period: dict[str, str] | None = None,
+    group_by: str | None = None,
+    filters: dict | None = None,
+    cost_service: CostService | None = None,
 ) -> CostAttributionGapResult:
     """
     Calculate the cost attribution gap - the financial impact of tagging gaps.

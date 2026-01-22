@@ -4,7 +4,7 @@
 
 """Tagging policy data models."""
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 

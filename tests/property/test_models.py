@@ -11,22 +11,22 @@ When the violation is an invalid value, the object SHALL also include the curren
 value and list of allowed values.
 """
 
-from hypothesis import given, strategies as st, assume, settings
-from pydantic import ValidationError
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+from pydantic import ValidationError
 
 from mcp_server.models import (
+    ComplianceResult,
+    OptionalTag,
+    RequiredTag,
+    Severity,
+    TagNamingRules,
+    TagPolicy,
+    TagSuggestion,
     Violation,
     ViolationType,
-    Severity,
-    ComplianceResult,
-    TagSuggestion,
-    TagPolicy,
-    RequiredTag,
-    OptionalTag,
-    TagNamingRules,
 )
-
 
 # =============================================================================
 # Strategies for generating test data

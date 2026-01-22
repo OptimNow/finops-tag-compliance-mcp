@@ -6,12 +6,12 @@
 
 import functools
 import time
-from typing import Any, Callable, TypeVar, ParamSpec
+from collections.abc import Callable
+from typing import ParamSpec, TypeVar
 
 from ..models.audit import AuditStatus
 from ..services.audit_service import AuditService
 from ..utils.correlation import get_correlation_id
-
 
 # Type variables for generic decorator
 P = ParamSpec("P")

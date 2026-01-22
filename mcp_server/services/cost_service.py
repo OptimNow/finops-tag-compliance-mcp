@@ -6,15 +6,14 @@
 
 import logging
 from datetime import datetime, timedelta
-from typing import Optional
 
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
 from ..utils.resource_type_config import get_unattributable_services
 from ..utils.resource_utils import (
-    fetch_resources_by_type,
-    extract_account_from_arn,
     expand_all_to_supported_types,
+    extract_account_from_arn,
+    fetch_resources_by_type,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,12 +32,12 @@ class CostAttributionResult:
         attributable_spend: float,
         attribution_gap: float,
         attribution_gap_percentage: float,
-        breakdown: Optional[dict[str, dict[str, float]]] = None,
+        breakdown: dict[str, dict[str, float]] | None = None,
         total_resources_scanned: int = 0,
         total_resources_compliant: int = 0,
         total_resources_non_compliant: int = 0,
-        unattributable_services: Optional[dict[str, float]] = None,
-        taggable_spend: Optional[float] = None,
+        unattributable_services: dict[str, float] | None = None,
+        taggable_spend: float | None = None,
     ):
         """
         Initialize cost attribution result.
@@ -91,9 +90,9 @@ class CostService:
     async def calculate_attribution_gap(
         self,
         resource_types: list[str],
-        time_period: Optional[dict[str, str]] = None,
-        group_by: Optional[str] = None,
-        filters: Optional[dict] = None,
+        time_period: dict[str, str] | None = None,
+        group_by: str | None = None,
+        filters: dict | None = None,
     ) -> CostAttributionResult:
         """
         Calculate cost attribution gap for specified resources.
@@ -159,8 +158,8 @@ class CostService:
         self,
         resource_types: list[str],
         time_period: dict[str, str],
-        group_by: Optional[str] = None,
-        filters: Optional[dict] = None,
+        group_by: str | None = None,
+        filters: dict | None = None,
         use_total_account_spend: bool = False,
     ) -> CostAttributionResult:
         """
@@ -461,8 +460,8 @@ class CostService:
     async def _calculate_attribution_gap_all(
         self,
         time_period: dict[str, str],
-        group_by: Optional[str] = None,
-        filters: Optional[dict] = None,
+        group_by: str | None = None,
+        filters: dict | None = None,
     ) -> CostAttributionResult:
         """
         Calculate cost attribution gap across ALL AWS services.
@@ -723,8 +722,8 @@ class CostService:
         self,
         resource_types: list[str],
         time_period: dict[str, str],
-        group_by: Optional[str] = None,
-        filters: Optional[dict] = None,
+        group_by: str | None = None,
+        filters: dict | None = None,
     ) -> CostAttributionResult:
         """
         Calculate cost attribution gap for specific resource types.
@@ -937,7 +936,7 @@ class CostService:
             total_resources_non_compliant=total_resources_non_compliant,
         )
 
-    def _generate_spend_note(self, data: dict) -> Optional[str]:
+    def _generate_spend_note(self, data: dict) -> str | None:
         """
         Generate a clarification note for $0 spend cases.
 
@@ -1001,7 +1000,7 @@ class CostService:
             return "unknown"
 
     async def _fetch_resources_by_type(
-        self, resource_type: str, filters: Optional[dict]
+        self, resource_type: str, filters: dict | None
     ) -> list[dict]:
         """
         Fetch resources of a specific type from AWS.

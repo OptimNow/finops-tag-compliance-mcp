@@ -10,17 +10,18 @@ rejected with a clear error message indicating which parameter failed
 validation and why.
 """
 
-import pytest
-from hypothesis import given, strategies as st, settings, assume
 import re
-from typing import Any, Optional
+from typing import Any
+
+import pytest
+from hypothesis import assume, given, settings
+from hypothesis import strategies as st
 
 from mcp_server.utils.input_validation import (
     InputValidator,
-    ValidationError,
     SecurityViolationError,
+    ValidationError,
 )
-
 
 # =============================================================================
 # Strategies for generating test data

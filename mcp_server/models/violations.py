@@ -6,7 +6,7 @@
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from .enums import ViolationType, Severity
+from .enums import Severity, ViolationType
 
 
 class Violation(BaseModel):

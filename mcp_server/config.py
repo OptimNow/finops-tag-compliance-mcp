@@ -10,8 +10,8 @@ variables with sensible defaults.
 Requirements: 14.2
 """
 
-from typing import Optional
-from pydantic import Field, AliasChoices
+
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -55,7 +55,7 @@ class Settings(BaseSettings):
         description="Redis connection URL",
         validation_alias="REDIS_URL",
     )
-    redis_password: Optional[str] = Field(
+    redis_password: str | None = Field(
         default=None, description="Redis password (optional)", validation_alias="REDIS_PASSWORD"
     )
     redis_ttl: int = Field(
@@ -101,7 +101,7 @@ class Settings(BaseSettings):
         description="CloudWatch log group name",
         validation_alias="CLOUDWATCH_LOG_GROUP",
     )
-    cloudwatch_log_stream: Optional[str] = Field(
+    cloudwatch_log_stream: str | None = Field(
         default=None,
         description="CloudWatch log stream name (auto-generated if not set)",
         validation_alias="CLOUDWATCH_LOG_STREAM",
@@ -253,7 +253,7 @@ def get_settings() -> Settings:
 
 
 # Global settings instance (lazy loaded)
-_settings: Optional[Settings] = None
+_settings: Settings | None = None
 
 
 def settings() -> Settings:

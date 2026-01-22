@@ -11,21 +11,15 @@ and top violations ranked by count and cost impact. When recommendations are
 requested, actionable suggestions SHALL be included.
 """
 
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 
-from hypothesis import given, strategies as st, settings
-import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
-from mcp_server.services.report_service import ReportService
 from mcp_server.models.compliance import ComplianceResult
-from mcp_server.models.report import (
-    ComplianceReport,
-    ReportFormat,
-    ViolationRanking,
-)
+from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
-from mcp_server.models.enums import ViolationType, Severity
-
+from mcp_server.services.report_service import ReportService
 
 # =============================================================================
 # Hypothesis Strategies for generating test data
