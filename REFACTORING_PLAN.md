@@ -1,5 +1,12 @@
 # Refactoring Plan: Core Library + MCP Server Separation
 
+**Roadmap Position**: Phase 1.9 (Pre-Phase 2 Foundation)
+**Related Documents**:
+- [ROADMAP.md](docs/ROADMAP.md) -- Overall project roadmap (this work is Phase 1.9)
+- [Phase 1 Requirements](/.kiro/specs/phase-1-aws-mvp/requirements.md) -- Requirements 14 and 15 are most affected
+- [Phase 2 Specification](docs/PHASE-2-SPECIFICATION.md) -- This refactoring unblocks Phase 2
+- [Phase 1 Design](/.kiro/specs/phase-1-aws-mvp/design.md) -- Current architecture and correctness properties
+
 ## Executive Summary
 
 This plan describes how to refactor `finops-tag-compliance-mcp` from a monolithic FastAPI HTTP server into two cleanly separated layers:
@@ -7,11 +14,87 @@ This plan describes how to refactor `finops-tag-compliance-mcp` from a monolithi
 1. **Core Library** (`finops_tag_compliance`) -- pure Python, importable, zero HTTP/MCP dependency
 2. **MCP Server** (`finops_tag_compliance_mcp`) -- thin wrapper exposing the core library via MCP protocol (stdio primary, HTTP optional)
 
+### Why Now (Before Phase 2)
+
+Phase 2 adds 7 new tools (15 total), OAuth 2.0, ECS Fargate, agent safety enhancements, and multi-account support. The current architecture makes this harder than it needs to be:
+
+| Phase 2 Feature | Current Blocker | How Refactoring Helps |
+|---|---|---|
+| 7 new tools | Adding a tool means modifying the 1475-line `mcp_handler.py` with JSON schemas, handler methods, validation logic | With FastMCP, adding a tool is one decorated function |
+| stdio transport (Claude Desktop native) | Server is HTTP-only via FastAPI | Core library + MCP SDK enables stdio natively |
+| Agent safety (intent commit, dry-run) | Safety logic would be entangled with HTTP routing | Clean service layer makes safety middleware composable |
+| ECS Fargate deployment | Config mixes HTTP settings with core settings | Separated `CoreSettings` / `ServerSettings` |
+| Multi-account AssumeRole | Service initialization is in FastAPI lifespan | `ServiceContainer` can manage per-account clients |
+| Phase 4 automation integration | Business logic locked behind HTTP server | Core library is importable by CLI, Lambda, scripts |
+
+### Requirement Cross-References
+
+This refactoring touches the implementation of these Phase 1 requirements (without changing behavior):
+
+| Requirement | Impact | Change |
+|---|---|---|
+| **Req 14** (Deployment and Configuration) | Architecture | Split monolithic config; add stdio transport alongside HTTP |
+| **Req 15** (Agent Observability and Guardrails) | Structural | Move BudgetTracker, LoopDetector from middleware to core `session/` module |
+| **Req 16** (Security and Prompt Injection) | Structural | HTTP sanitization stays in server; input validation stays in core |
+| **Req 12** (Audit Logging) | Structural | AuditService stays in core; HTTP middleware stays in server |
+| **Req 13** (Health and Monitoring) | Structural | Health models move to server; MetricsService stays in core |
+
+No behavioral changes to any requirement. All 17 Phase 1 requirements remain fully satisfied.
+
 ---
 
-## Phase 1: Current Architecture Analysis
+## Implementation Priority
 
-### 1.1 What Exists Today
+### Priority Tiers
+
+**Tier 1 -- HIGH (Blocks Phase 2, do first):**
+
+| Step | Description | Why Critical |
+|---|---|---|
+| Step 3 | Create `ServiceContainer` | Eliminates global state; enables multi-account in Phase 2; enables testable initialization |
+| Step 7 | Create stdio MCP server | Required for Claude Desktop native integration (AWS Labs pattern) |
+| Step 2 | Split configuration | Clean separation needed before Phase 2 adds OAuth, ECS, scheduling config |
+
+**Tier 2 -- MEDIUM (Improves maintainability, do next):**
+
+| Step | Description | Why Important |
+|---|---|---|
+| Step 6 | Decompose `mcp_handler.py` | Removes the 1475-line monolith; makes adding Phase 2 tools trivial |
+| Step 1 | Move files to `src/` layout | Clean package structure; enables pip-installable core library |
+| Step 5 | Extract session management | Moves BudgetTracker/LoopDetector to clean module; removes singleton patterns |
+
+**Tier 3 -- LOW (Nice to have, do when convenient):**
+
+| Step | Description | Why Lower Priority |
+|---|---|---|
+| Step 4 | Split MCP-specific models | Minor cleanup; only affects 4 model files |
+| Step 8 | HTTP backwards-compatibility server | Current HTTP works; can refactor later |
+| Step 9 | Update `pyproject.toml` for dual packages | Packaging details; can ship without |
+| Step 10 | Update test imports | Mechanical; do alongside file moves |
+| Step 11 | Update documentation | Do last |
+
+### Recommended Execution Order
+
+For a single developer working sequentially:
+
+1. **Step 3** (ServiceContainer) -- standalone, no file moves needed, immediately testable
+2. **Step 2** (Split config) -- small, isolated
+3. **Step 1 + Step 10** (Move files + update test imports) -- do together, mechanical
+4. **Step 5** (Session management extraction)
+5. **Step 4** (Split MCP models)
+6. **Step 6** (Decompose mcp_handler.py)
+7. **Step 7** (stdio server) -- depends on steps 1-6
+8. **Step 8** (HTTP server refactor)
+9. **Step 9** (pyproject.toml)
+10. **Step 11** (docs)
+
+Run the full test suite after every step. If any step breaks tests, fix before proceeding.
+
+---
+
+## Current Architecture Analysis
+
+### What Exists Today
 
 ```
 mcp_server/
@@ -26,7 +109,7 @@ mcp_server/
   utils/               ARN utils, correlation IDs, loop detection, input validation, error sanitization, CloudWatch
 ```
 
-### 1.2 Coupling Assessment
+### Coupling Assessment
 
 **Already well-separated (low coupling):**
 - `services/` -- ZERO knowledge of MCP or HTTP. Pure business logic. These are the core of the library.
@@ -52,7 +135,7 @@ mcp_server/
 | `models/loop_detection.py` | `LoopDetectedResponse` has `to_mcp_content()` method (MCP-specific). `LoopDetectionMetrics` is generic. | Split: metrics to core, MCP response to server. |
 | `pyproject.toml` | Lists `fastapi` and `uvicorn` as core dependencies. | Core library should only depend on `pydantic`, `boto3`, `redis`. FastAPI/uvicorn become server-only deps. |
 
-### 1.3 Dependency Map
+### Dependency Map
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────────┐
@@ -99,9 +182,9 @@ mcp_server/
 
 ---
 
-## Phase 2: Target Architecture Design
+## Target Architecture Design
 
-### 2.1 Package Layout
+### Package Layout
 
 ```
 finops-tag-compliance-mcp/
@@ -202,7 +285,7 @@ finops-tag-compliance-mcp/
 └── CLAUDE.md
 ```
 
-### 2.2 Dependency Diagram (Target)
+### Dependency Diagram (Target)
 
 ```
 ┌───────────────────────────────────────────────────────────────────┐
@@ -237,7 +320,7 @@ finops-tag-compliance-mcp/
 └───────────────────────────────────────────────────────────────────┘
 ```
 
-### 2.3 Public API of Core Library
+### Public API of Core Library
 
 The core library's `__init__.py` should export a clean, usable API:
 
@@ -315,7 +398,7 @@ print(f"Score: {result.compliance_score}")
 print(f"Violations: {len(result.violations)}")
 ```
 
-### 2.4 ServiceContainer
+### ServiceContainer
 
 A new class that handles dependency wiring. This replaces the service initialization code currently in `main.py`'s lifespan:
 
@@ -363,7 +446,7 @@ class ServiceContainer:
     # ... etc
 ```
 
-### 2.5 MCP Server (stdio)
+### MCP Server (stdio)
 
 The MCP server becomes a thin wrapper using the `mcp` Python SDK:
 
@@ -406,7 +489,7 @@ if __name__ == "__main__":
 
 ---
 
-## Phase 3: Implementation Steps
+## Implementation Steps
 
 ### Step 1: Create `src/` layout and move core code
 
@@ -611,7 +694,7 @@ where = ["src"]
 
 ---
 
-## Phase 4: Migration Strategy
+## Migration Strategy
 
 ### Recommended Order
 
@@ -649,7 +732,7 @@ Execute steps in this order to minimize breakage and maintain a working state at
 
 ---
 
-## Phase 5: Validation Criteria
+## Validation Criteria
 
 The refactoring is successful when:
 

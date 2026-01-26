@@ -103,6 +103,47 @@ See [PHASE-1-SPECIFICATION.md](./PHASE-1-SPECIFICATION.md) for full details on s
 
 ---
 
+## Phase 1.9: Core Library Extraction (Pre-Phase 2 Foundation)
+
+**Status**: Planned
+**Goal**: Separate protocol-agnostic business logic from MCP/HTTP transport to unblock Phase 2
+
+**Problem Statement**:
+Phase 1 ships as a monolithic FastAPI HTTP server where business logic is coupled with HTTP routing and MCP protocol handling. Before Phase 2 adds 7 new tools, OAuth 2.0, ECS Fargate, agent safety, and multi-account support, the architecture needs a clean separation between reusable core logic and protocol-specific wrappers.
+
+**Deliverables**:
+- **Core Library** (`finops_tag_compliance`) -- Pure Python package, pip-installable, importable without HTTP/MCP dependencies. Contains all services, models, clients, and utilities.
+- **MCP Server** (`finops_tag_compliance_mcp`) -- Thin wrapper using the `mcp` Python SDK with stdio transport (AWS Labs pattern) and optional HTTP backwards compatibility.
+- **ServiceContainer** -- Replaces global state and scattered initialization with explicit dependency injection.
+- **stdio transport** -- Native Claude Desktop integration via stdio (like AWS Labs MCP servers), in addition to HTTP.
+
+**Key Changes**:
+- `mcp_handler.py` (1475 lines) refactored into `server.py` (~200 lines) using `mcp` SDK's `FastMCP`
+- `main.py` lifespan service initialization extracted into `ServiceContainer`
+- `config.py` split into `CoreSettings` (AWS, Redis, policy) and `ServerSettings` (host, port, transport)
+- Global singleton patterns (`set_budget_tracker()`, `get_loop_detector()`, etc.) eliminated
+- No business logic changes; all 8 tools, 9 services, 35+ models unchanged
+
+**Why Before Phase 2**:
+| Phase 2 Feature | Without Refactoring | With Refactoring |
+|---|---|---|
+| Add 7 new tools | Modify 1475-line `mcp_handler.py` | Add one `@mcp.tool()` function each |
+| stdio for Claude Desktop | Build separate server | Built-in via `mcp` SDK |
+| Multi-account AssumeRole | Hack global state in lifespan | `ServiceContainer` manages clients |
+| Agent safety middleware | Entangled with HTTP routing | Composable service decorators |
+| CLI/Lambda integration | Impossible (HTTP-only) | Import core library directly |
+
+**Detailed Plan**: See [REFACTORING_PLAN.md](../REFACTORING_PLAN.md) for full analysis, 11 implementation steps, file-by-file mapping, and priority tiers.
+
+**Success Metrics**:
+- Core library importable without fastapi/uvicorn/mcp installed
+- All existing tests pass with 0 logic changes
+- stdio MCP server works with Claude Desktop
+- HTTP endpoints preserved for backwards compatibility
+- MCP server layer < 300 lines of code
+
+---
+
 ## Phase 2: Production Scale - ECS Fargate (Months 3-4)
 
 **Goal**: Production-grade deployment with high availability and managed services
@@ -691,15 +732,16 @@ See [PHASE-4-SPECIFICATION.md](./PHASE-4-SPECIFICATION.md)
 
 | Phase | Duration | Key Milestone | Go-Live Date |
 |-------|----------|--------------|--------------|
-| **Phase 1** | 8 weeks | AWS-only MCP on EC2 | End of Week 8 (Month 2) |
+| **Phase 1** | 8 weeks | AWS-only MCP on EC2 | ✅ Complete (Jan 2026) |
 | **Phase 1.5** | (included) | AWS policy converter | ✅ Complete |
+| **Phase 1.9** | 2-3 weeks | Core library extraction + stdio server | Before Phase 2 |
 | **Phase 2.1** | 2 weeks | AWS policy import tool | End of Week 10 |
 | **Phase 2.2** | 2 weeks | Automatic policy detection | End of Week 12 |
 | **Phase 2** | 8 weeks total | Production ECS deployment | End of Month 4 |
 | **Phase 3** | 8 weeks | Multi-cloud support | End of Month 6 |
 | **Phase 4** | 8 weeks | Automation integration | End of Month 8 |
 
-**Total**: 32 weeks (8 months) from kickoff to full automation-integrated deployment
+**Total**: ~34 weeks (8.5 months) from kickoff to full automation-integrated deployment
 
 ---
 
