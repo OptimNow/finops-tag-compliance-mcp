@@ -1712,3 +1712,119 @@ For resources where we need accurate age data, we could:
 **Complexity**: Low (changes to 5 files)
 **User Impact**: Medium (prevents incorrect prioritization decisions)
 
+
+---
+
+## January 26, 2026: Architecture Refactoring Plan - Core Library Extraction
+
+### Phase 1.9: Planning the Next Big Step
+
+**The Insight:**
+
+A software engineer reviewed our codebase and recommended separating the business logic from the HTTP/MCP transport layer — following the same pattern used by AWS Labs MCP servers (aws-api-mcp-server, cost-analysis-mcp-server). Those servers use stdio transport via the `mcp` Python SDK, with business logic completely independent of the protocol layer.
+
+We agreed. Before starting Phase 2 (which adds 7 new tools, OAuth, ECS Fargate, multi-account support, and agent safety enhancements), the architecture needs to cleanly separate:
+1. A **core library** — pure Python, pip-installable, zero HTTP/MCP dependency
+2. An **MCP server** — thin wrapper using the `mcp` Python SDK (stdio primary, HTTP optional)
+
+**What Claude Did:**
+
+Working with Claude (claude.ai/code), I asked for a comprehensive analysis of the current architecture and a plan for the refactoring. Claude:
+
+1. **Explored the entire codebase** — every file, class, method, import, and dependency across 100+ Python files
+2. **Assessed coupling** — identified what's already well-separated and what's tightly coupled
+3. **Mapped all dependencies** — created a complete graph of what calls what
+4. **Found good news** — the bottom 3 layers (tools, services, models/clients/utils) already have ZERO knowledge of HTTP or MCP. They're a de facto core library already.
+5. **Found the pain points** — coupling is concentrated in just a few files:
+   - `mcp_handler.py` (1475 lines) — monolithic tool registration + validation + budget + loops + audit + security
+   - `main.py` (272 lines) — FastAPI app + service initialization + routes + middleware all in one
+   - `config.py` (272 lines) — mixes core settings (AWS, Redis) with HTTP settings (host, port)
+   - 5 global singleton patterns scattered across the codebase
+6. **Designed the target architecture** — two packages with clean boundaries
+7. **Created an 11-step implementation plan** with file-by-file mapping
+8. **Prioritized into 3 tiers** — High (blocks Phase 2), Medium (improves maintainability), Low (nice to have)
+9. **Cross-referenced with existing planning docs** — linked to ROADMAP.md, Phase 1 Requirements (Req 12-16), Phase 2 Specification
+10. **Added Phase 1.9 to the roadmap** — positioned as pre-Phase 2 foundation work (2-3 weeks)
+
+**Key Findings:**
+
+| What | Current State | Impact |
+|---|---|---|
+| Services layer | Already protocol-agnostic | Move as-is |
+| Tools layer | Already thin wrappers, no HTTP imports | Rename to `api/`, move as-is |
+| Models layer | 35+ Pydantic models, no protocol dependency (except 4 HTTP-specific ones) | Split 4 files, move rest as-is |
+| Clients layer | Protocol-agnostic | Move as-is |
+| `mcp_handler.py` | 1475-line monolith | Decompose into ~200-line `server.py` using FastMCP |
+| `main.py` | Service init + HTTP routes + middleware | Extract `ServiceContainer`, keep HTTP server as option |
+| Global state | 5 singleton patterns | Replace with `ServiceContainer` dependency injection |
+
+**Why This Matters for Phase 2:**
+
+| Phase 2 Feature | Without Refactoring | With Refactoring |
+|---|---|---|
+| Add 7 new tools | Modify 1475-line `mcp_handler.py` | Add one `@mcp.tool()` decorated function each |
+| stdio for Claude Desktop | Need separate bridge script | Built-in via `mcp` SDK |
+| Multi-account AssumeRole | Hack global state in lifespan | `ServiceContainer` manages per-account clients |
+| Agent safety middleware | Entangled with HTTP routing | Composable service decorators |
+| CLI/Lambda integration | Impossible (HTTP-only) | Import core library directly |
+
+**Priority for Implementation:**
+
+**Tier 1 — HIGH (do first, blocks Phase 2):**
+1. Create `ServiceContainer` — eliminates global state, enables testable initialization
+2. Create stdio MCP server — required for Claude Desktop native integration
+3. Split configuration — clean separation before Phase 2 adds OAuth, scheduling config
+
+**Tier 2 — MEDIUM (do next, improves maintainability):**
+4. Decompose `mcp_handler.py` — removes the monolith
+5. Move files to `src/` layout — enables pip-installable core library
+6. Extract session management — clean BudgetTracker/LoopDetector module
+
+**Tier 3 — LOW (do when convenient):**
+7. Split MCP-specific models, HTTP backwards-compat server, pyproject.toml updates, test imports, docs
+
+**Documents Created/Updated:**
+
+| Document | Action |
+|---|---|
+| `REFACTORING_PLAN.md` (new) | Complete refactoring plan: analysis, target architecture, 11 implementation steps, file-by-file mapping, priority tiers, validation criteria |
+| `docs/ROADMAP.md` (updated) | Added Phase 1.9 section with deliverables, success metrics, and "Why Before Phase 2" table. Updated timeline summary. |
+
+**What I Learned:**
+
+1. **Architecture is already mostly right** — The services/models/clients/utils layers were designed well from the start. The coupling is concentrated in the "glue" files (main.py, mcp_handler.py, config.py).
+
+2. **The MCP Python SDK eliminates huge amounts of code** — The 1475-line `mcp_handler.py` exists because we hand-built MCP protocol handling. The `mcp` SDK's `FastMCP` class handles tool registration, JSON schema generation, error handling, and response serialization automatically. Expected reduction: 1475 lines → ~200 lines.
+
+3. **stdio transport is the standard** — AWS Labs MCP servers all use stdio. Our HTTP-only approach requires a bridge script for Claude Desktop. Switching to stdio as the primary transport aligns with the ecosystem.
+
+4. **ServiceContainer is the key unlock** — Replacing 5 scattered singleton patterns with explicit dependency injection makes the code testable, composable, and ready for Phase 2's multi-account support.
+
+5. **This is pure structural refactoring** — Zero business logic changes. All 8 tools, 9 services, 35+ models, and AWSClient methods stay exactly as-is. Only import paths and wiring change.
+
+**My Role:**
+- Agreed with the engineer's recommendation to refactor before Phase 2
+- Asked Claude to analyze the architecture and plan the work
+- Reviewed the plan for alignment with our roadmap and requirements
+- Asked for priority ordering and requirement cross-references
+- Approved the plan and its position as Phase 1.9
+
+**Outcome:**
+
+✅ Comprehensive refactoring plan created with 11 implementation steps
+✅ Roadmap updated with Phase 1.9 (Core Library Extraction)
+✅ Cross-references to Phase 1 Requirements (Req 12-16) and Phase 2 Specification
+✅ Priority tiers defined (High/Medium/Low) with recommended execution order
+✅ No business logic changes needed — pure structural refactoring
+✅ Ready to begin implementation
+
+**Estimated Effort**: 2-3 weeks for a single developer
+**Complexity**: Medium-High (touches ~50 files, but mostly mechanical import path changes)
+**Risk**: Low (all existing tests validate behavior is preserved)
+
+**Next Steps:**
+1. Begin Tier 1 work: Create `ServiceContainer`
+2. Split `config.py` into `CoreSettings` / `ServerSettings`
+3. Create stdio MCP server using `mcp` Python SDK
+4. Run full test suite after each step
+

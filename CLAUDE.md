@@ -7,6 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
 
 **Phase**: Phase 1 MVP Complete (AWS support only)
+**Next**: Phase 1.9 -- Core Library Extraction (planned, see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
 
 ## Development Commands
 
@@ -623,6 +624,18 @@ Edit `policies/tagging_policy.json` directly. Changes take effect on next policy
 4. Use `LOG_LEVEL=DEBUG` environment variable for verbose output
 5. For AWS errors, check IAM permissions
 
+## Planned Refactoring: Phase 1.9
+
+A refactoring is planned before Phase 2 to separate the core business logic from the MCP/HTTP transport layer. See [REFACTORING_PLAN.md](REFACTORING_PLAN.md) for the full plan. Key points:
+
+- **Core library** (`finops_tag_compliance`) -- pure Python, importable without HTTP/MCP dependencies
+- **MCP server** (`finops_tag_compliance_mcp`) -- thin wrapper using `mcp` Python SDK with stdio transport
+- New `ServiceContainer` replaces global state and scattered service initialization in `main.py` lifespan
+- `mcp_handler.py` (1475 lines) to be replaced by `server.py` (~200 lines) using FastMCP
+- No business logic changes -- all services, models, tools, and clients stay as-is
+
+Until the refactoring is complete, the file structure and import paths documented above remain accurate.
+
 ## Key Files Reference
 
 - `run_server.py` - Main entry point with banner and startup
@@ -634,3 +647,5 @@ Edit `policies/tagging_policy.json` directly. Changes take effect on next policy
 - `mcp_server/clients/aws_client.py` - AWS API wrapper
 - `docs/TOOL_LOGIC_REFERENCE.md` - Detailed logic for each tool
 - `docs/TESTING_QUICK_START.md` - Testing guide
+- `REFACTORING_PLAN.md` - Phase 1.9 core library extraction plan
+- `docs/ROADMAP.md` - Overall project roadmap (4 phases + Phase 1.9)
