@@ -1828,3 +1828,125 @@ Working with Claude (claude.ai/code), I asked for a comprehensive analysis of th
 3. Create stdio MCP server using `mcp` Python SDK
 4. Run full test suite after each step
 
+
+---
+
+## January 27, 2026: Phase 1.9 Implementation - Tier 1 Complete
+
+### Day 41: Core Library Extraction Begins
+
+**The Trigger:**
+
+I asked Claude to explain the MCP Inspector and how to test our server with it. The answer was clear: our HTTP-only transport is incompatible with the Inspector (which requires stdio or SSE). This made the Phase 1.9 refactoring immediately practical -- we needed stdio support to use the Inspector.
+
+With the refactoring plan already in place, I said: "Launch Phase 1.9, everything is in place so you can start."
+
+**What Claude Did (Tier 1 -- all 3 HIGH priority items):**
+
+**Step 1: ServiceContainer** (`mcp_server/container.py`)
+- Created a new `ServiceContainer` class that initializes all 9 services in dependency order
+- Replaced ~140 lines of scattered initialization in `main.py` lifespan with a single `ServiceContainer`
+- Added a bridge layer for backwards compatibility with legacy global singletons (`set_budget_tracker`, `set_loop_detector`, `set_security_service`)
+- Key methods: `initialize()`, `shutdown()`, with properties for each service
+- Accepts `CoreSettings` (not `Settings`), so any entry point can use it
+- All 82 tests pass after this change
+
+**Step 2: Split Configuration** (`mcp_server/config.py`)
+- Split monolithic `Settings` into `CoreSettings` (protocol-agnostic, ~30 fields) and `ServerSettings` (HTTP-specific, ~12 fields)
+- `ServerSettings` extends `CoreSettings`, so HTTP still gets everything
+- `Settings = ServerSettings` alias for backwards compatibility
+- `ServiceContainer` accepts `CoreSettings`, so stdio server doesn't need HTTP settings
+- All 82 tests pass after this change
+
+**Step 3: stdio MCP Server** (`mcp_server/stdio_server.py`, ~480 lines)
+- Created a standard MCP server using FastMCP SDK (`mcp>=1.0.0`)
+- All 8 tools registered via `@mcp.tool()` decorators
+- Each tool delegates to the existing service layer through `_container`
+- Entry point: `python -m mcp_server.stdio_server`
+- Added `mcp>=1.0.0` to `pyproject.toml` and `requirements.txt`
+- Added `finops-tag-compliance` script entry point to `pyproject.toml`
+- Fixed two SDK issues:
+  - `FastMCP.__init__()` doesn't accept `version` parameter (removed)
+  - `FastMCP` uses `run_stdio_async()` not `run_async(transport="stdio")`
+- All 82 tests pass after this change
+
+**What This Unlocked:**
+
+| Before | After |
+|--------|-------|
+| Claude Desktop needs bridge script | Claude Desktop connects directly via stdio |
+| MCP Inspector incompatible | `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server` works |
+| Global state scattered across files | Single `ServiceContainer` manages all services |
+| Config mixes HTTP + core settings | Clean separation: `CoreSettings` vs `ServerSettings` |
+| Docker required for local use | `pip install -e .` + `python -m mcp_server.stdio_server` |
+
+**Documentation Overhaul:**
+
+Updated every doc that referenced the bridge or deployment:
+
+| Document | Changes |
+|----------|---------|
+| `CLAUDE.md` | Architecture diagram, file structure, service deps, refactoring status, key files |
+| `README.md` | Added stdio/Inspector sections |
+| `docs/DEPLOYMENT.md` | New "Quick Start -- stdio" as primary, dual options throughout |
+| `docs/USER_MANUAL.md` | Updated prerequisites, troubleshooting for both transports |
+| `docs/TESTING_QUICK_START.md` | New "Testing with MCP Inspector" section |
+| `docs/TOOL_SEARCH_CONFIGURATION.md` | Updated stdio config example |
+| `docs/DEPLOY_MULTI_ACCOUNT.md` | Added transport note |
+| `docs/UAT_PROTOCOL.md` | Updated prerequisites for stdio |
+| `examples/README.md` | Full rewrite: two connection methods, Inspector guide |
+| `examples/claude_desktop_config_stdio.json` | New config file (no bridge) |
+
+**Key Insight: The Bridge is Not Deprecated**
+
+The `mcp_bridge.py` is still needed for remote/HTTP deployments (EC2, shared servers). What changed:
+- **Local development**: stdio (no bridge, no Docker)
+- **Remote deployment**: HTTP bridge (same as before)
+
+**Commits (5 total):**
+1. `c533c73` - refactor: add ServiceContainer to centralize service initialization
+2. `a00bb2b` - refactor: split Settings into CoreSettings and ServerSettings
+3. `07fb0c9` - feat: add stdio MCP server using FastMCP SDK
+4. `6ff5b38` - docs: update architecture docs for Phase 1.9 changes
+5. `ac7be37` - docs: update all docs for stdio transport and MCP Inspector
+
+**What I Learned:**
+
+1. **The MCP Python SDK is powerful**: 8 tools registered in ~480 lines vs 1475 lines for the hand-built `mcp_handler.py`. The `@mcp.tool()` decorator handles JSON schema generation, validation, and serialization automatically.
+
+2. **stdio is the ecosystem standard**: Every MCP server example uses stdio. Our HTTP-only approach was the exception, requiring a bridge workaround.
+
+3. **Dependency injection pays off immediately**: `ServiceContainer` made the stdio server trivial to create -- same services, different transport.
+
+4. **Documentation updates are as important as code changes**: 10 docs needed updating. Without this, users would follow outdated instructions.
+
+5. **Backwards compatibility eases migration**: `Settings = ServerSettings` and the bridge layer for legacy globals means nothing breaks during the transition.
+
+**My Role:**
+- Asked about MCP Inspector, discovered the incompatibility
+- Decided to launch Phase 1.9 based on the existing plan
+- Reviewed the documentation updates for accuracy
+- Identified which docs needed updating (deployment, testing, user manual, onboarding, UAT)
+
+**Phase 1.9 Status:**
+
+| Priority | Step | Status |
+|----------|------|--------|
+| HIGH | ServiceContainer | Done |
+| HIGH | Split Configuration | Done |
+| HIGH | stdio MCP Server | Done |
+| MEDIUM | Decompose mcp_handler.py | Remaining |
+| MEDIUM | src/ layout | Remaining |
+| MEDIUM | Session management extraction | Remaining |
+| LOW | MCP model split, HTTP compat, pyproject dual packages | Remaining |
+
+Tier 1 (HIGH priority) is complete. The remaining Tier 2/3 items improve maintainability but don't block Phase 2 development.
+
+**Outcome:**
+
+- Server now works with MCP Inspector for developer testing
+- Claude Desktop connects directly without bridge (for local use)
+- Clean architecture foundation for Phase 2
+- All existing tests pass (no regressions)
+- Comprehensive documentation updated across 10+ files
+
