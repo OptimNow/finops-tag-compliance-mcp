@@ -21,33 +21,16 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
-from .clients.aws_client import AWSClient
-from .clients.cache import RedisCache
 from .config import settings
+from .container import ServiceContainer
 from .mcp_handler import MCPHandler
-from .middleware.budget_middleware import (
-    BudgetTracker,
-    get_budget_tracker,
-    set_budget_tracker,
-)
+from .middleware.budget_middleware import set_budget_tracker
 from .models import HealthStatus
 from .models.audit import AuditStatus
-from .services.audit_service import AuditService
-from .services.compliance_service import ComplianceService
-from .services.history_service import HistoryService
-from .services.policy_service import PolicyService
-from .services.security_service import (
-    SecurityService,
-    configure_security_logging,
-    set_security_service,
-)
 from .utils.cloudwatch_logger import CorrelationIDFilter, configure_cloudwatch_logging
 from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
-from .utils.loop_detection import (
-    LoopDetector,
-    get_loop_detector,
-    set_loop_detector,
-)
+from .utils.loop_detection import set_loop_detector
+from .services.security_service import set_security_service
 
 # Configure logging with correlation ID support
 # Create a handler with correlation ID format
@@ -72,15 +55,9 @@ logger = logging.getLogger(__name__)
 # Configure CloudWatch logging if enabled
 configure_cloudwatch_logging()
 
-# Global instances
-redis_cache: RedisCache | None = None
-audit_service: AuditService | None = None
-history_service: HistoryService | None = None
-aws_client: AWSClient | None = None
-policy_service: PolicyService | None = None
-compliance_service: ComplianceService | None = None
-security_service: SecurityService | None = None
-mcp_handler: MCPHandler | None = None
+# Global container and MCP handler
+_container: ServiceContainer | None = None
+_mcp_handler: MCPHandler | None = None
 
 
 # Request/Response models for MCP protocol
@@ -109,156 +86,41 @@ async def lifespan(app: FastAPI):
     """
     Manage application lifecycle - startup and shutdown.
 
-    Initializes all services on startup:
-    - Redis cache for caching compliance data
-    - Audit service for logging tool invocations
-    - History service for storing compliance scan results
-    - AWS client for AWS API calls
-    - Policy service for tagging policy management
-    - Compliance service for compliance checking
-    - MCP handler for tool registration and invocation
-
-    Cleans up on shutdown.
+    Uses ServiceContainer to initialize all services in dependency order.
+    Also sets legacy global singletons for backwards compatibility with
+    code that still uses get_budget_tracker() / get_loop_detector() /
+    get_security_service().
 
     Requirements: 14.2
     """
-    global redis_cache, audit_service, history_service, aws_client, policy_service
-    global compliance_service, security_service, mcp_handler
+    global _container, _mcp_handler
 
     # Startup
     logger.info("Starting FinOps Tag Compliance MCP Server")
 
-    # Get settings instance
     app_settings = settings()
 
-    # Initialize Redis cache
-    try:
-        redis_cache = await RedisCache.create(redis_url=app_settings.redis_url)
-        logger.info("Redis cache initialized")
-    except Exception as e:
-        logger.warning(f"Failed to initialize Redis cache: {e}")
-        redis_cache = None
+    # Initialize all services via ServiceContainer
+    _container = ServiceContainer(settings=app_settings)
+    await _container.initialize()
 
-    # Initialize audit service
-    try:
-        audit_service = AuditService(db_path=app_settings.audit_db_path)
-        logger.info("Audit service initialized")
-    except Exception as e:
-        logger.error(f"Failed to initialize audit service: {e}")
-        audit_service = None
+    # Bridge: set legacy global singletons so that mcp_handler.py and
+    # other code that still uses get_budget_tracker() etc. keeps working.
+    if _container.budget_tracker:
+        set_budget_tracker(_container.budget_tracker)
+    if _container.loop_detector:
+        set_loop_detector(_container.loop_detector)
+    if _container.security_service:
+        set_security_service(_container.security_service)
 
-    # Initialize history service
-    try:
-        history_service = HistoryService(db_path=app_settings.history_db_path)
-        logger.info(f"History service initialized with database: {app_settings.history_db_path}")
-    except Exception as e:
-        logger.warning(f"Failed to initialize history service: {e}")
-        history_service = None
-
-    # Initialize AWS client
-    try:
-        aws_client = AWSClient(region=app_settings.aws_region)
-        logger.info(f"AWS client initialized for region {app_settings.aws_region}")
-    except Exception as e:
-        logger.warning(f"Failed to initialize AWS client: {e}")
-        aws_client = None
-
-    # Initialize policy service
-    try:
-        policy_service = PolicyService(policy_path=app_settings.policy_path)
-        logger.info(f"Policy service initialized from {app_settings.policy_path}")
-    except Exception as e:
-        logger.warning(f"Failed to initialize policy service: {e}")
-        policy_service = None
-
-    # Initialize compliance service
-    if aws_client and policy_service:
-        try:
-            compliance_service = ComplianceService(
-                aws_client=aws_client,
-                policy_service=policy_service,
-                cache=redis_cache,
-            )
-            logger.info("Compliance service initialized")
-        except Exception as e:
-            logger.warning(f"Failed to initialize compliance service: {e}")
-            compliance_service = None
-
-    # Initialize budget tracker (Requirements: 15.3)
-    budget_tracker = None
-    if app_settings.budget_tracking_enabled:
-        try:
-            budget_tracker = BudgetTracker(
-                redis_cache=redis_cache,
-                max_calls_per_session=app_settings.max_tool_calls_per_session,
-                session_ttl_seconds=app_settings.session_budget_ttl_seconds,
-            )
-            set_budget_tracker(budget_tracker)
-            logger.info(
-                f"Budget tracker initialized: max_calls={app_settings.max_tool_calls_per_session}, "
-                f"ttl={app_settings.session_budget_ttl_seconds}s"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize budget tracker: {e}")
-            budget_tracker = None
-    else:
-        logger.info("Budget tracking is disabled")
-
-    # Initialize loop detector (Requirements: 15.4)
-    loop_detector = None
-    if app_settings.loop_detection_enabled:
-        try:
-            loop_detector = LoopDetector(
-                redis_cache=redis_cache,
-                max_identical_calls=app_settings.max_identical_calls,
-                sliding_window_seconds=app_settings.loop_detection_window_seconds,
-            )
-            set_loop_detector(loop_detector)
-            logger.info(
-                f"Loop detector initialized: max_identical_calls={app_settings.max_identical_calls}, "
-                f"window={app_settings.loop_detection_window_seconds}s"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize loop detector: {e}")
-            loop_detector = None
-    else:
-        logger.info("Loop detection is disabled")
-
-    # Initialize security service (Requirements: 16.4)
-    security_service = None
-    if app_settings.security_monitoring_enabled:
-        try:
-            # Configure dedicated security logging to separate log stream
-            configure_security_logging(
-                log_group=app_settings.cloudwatch_log_group,
-                log_stream=app_settings.security_log_stream,
-                region=app_settings.aws_region,
-            )
-
-            security_service = SecurityService(
-                redis_cache=redis_cache,
-                max_unknown_tool_attempts=app_settings.max_unknown_tool_attempts,
-                window_seconds=app_settings.security_event_window_seconds,
-            )
-            set_security_service(security_service)
-            logger.info(
-                f"Security service initialized: max_unknown_tool_attempts={app_settings.max_unknown_tool_attempts}, "
-                f"window={app_settings.security_event_window_seconds}s"
-            )
-        except Exception as e:
-            logger.warning(f"Failed to initialize security service: {e}")
-            security_service = None
-    else:
-        logger.info("Security monitoring is disabled")
-
-    # Initialize MCP handler with all services
-    mcp_handler = MCPHandler(
-        aws_client=aws_client,
-        policy_service=policy_service,
-        compliance_service=compliance_service,
-        redis_cache=redis_cache,
-        audit_service=audit_service,
-        history_service=history_service,
+    # Initialize MCP handler with services from the container
+    _mcp_handler = MCPHandler(
+        aws_client=_container.aws_client,
+        policy_service=_container.policy_service,
+        compliance_service=_container.compliance_service,
+        redis_cache=_container.redis_cache,
+        audit_service=_container.audit_service,
+        history_service=_container.history_service,
     )
     logger.info("MCP handler initialized with 8 tools")
 
@@ -268,8 +130,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down FinOps Tag Compliance MCP Server")
-    if redis_cache:
-        await redis_cache.close()
+    await _container.shutdown()
     logger.info("Shutdown complete")
 
 
@@ -338,8 +199,8 @@ async def global_exception_handler(request: Request, exc: Exception):
     sanitized_error = sanitize_exception(exc)
 
     # Log to audit service if available
-    if audit_service:
-        audit_service.log_invocation(
+    if _container and _container.audit_service:
+        _container.audit_service.log_invocation(
             tool_name="unknown",
             parameters={"path": str(request.url.path)},
             status=AuditStatus.FAILURE,
@@ -366,21 +227,21 @@ async def health_check() -> HealthStatus:
     Requirements: 13.1, 13.2, 15.3, 15.4, 16.4
     """
     from .models.health import BudgetHealthInfo, LoopDetectionHealthInfo, SecurityHealthInfo
-    from .services.security_service import get_security_service
+
+    app_settings = settings()
 
     # Check Redis connectivity
     redis_connected = False
-    if redis_cache:
-        redis_connected = await redis_cache.is_connected()
+    if _container and _container.redis_cache:
+        redis_connected = await _container.redis_cache.is_connected()
 
     # Check SQLite connectivity
     sqlite_connected = False
-    if audit_service:
+    if _container and _container.audit_service:
         try:
-            # Try to query the audit database
             import sqlite3
 
-            conn = sqlite3.connect(audit_service.db_path)
+            conn = sqlite3.connect(_container.audit_service.db_path)
             cursor = conn.cursor()
             cursor.execute("SELECT 1")
             conn.close()
@@ -391,8 +252,7 @@ async def health_check() -> HealthStatus:
 
     # Get budget tracking info (Requirement 15.3)
     budget_info = None
-    budget_tracker = get_budget_tracker()
-    app_settings = settings()
+    budget_tracker = _container.budget_tracker if _container else None
 
     if budget_tracker:
         try:
@@ -412,7 +272,6 @@ async def health_check() -> HealthStatus:
                 active_sessions=0,
             )
     elif app_settings.budget_tracking_enabled:
-        # Budget tracking enabled but tracker not initialized
         budget_info = BudgetHealthInfo(
             enabled=True,
             max_calls_per_session=app_settings.max_tool_calls_per_session,
@@ -429,7 +288,7 @@ async def health_check() -> HealthStatus:
 
     # Get loop detection info (Requirement 15.4)
     loop_detection_info = None
-    loop_detector = get_loop_detector()
+    loop_detector = _container.loop_detector if _container else None
 
     if loop_detector:
         try:
@@ -455,7 +314,6 @@ async def health_check() -> HealthStatus:
                 loops_by_tool={},
             )
     elif app_settings.loop_detection_enabled:
-        # Loop detection enabled but detector not initialized
         loop_detection_info = LoopDetectionHealthInfo(
             enabled=True,
             max_identical_calls=app_settings.max_identical_calls,
@@ -476,7 +334,7 @@ async def health_check() -> HealthStatus:
 
     # Get security monitoring info (Requirement 16.4)
     security_info = None
-    security_svc = get_security_service()
+    security_svc = _container.security_service if _container else None
 
     if security_svc:
         try:
@@ -504,7 +362,6 @@ async def health_check() -> HealthStatus:
                 redis_enabled=False,
             )
     elif app_settings.security_monitoring_enabled:
-        # Security monitoring enabled but service not initialized
         security_info = SecurityHealthInfo(
             enabled=True,
             max_unknown_tool_attempts=app_settings.max_unknown_tool_attempts,
@@ -528,8 +385,8 @@ async def health_check() -> HealthStatus:
         )
 
     # Determine overall status
-    # Server is healthy if core services are available
-    # Degraded if some optional services (Redis) are unavailable
+    policy_service = _container.policy_service if _container else None
+    audit_service = _container.audit_service if _container else None
     if policy_service and audit_service:
         status = "healthy" if redis_connected else "degraded"
     else:
@@ -565,7 +422,7 @@ async def metrics_endpoint() -> Response:
 
     from .services.metrics_service import MetricsService
 
-    if not audit_service:
+    if not _container or not _container.audit_service:
         return Response(
             content="# No metrics available - audit service not initialized\n",
             media_type="text/plain; charset=utf-8",
@@ -573,9 +430,9 @@ async def metrics_endpoint() -> Response:
 
     # Create metrics service instance
     metrics_service = MetricsService(
-        audit_service=audit_service,
-        budget_tracker=get_budget_tracker(),
-        loop_detector=get_loop_detector(),
+        audit_service=_container.audit_service,
+        budget_tracker=_container.budget_tracker,
+        loop_detector=_container.loop_detector,
     )
 
     # Get global metrics
@@ -759,13 +616,13 @@ async def list_tools() -> MCPListToolsResponse:
 
     Requirements: 14.5
     """
-    if not mcp_handler:
+    if not _mcp_handler:
         raise HTTPException(
             status_code=503,
             detail="MCP handler not initialized",
         )
 
-    tools = mcp_handler.get_tool_definitions()
+    tools = _mcp_handler.get_tool_definitions()
     return MCPListToolsResponse(tools=tools)
 
 
@@ -786,7 +643,7 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
 
     Requirements: 14.5
     """
-    if not mcp_handler:
+    if not _mcp_handler:
         raise HTTPException(
             status_code=503,
             detail="MCP handler not initialized",
@@ -794,7 +651,7 @@ async def call_tool(request: MCPToolCallRequest) -> MCPToolCallResponse:
 
     logger.info(f"MCP tool call: {request.name} with args: {request.arguments}")
 
-    result = await mcp_handler.invoke_tool(
+    result = await _mcp_handler.invoke_tool(
         name=request.name,
         arguments=request.arguments,
     )
@@ -819,10 +676,10 @@ async def api_check_compliance(
 
     This provides an alternative to the MCP protocol for direct HTTP access.
     """
-    if not mcp_handler:
+    if not _mcp_handler:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
-    result = await mcp_handler.invoke_tool(
+    result = await _mcp_handler.invoke_tool(
         name="check_tag_compliance",
         arguments={
             "resource_types": resource_types,
@@ -842,10 +699,10 @@ async def api_get_policy():
     """
     Direct API endpoint for retrieving the tagging policy.
     """
-    if not mcp_handler:
+    if not _mcp_handler:
         raise HTTPException(status_code=503, detail="Service not initialized")
 
-    result = await mcp_handler.invoke_tool(
+    result = await _mcp_handler.invoke_tool(
         name="get_tagging_policy",
         arguments={},
     )
