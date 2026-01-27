@@ -30,6 +30,7 @@ dependencies = [
     "boto3>=1.28.0",
     "redis>=5.0.0",
     "python-dotenv>=1.0.0",
+    "mcp>=1.0.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +46,9 @@ dev = [
     "hypothesis>=6.80.0",
     "httpx>=0.24.0",
 ]
+
+[project.scripts]
+finops-tag-compliance = "mcp_server.stdio_server:main"
 
 [project.urls]
 Homepage = "https://github.com/OptimNow/tagging-mcp-server"
