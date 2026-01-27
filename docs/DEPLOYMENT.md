@@ -2,9 +2,45 @@
 
 This guide covers deploying the MCP server locally for development/testing and to AWS EC2 for production use.
 
-## Quick Start (5 minutes)
+## Quick Start -- stdio (Recommended for local)
 
-Get up and running with Docker in 5 minutes:
+Get up and running in 5 minutes. No Docker required.
+
+```bash
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+pip install -e .
+python -m mcp_server.stdio_server   # Runs until terminated
+```
+
+Then add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+
+```json
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "/path/to/finops-tag-compliance-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop and ask: *"What tagging policy is configured?"*
+
+**Test with MCP Inspector:**
+```bash
+npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
+```
+
+**For Docker/HTTP deployment or production EC2**, continue reading below.
+
+---
+
+## Quick Start -- Docker (HTTP transport)
+
+For running with Redis caching or Docker-based workflows:
 
 **Linux/Mac:**
 ```bash
@@ -27,8 +63,6 @@ Verify it's working:
 curl http://localhost:8080/health
 ```
 
-**For production deployment or detailed configuration**, continue reading below.
-
 ---
 
 ## Table of Contents
@@ -49,10 +83,10 @@ Deploy the MCP server on your local machine for development, testing, or persona
 
 ### Prerequisites
 
-- Docker Desktop installed and running
+- Python 3.11+ and `pip`
 - AWS CLI configured with credentials (`aws configure`)
-- Python 3.11+ (for the bridge script)
 - Git
+- Docker Desktop (only for HTTP transport; not needed for stdio)
 
 ### Quick Start (5 minutes)
 
@@ -163,10 +197,30 @@ Add to your Claude Desktop config:
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 
+**Option A: stdio (Recommended -- no bridge needed)**
+
 ```json
 {
   "mcpServers": {
-    "tagging-mcp": {
+    "finops-tagging": {
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "C:\\path\\to\\finops-tag-compliance-mcp"
+    }
+  }
+}
+```
+
+Replace the `cwd` path with your actual repository path.
+
+> **Note:** With stdio, Claude Desktop launches the MCP server process directly. No Docker or bridge script needed. Make sure you've run `pip install -e .` in the repository first.
+
+**Option B: HTTP bridge (for Docker deployments)**
+
+```json
+{
+  "mcpServers": {
+    "finops-tagging": {
       "command": "python",
       "args": ["C:\\path\\to\\repo\\scripts\\mcp_bridge.py"],
       "env": {
@@ -177,7 +231,7 @@ Add to your Claude Desktop config:
 }
 ```
 
-Replace `C:\\path\\to\\repo` with your actual repository path.
+Replace `C:\\path\\to\\repo` with your actual repository path. Requires `pip install requests`.
 
 ### Stop/Restart Local Server
 
@@ -599,43 +653,65 @@ docker restart tagging-mcp-server
 
 ## Connecting Claude Desktop
 
-The MCP server uses REST endpoints, so you need the bridge script to translate between Claude Desktop's stdio protocol and the HTTP API.
+There are two ways to connect Claude Desktop to the MCP server:
+
+| Method | When to Use | Bridge Needed? |
+|--------|-------------|---------------|
+| **stdio** | Local development, single user | No |
+| **HTTP bridge** | Remote EC2, shared server, Docker | Yes |
 
 ### Prerequisites
 
 1. Python 3.11+ installed on your local machine
-2. `requests` library: `pip install requests`
-3. This repository cloned locally (for `scripts/mcp_bridge.py`)
+2. This repository cloned locally
+3. For stdio: `pip install -e .` (in the repository)
+4. For HTTP bridge: `pip install requests`
 
 ### Configuration
-
-Add to your Claude Desktop config:
 
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
 **Linux**: `~/.config/claude/claude_desktop_config.json`
 
+### Option A: stdio (Recommended for local)
+
+Claude Desktop launches the MCP server as a subprocess. No Docker, no bridge, no HTTP.
+
+**Windows:**
 ```json
 {
   "mcpServers": {
-    "tagging-mcp": {
+    "finops-tagging": {
       "command": "python",
-      "args": ["PATH_TO_REPO/scripts/mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://SERVER_ADDRESS:8080"
-      }
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp"
     }
   }
 }
 ```
 
-### Examples
-
-**Local deployment (Windows)**:
+**macOS/Linux:**
 ```json
 {
   "mcpServers": {
-    "tagging-mcp": {
+    "finops-tagging": {
+      "command": "python3",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "/home/yourname/finops-tag-compliance-mcp"
+    }
+  }
+}
+```
+
+### Option B: HTTP bridge (for remote servers)
+
+Use this when the MCP server runs on a different machine (EC2, Docker, etc.).
+
+**Local Docker deployment (Windows):**
+```json
+{
+  "mcpServers": {
+    "finops-tagging": {
       "command": "python",
       "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
       "env": {
@@ -646,11 +722,11 @@ Add to your Claude Desktop config:
 }
 ```
 
-**Remote EC2 deployment (Windows)**:
+**Remote EC2 deployment:**
 ```json
 {
   "mcpServers": {
-    "tagging-mcp": {
+    "finops-tagging": {
       "command": "python",
       "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
       "env": {
@@ -666,13 +742,12 @@ Add to your Claude Desktop config:
 > aws cloudformation describe-stacks --stack-name tagging-mcp-server \
 >   --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' --output text
 > ```
-```
 
-**macOS/Linux**:
+**macOS/Linux (HTTP bridge):**
 ```json
 {
   "mcpServers": {
-    "tagging-mcp": {
+    "finops-tagging": {
       "command": "python3",
       "args": ["/home/yourname/finops-tag-compliance-mcp/scripts/mcp_bridge.py"],
       "env": {

@@ -27,8 +27,8 @@ The Tag Compliance MCP Server helps you manage AWS resource tagging through natu
 
 ### Prerequisites
 
-1. MCP server deployed (see [Deployment Guide](DEPLOYMENT.md))
-2. Claude Desktop configured to connect to the server
+1. MCP server installed (see [Deployment Guide](DEPLOYMENT.md))
+2. Claude Desktop configured to connect to the server (stdio recommended for local use -- no Docker or bridge needed)
 3. AWS credentials with read access to your resources
 
 ### Quick Test
@@ -379,9 +379,11 @@ The cost attribution gap shows:
 
 ### Claude doesn't see the tools
 
-- Verify the MCP server is running: `curl http://SERVER:8080/health`
-- Check Claude Desktop config file syntax
+- **stdio transport:** Check that `python -m mcp_server.stdio_server` runs without errors from the repository directory
+- **HTTP transport:** Verify the MCP server is running: `curl http://SERVER:8080/health`
+- Check Claude Desktop config file syntax (use a JSON validator)
 - Restart Claude Desktop after config changes
+- Test with MCP Inspector: `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server`
 
 ---
 

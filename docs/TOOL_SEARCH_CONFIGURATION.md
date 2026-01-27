@@ -174,10 +174,9 @@ Create a new configuration file alongside your `mcp_bridge.py` script:
 {
   "mcpServers": {
     "finops-tagging": {
-      "command": "docker",
-      "args": ["run", "-i", "--rm",
-               "-v", "~/.aws:/root/.aws:ro",
-               "finops-tag-compliance-mcp"],
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "/path/to/finops-tag-compliance-mcp",
       "toolsetConfig": {
         "type": "mcp_toolset",
         "mcp_server_name": "finops-tagging",
@@ -348,7 +347,8 @@ This is useful if:
 1. Check that `enabled: true` in the tool config
 2. Verify the tool name matches exactly (case-sensitive)
 3. Restart Claude Desktop after config changes
-4. Check your MCP server is running: `curl http://SERVER:8080/health`
+4. **stdio:** Check that `python -m mcp_server.stdio_server` runs without errors
+5. **HTTP:** Check your MCP server is running: `curl http://SERVER:8080/health`
 
 ### Tools Loading Slowly
 

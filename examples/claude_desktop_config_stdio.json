@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "/path/to/finops-tag-compliance-mcp",
+      "env": {
+        "AWS_REGION": "us-east-1"
+      }
+    }
+  }
+}

@@ -15,9 +15,9 @@ Complete these steps before starting UAT:
 ### 1. Deploy and Configure the MCP Server
 
 Follow the [Deployment Guide](DEPLOYMENT.md) to:
-- Deploy the MCP server (locally or on EC2)
+- Install the MCP server (stdio recommended for local testing; Docker/EC2 for remote)
 - Configure AWS credentials and IAM permissions
-- Connect Claude Desktop to the server
+- Connect Claude Desktop to the server (stdio requires no bridge script)
 
 **Quick verification:** In Claude Desktop, ask "Show me our tagging policy" - you should get a response with your policy details.
 
