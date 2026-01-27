@@ -19,7 +19,7 @@ from typing import Optional
 
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
-from .config import Settings, settings as get_default_settings
+from .config import CoreSettings, Settings, settings as get_default_settings
 from .middleware.budget_middleware import BudgetTracker
 from .services.audit_service import AuditService
 from .services.compliance_service import ComplianceService
@@ -62,16 +62,17 @@ class ServiceContainer:
         await container.initialize()
     """
 
-    def __init__(self, settings: Optional[Settings] = None) -> None:
+    def __init__(self, settings: Optional[CoreSettings] = None) -> None:
         """
         Create a ServiceContainer.
 
         Args:
-            settings: Application settings. If None, loads from
-                      environment variables / .env file via the
-                      default ``settings()`` helper.
+            settings: Application settings. Accepts either CoreSettings
+                      or ServerSettings (which extends CoreSettings).
+                      If None, loads from environment variables / .env
+                      file via the default ``settings()`` helper.
         """
-        self._settings = settings or get_default_settings()
+        self._settings: CoreSettings = settings or get_default_settings()
         self._initialized = False
 
         # Service instances (populated by initialize())
@@ -244,7 +245,7 @@ class ServiceContainer:
     # ------------------------------------------------------------------
 
     @property
-    def settings(self) -> Settings:
+    def settings(self) -> CoreSettings:
         return self._settings
 
     @property

@@ -7,6 +7,15 @@
 This module handles loading and validating configuration from environment
 variables with sensible defaults.
 
+The configuration is split into two layers:
+- ``CoreSettings``: Protocol-agnostic settings needed by the core library
+  (AWS, Redis, policy, databases, CloudWatch, budget, loop detection,
+  security, timeouts). Usable by CLI, Lambda, or any entry point.
+- ``ServerSettings``: Extends ``CoreSettings`` with HTTP-specific settings
+  (host, port, request sanitization, rate limiting).
+
+``Settings`` is kept as a backwards-compatible alias for ``ServerSettings``.
+
 Requirements: 14.2
 """
 
@@ -15,28 +24,17 @@ from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-class Settings(BaseSettings):
+class CoreSettings(BaseSettings):
     """
-    Application settings loaded from environment variables.
+    Protocol-agnostic settings for the core FinOps tag compliance library.
 
-    All settings have sensible defaults for local development.
-    In production, these should be set via environment variables
-    or a .env file.
+    These settings are used by services, clients, and tools regardless
+    of whether the entry point is HTTP, stdio MCP, CLI, or Lambda.
 
     Requirements: 14.2
     """
 
-    # Server Configuration
-    host: str = Field(
-        default="0.0.0.0",
-        description="Host to bind the server to",
-        validation_alias=AliasChoices("MCP_SERVER_HOST", "HOST"),
-    )
-    port: int = Field(
-        default=8080,
-        description="Port to run the server on",
-        validation_alias=AliasChoices("MCP_SERVER_PORT", "PORT"),
-    )
+    # General Configuration
     log_level: str = Field(
         default="INFO",
         description="Logging level (DEBUG, INFO, WARNING, ERROR)",
@@ -163,6 +161,53 @@ class Settings(BaseSettings):
         validation_alias="SECURITY_MONITORING_ENABLED",
     )
 
+    # Timeout Configuration (Requirements: 16.1, 16.2)
+    tool_execution_timeout_seconds: int = Field(
+        default=30,
+        description="Maximum time allowed for a single tool execution in seconds",
+        validation_alias="TOOL_EXECUTION_TIMEOUT_SECONDS",
+    )
+    aws_api_timeout_seconds: int = Field(
+        default=10,
+        description="Timeout for AWS API calls in seconds",
+        validation_alias="AWS_API_TIMEOUT_SECONDS",
+    )
+    redis_timeout_seconds: int = Field(
+        default=5,
+        description="Timeout for Redis operations in seconds",
+        validation_alias="REDIS_TIMEOUT_SECONDS",
+    )
+
+    model_config = SettingsConfigDict(
+        env_prefix="",  # No prefix for environment variables
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+    )
+
+
+class ServerSettings(CoreSettings):
+    """
+    HTTP server settings extending CoreSettings.
+
+    Adds host/port binding, request sanitization, and rate limiting
+    configuration used only by the FastAPI HTTP server.
+
+    Requirements: 14.2
+    """
+
+    # Server Bind Configuration
+    host: str = Field(
+        default="0.0.0.0",
+        description="Host to bind the server to",
+        validation_alias=AliasChoices("MCP_SERVER_HOST", "HOST"),
+    )
+    port: int = Field(
+        default=8080,
+        description="Port to run the server on",
+        validation_alias=AliasChoices("MCP_SERVER_PORT", "PORT"),
+    )
+
     # Request Sanitization Configuration (Requirements: 16.2, 16.5)
     max_request_size_bytes: int = Field(
         default=10 * 1024 * 1024,  # 10 MB
@@ -193,22 +238,7 @@ class Settings(BaseSettings):
         validation_alias="REQUEST_SANITIZATION_ENABLED",
     )
 
-    # Timeout Configuration (Requirements: 16.1, 16.2)
-    tool_execution_timeout_seconds: int = Field(
-        default=30,
-        description="Maximum time allowed for a single tool execution in seconds",
-        validation_alias="TOOL_EXECUTION_TIMEOUT_SECONDS",
-    )
-    aws_api_timeout_seconds: int = Field(
-        default=10,
-        description="Timeout for AWS API calls in seconds",
-        validation_alias="AWS_API_TIMEOUT_SECONDS",
-    )
-    redis_timeout_seconds: int = Field(
-        default=5,
-        description="Timeout for Redis operations in seconds",
-        validation_alias="REDIS_TIMEOUT_SECONDS",
-    )
+    # HTTP Timeout Configuration (Requirements: 16.2)
     http_request_timeout_seconds: int = Field(
         default=30,
         description="Timeout for HTTP requests in seconds",
@@ -232,12 +262,9 @@ class Settings(BaseSettings):
         validation_alias="RATE_LIMIT_BURST_SIZE",
     )
 
-    model_config = SettingsConfigDict(
-        env_prefix="",  # No prefix for environment variables
-        env_file=".env",
-        env_file_encoding="utf-8",
-        case_sensitive=False,
-    )
+
+# Backwards-compatible alias: existing code uses `Settings` everywhere
+Settings = ServerSettings
 
 
 def get_settings() -> Settings:
