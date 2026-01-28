@@ -6,25 +6,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
 
-**Phase**: Phase 1 MVP Complete (AWS support only)
-**Next**: Phase 1.9 -- Core Library Extraction (planned, see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
+**Phase**: Phase 1 MVP Complete (AWS support only) + Phase 1.9 in progress
+**Refactoring**: Phase 1.9 -- Core Library Extraction (see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
 
 ## Development Commands
 
 ### Running the Server
 
 ```bash
-# Local development with Docker
-docker-compose up -d
+# Stdio transport (standard MCP — for Claude Desktop / MCP Inspector)
+python -m mcp_server.stdio_server
 
-# Run directly with Python
-python run_server.py
+# Test with MCP Inspector
+npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
 
-# Run as module
-python -m mcp_server
+# HTTP transport (for remote deployment)
+python run_server.py          # FastAPI on http://localhost:8080
+docker-compose up -d          # Docker with Redis
 ```
-
-Server runs on `http://localhost:8080` by default.
 
 ### Testing
 
@@ -71,12 +70,13 @@ This project deliberately separates **protocol-agnostic business logic** (reusab
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                        MCP PROTOCOL LAYER                               │
-│  Handles MCP protocol, HTTP, FastAPI. Could be swapped for CLI/webhook  │
+│                     MCP PROTOCOL / TRANSPORT LAYER                      │
+│  Two entry points — choose based on deployment model                    │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  main.py              → FastAPI app, /mcp/* endpoints, lifespan         │
-│  mcp_handler.py       → MCP tool registration, invocation, responses    │
-│  middleware/          → Request sanitization, budget tracking           │
+│  stdio_server.py     → FastMCP stdio transport (Claude Desktop/Inspector│
+│  main.py             → FastAPI HTTP transport (/mcp/* endpoints)        │
+│  mcp_handler.py      → Legacy MCP protocol handler (HTTP transport)     │
+│  middleware/         → Request sanitization, budget tracking (HTTP only)│
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -92,11 +92,12 @@ This project deliberately separates **protocol-agnostic business logic** (reusab
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                    SERVICES LAYER (Core Library)                        │
+│                   SERVICE CONTAINER + SERVICES LAYER                    │
+│  ★ ServiceContainer initializes all services in dependency order        │
 │  ★ ZERO knowledge of MCP - pure business logic                          │
 │  ★ Reusable: `from mcp_server.services import ComplianceService`        │
-│  ★ Testable in isolation without MCP dependencies                       │
 ├─────────────────────────────────────────────────────────────────────────┤
+│  container.py                    → ServiceContainer (DI + lifecycle)     │
 │  services/compliance_service.py  → Resource scanning, policy validation │
 │  services/cost_service.py        → Cost attribution calculations        │
 │  services/policy_service.py      → Tagging policy management            │
@@ -107,11 +108,11 @@ This project deliberately separates **protocol-agnostic business logic** (reusab
                                     │
                                     ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                         MODELS LAYER (Pydantic)                         │
-│  17 model files with strict typing, validation, JSON schemas            │
+│                    CONFIGURATION + MODELS LAYER                         │
+│  CoreSettings (protocol-agnostic) / ServerSettings (HTTP-specific)      │
 ├─────────────────────────────────────────────────────────────────────────┤
-│  models/compliance.py, models/violations.py, models/resource.py         │
-│  models/policy.py, models/cost_attribution.py, etc.                     │
+│  config.py → CoreSettings + ServerSettings (split configuration)        │
+│  models/   → 17 Pydantic model files with strict typing + JSON schemas  │
 └─────────────────────────────────────────────────────────────────────────┘
                                     │
                                     ▼
@@ -133,14 +134,16 @@ This project deliberately separates **protocol-agnostic business logic** (reusab
 
 ```
 mcp_server/
-├── main.py              # FastAPI app entry point, lifespan management
-├── config.py            # Pydantic Settings configuration
-├── mcp_handler.py       # MCP protocol handler, tool registration
+├── stdio_server.py      # ★ FastMCP stdio entry point (Claude Desktop / Inspector)
+├── main.py              # FastAPI HTTP entry point, lifespan management
+├── container.py         # ★ ServiceContainer (dependency injection + lifecycle)
+├── config.py            # CoreSettings + ServerSettings (split configuration)
+├── mcp_handler.py       # Legacy MCP protocol handler (HTTP transport)
 ├── models/              # Pydantic data models (17 files)
 ├── services/            # Core business logic (protocol-agnostic)
 ├── tools/               # 8 MCP tool adapters (thin wrappers)
 ├── clients/             # AWS client wrapper, Redis cache
-├── middleware/          # Audit, budget, sanitization middleware
+├── middleware/          # Audit, budget, sanitization middleware (HTTP only)
 └── utils/               # Correlation IDs, CloudWatch, error sanitization
 ```
 
@@ -148,7 +151,7 @@ mcp_server/
 
 The application follows a **service-oriented architecture** with clear separation of concerns:
 
-**Core Services** (initialized in `main.py` lifespan):
+**Core Services** (initialized by `ServiceContainer` in `container.py`):
 - `AWSClient` - Wrapper around boto3 with rate limiting and exponential backoff
 - `RedisCache` - Caching layer for compliance results (1-hour TTL)
 - `PolicyService` - Loads and validates tagging policy from `policies/tagging_policy.json`
@@ -159,21 +162,25 @@ The application follows a **service-oriented architecture** with clear separatio
 - `BudgetTracker` - Tool call budget enforcement (max 100 calls/session)
 - `LoopDetector` - Detects repeated identical tool calls (max 3 identical calls)
 
-**Service Dependencies**:
+**Service Dependencies** (managed by `ServiceContainer`):
 ```
-MCPHandler
+ServiceContainer
   ├── ComplianceService
   │     ├── AWSClient
   │     ├── PolicyService
   │     └── RedisCache (optional)
   ├── AuditService
   ├── HistoryService
-  └── SecurityService
+  ├── SecurityService
+  ├── BudgetTracker
+  └── LoopDetector
 ```
 
 ### MCP Tools (8 Total)
 
-All tools are registered in `MCPHandler` and exposed via `/mcp/tools/call`:
+Tools are available via two transports:
+- **stdio**: Registered in `stdio_server.py` via `@mcp.tool()` decorators (for Claude Desktop / MCP Inspector)
+- **HTTP**: Registered in `mcp_handler.py` and exposed via `/mcp/tools/call` (for remote deployment)
 
 1. `check_tag_compliance` - Scan resources, calculate compliance score
 2. `find_untagged_resources` - Find resources missing required tags
@@ -624,24 +631,31 @@ Edit `policies/tagging_policy.json` directly. Changes take effect on next policy
 4. Use `LOG_LEVEL=DEBUG` environment variable for verbose output
 5. For AWS errors, check IAM permissions
 
-## Planned Refactoring: Phase 1.9
+## Phase 1.9 Refactoring Status
 
-A refactoring is planned before Phase 2 to separate the core business logic from the MCP/HTTP transport layer. See [REFACTORING_PLAN.md](REFACTORING_PLAN.md) for the full plan. Key points:
+Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [REFACTORING_PLAN.md](REFACTORING_PLAN.md) for the full plan.
 
-- **Core library** (`finops_tag_compliance`) -- pure Python, importable without HTTP/MCP dependencies
-- **MCP server** (`finops_tag_compliance_mcp`) -- thin wrapper using `mcp` Python SDK with stdio transport
-- New `ServiceContainer` replaces global state and scattered service initialization in `main.py` lifespan
-- `mcp_handler.py` (1475 lines) to be replaced by `server.py` (~200 lines) using FastMCP
-- No business logic changes -- all services, models, tools, and clients stay as-is
+**Completed:**
+- `ServiceContainer` (`container.py`) -- centralizes all service initialization, replaces scattered globals in `main.py` lifespan
+- `CoreSettings` / `ServerSettings` split -- protocol-agnostic config separated from HTTP-specific settings
+- `stdio_server.py` -- standard MCP server using FastMCP SDK with all 8 tools, compatible with Claude Desktop and MCP Inspector
+- `pyproject.toml` updated with `mcp>=1.0.0` dependency and `finops-tag-compliance` script entry point
 
-Until the refactoring is complete, the file structure and import paths documented above remain accurate.
+**Remaining (see REFACTORING_PLAN.md):**
+- `src/` layout reorganization and test import updates
+- MCP-specific model extraction
+- Session management module (`BudgetTracker`, `LoopDetector`)
+- Full decomposition of `mcp_handler.py` (1475 lines) into smaller modules
+- HTTP backwards-compatibility server wrapper
 
 ## Key Files Reference
 
-- `run_server.py` - Main entry point with banner and startup
-- `mcp_server/main.py` - FastAPI app, lifespan, endpoints
-- `mcp_server/mcp_handler.py` - MCP protocol implementation
-- `mcp_server/config.py` - All configuration settings
+- `mcp_server/stdio_server.py` - **FastMCP stdio entry point** (Claude Desktop / MCP Inspector)
+- `mcp_server/container.py` - **ServiceContainer** (dependency injection + lifecycle)
+- `mcp_server/config.py` - CoreSettings + ServerSettings (split configuration)
+- `run_server.py` - HTTP entry point with banner and startup
+- `mcp_server/main.py` - FastAPI app, lifespan, HTTP endpoints
+- `mcp_server/mcp_handler.py` - Legacy MCP protocol handler (HTTP transport)
 - `mcp_server/tools/check_tag_compliance.py` - Core compliance scanning tool
 - `mcp_server/services/compliance_service.py` - Compliance checking logic
 - `mcp_server/clients/aws_client.py` - AWS API wrapper

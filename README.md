@@ -69,7 +69,7 @@ Behind the scenes, this MCP server is running sophisticated validation logic, co
 
 ## How It Works
 
-This MCP server runs as a lightweight HTTP service (either on your laptop or in the cloud). When you ask Claude a question about AWS tagging, Claude calls the appropriate "tool" from this server, which:
+This MCP server supports two transports: **stdio** (for Claude Desktop and MCP Inspector) and **HTTP** (for remote/cloud deployments). When you ask Claude a question about AWS tagging, Claude calls the appropriate "tool" from this server, which:
 
 1. **Queries your AWS environment** using IAM credentials (no hardcoded keys)
 2. **Validates resources** against your tagging policy (defined in a simple JSON file)
@@ -87,6 +87,59 @@ When you're chatting with Claude, it automatically picks the right tool for your
 **check_tag_compliance** scans resources against your policy and calculates a compliance score. **find_untagged_resources** identifies resources missing required tags with cost impact. **validate_resource_tags** validates specific resources by ARN (great for CI/CD pipelines). **get_cost_attribution_gap** calculates how much spend is unattributable. **suggest_tags** provides ML-powered recommendations with confidence scores. **get_tagging_policy** shows your current policy configuration. **generate_compliance_report** creates formatted reports in JSON, CSV, or Markdown. **get_violation_history** shows compliance trends over time.
 
 You don't need to memorize these—Claude figures out which tools to use based on what you're asking. But if you're curious about the implementation details, check out the [Tool Logic Reference](./docs/TOOL_LOGIC_REFERENCE.md).
+
+### Running with stdio (Claude Desktop / MCP Inspector)
+
+The stdio transport speaks the standard MCP JSON-RPC protocol over stdin/stdout. This is the recommended way to use the server with Claude Desktop.
+
+```bash
+# Run the stdio server directly
+python -m mcp_server.stdio_server
+
+# Or after pip install:
+finops-tag-compliance
+```
+
+**Claude Desktop configuration** (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "finops-tag-compliance": {
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"]
+    }
+  }
+}
+```
+
+### Testing with MCP Inspector
+
+The [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) is a browser-based tool for testing MCP servers interactively. It lets you list tools, fill in arguments, and see results in real time.
+
+```bash
+# Launch the Inspector pointing at this server
+npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
+```
+
+The Inspector opens a browser UI where you can:
+- See all 8 registered tools with their JSON schemas
+- Execute any tool with custom arguments
+- View structured results and server notifications
+
+### Running with HTTP (remote deployment)
+
+The HTTP transport is useful for cloud deployments where the server runs as a standalone service.
+
+```bash
+# Local development with Docker (includes Redis)
+docker-compose up -d
+
+# Or run directly
+python run_server.py
+```
+
+The HTTP server exposes `GET /mcp/tools` and `POST /mcp/tools/call` endpoints on port 8080.
 
 ---
 

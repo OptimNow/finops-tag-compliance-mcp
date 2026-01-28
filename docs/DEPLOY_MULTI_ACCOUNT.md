@@ -15,6 +15,8 @@ This guide explains how to deploy the FinOps Tag Compliance MCP server across mu
 
 **Phase 2 (Q2 2025)**: Native multi-account support via AWS AssumeRole.
 
+> **Note on transports:** This guide uses the HTTP bridge (`mcp_bridge.py`) for Claude Desktop configuration because multi-account typically involves remote EC2 servers. For single-account local testing, use the simpler stdio transport instead -- see the [Deployment Guide](DEPLOYMENT.md).
+
 ---
 
 ## Three Deployment Options

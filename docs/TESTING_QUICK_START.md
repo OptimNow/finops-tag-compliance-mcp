@@ -173,6 +173,23 @@ GitHub Actions example:
   run: python run_tests.py --coverage
 ```
 
+## Testing with MCP Inspector
+
+The MCP Inspector is a browser-based developer tool for interactively testing MCP servers. It connects via stdio transport.
+
+```bash
+# Launch Inspector UI -- opens in your browser
+npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
+```
+
+In the Inspector you can:
+- See all 8 registered tools and their schemas
+- Call tools interactively with test parameters
+- Inspect JSON-RPC request/response payloads
+- Verify tool registration without needing Claude Desktop
+
+This is useful for debugging tool definitions and testing changes before deploying to Claude Desktop.
+
 ## More Information
 
 See `tests/README.md` for comprehensive documentation.

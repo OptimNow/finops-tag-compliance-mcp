@@ -42,6 +42,7 @@ build/
 .coverage
 htmlcov/
 .pytest_cache/
+.hypothesis/
 
 # Logs
 *.log
