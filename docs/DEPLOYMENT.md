@@ -1068,6 +1068,171 @@ aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 
 ---
 
+## Production Security Deployment
+
+For production deployments with full security features, use the production CloudFormation template.
+
+### Architecture Overview (Production)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        INTERNET                                  │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              Application Load Balancer (Public Subnet)           │
+│    • TLS termination (ACM certificate)                          │
+│    • HTTPS on port 443                                          │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    PRIVATE SUBNET                                │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              MCP Server (EC2)                             │  │
+│  │    • API key authentication (AUTH_ENABLED=true)          │  │
+│  │    • CORS restriction (CORS_ALLOWED_ORIGINS)             │  │
+│  │    • CloudWatch metrics for security alerting            │  │
+│  │    • No public IP address                                │  │
+│  │    • Inbound from ALB only                               │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│                              │                                   │
+│                              ▼                                   │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │              VPC Endpoints                                │  │
+│  │    • EC2, S3, CloudWatch, Secrets Manager                │  │
+│  │    • No internet routing for AWS API calls               │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Prerequisites
+
+1. ACM certificate for your domain
+2. AWS CLI configured with appropriate permissions
+3. Email address for security alerts
+
+### Deploy with CloudFormation
+
+```bash
+# 1. Get your ACM certificate ARN (create in AWS Console if needed)
+ACM_CERT_ARN="arn:aws:acm:us-east-1:123456789012:certificate/xxx"
+
+# 2. Deploy the production stack
+aws cloudformation deploy \
+  --stack-name mcp-tagging-prod \
+  --template-file infrastructure/cloudformation-production.yaml \
+  --parameter-overrides \
+    ProjectName=mcp-tagging \
+    Environment=prod \
+    KeyPairName=your-key-pair \
+    ACMCertificateArn=$ACM_CERT_ARN \
+    AlertEmail=security@example.com \
+    CORSAllowedOrigins=https://claude.ai \
+  --capabilities CAPABILITY_NAMED_IAM
+
+# 3. Wait for completion
+aws cloudformation wait stack-create-complete --stack-name mcp-tagging-prod
+
+# 4. Get outputs
+aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs'
+```
+
+### Retrieve API Key from Secrets Manager
+
+```bash
+# Get the secret ARN from CloudFormation outputs
+SECRET_ARN=$(aws cloudformation describe-stacks \
+  --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`APIKeySecretArn`].OutputValue' \
+  --output text)
+
+# Retrieve the API key
+API_KEY=$(aws secretsmanager get-secret-value \
+  --secret-id $SECRET_ARN \
+  --query SecretString \
+  --output text | jq -r '.primary_key')
+
+echo "Your API key: $API_KEY"
+```
+
+### Configure Claude Desktop (Production)
+
+Add to your Claude Desktop config with the API key:
+
+```json
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "python",
+      "args": ["C:\\path\\to\\scripts\\mcp_bridge.py"],
+      "env": {
+        "MCP_SERVER_URL": "https://your-alb-dns.example.com",
+        "MCP_API_KEY": "your-api-key-from-secrets-manager"
+      }
+    }
+  }
+}
+```
+
+Get the ALB DNS name:
+```bash
+ALB_DNS=$(aws cloudformation describe-stacks \
+  --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+  --output text)
+echo "ALB DNS: $ALB_DNS"
+```
+
+### Security Features Enabled
+
+| Feature | Configuration | Description |
+|---------|--------------|-------------|
+| API Key Auth | `AUTH_ENABLED=true` | Bearer token required for all requests |
+| CORS Restriction | `CORS_ALLOWED_ORIGINS=https://claude.ai` | Only Claude.ai can make cross-origin requests |
+| TLS/HTTPS | ALB with ACM certificate | All traffic encrypted in transit |
+| Private Subnet | EC2 in private subnet | No direct internet access |
+| VPC Endpoints | EC2, S3, CloudWatch, Secrets Manager | AWS API calls stay within VPC |
+| CloudWatch Alarms | Auth failures, CORS violations | SNS alerts for security events |
+
+### Monitor Security Events
+
+```bash
+# View recent authentication failures
+aws logs filter-log-events \
+  --log-group-name /mcp-tagging/prod/security \
+  --filter-pattern "authentication_failure"
+
+# Check CloudWatch alarm status
+aws cloudwatch describe-alarms \
+  --alarm-names mcp-tagging-auth-failures-prod mcp-tagging-cors-violations-prod
+```
+
+### Rotate API Keys
+
+```bash
+# Generate new key
+NEW_KEY=$(python -c "import secrets; print(secrets.token_urlsafe(32))")
+
+# Update in Secrets Manager
+aws secretsmanager update-secret \
+  --secret-id $SECRET_ARN \
+  --secret-string "{\"primary_key\": \"$NEW_KEY\"}"
+
+# Restart EC2 to pick up new key
+INSTANCE_ID=$(aws cloudformation describe-stacks \
+  --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
+  --output text)
+aws ec2 reboot-instances --instance-ids $INSTANCE_ID
+
+# Update Claude Desktop config with new key
+```
+
+---
+
 ## Security Recommendations
 
 1. **Restrict AllowedCIDR**: Only allow your IP or VPN CIDR
@@ -1075,6 +1240,11 @@ aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 3. **Enable VPC Flow Logs**: Monitor network traffic
 4. **Rotate credentials**: Use AWS Secrets Manager for any secrets
 5. **Enable CloudTrail**: Audit all API calls
+6. **Enable API Key Authentication**: Set `AUTH_ENABLED=true` and configure `API_KEYS`
+7. **Restrict CORS**: Set `CORS_ALLOWED_ORIGINS` to specific origins
+8. **Enable CloudWatch Alerting**: Set `CLOUDWATCH_METRICS_ENABLED=true`
+
+See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for detailed security settings.
 
 ---
 

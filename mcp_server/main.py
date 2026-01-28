@@ -149,14 +149,37 @@ app = FastAPI(
 
 # Add CORS middleware for cross-origin requests
 # This allows AI assistants like Claude Desktop to communicate with the server
-# NOTE: In production, restrict allow_origins to specific trusted domains
-# Using allow_credentials=False since MCP protocol doesn't use cookies/auth headers
+# Requirements: 20.1, 20.2, 20.4, 20.5, 20.6
+def get_cors_origins() -> list[str]:
+    """
+    Get CORS allowed origins from settings.
+
+    Returns a list of allowed origins. In production, this should be
+    restricted to specific trusted domains.
+
+    Requirements: 20.1, 20.4
+    """
+    app_settings = settings()
+    origins_str = app_settings.cors_allowed_origins
+
+    # Handle wildcard for development
+    if origins_str == "*":
+        return ["*"]
+
+    # Parse comma-separated list
+    origins = [o.strip() for o in origins_str.split(",") if o.strip()]
+
+    # Default to empty list (block all) if not configured
+    return origins if origins else []
+
+
+cors_origins = get_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for MCP protocol (stateless API)
+    allow_origins=cors_origins,
     allow_credentials=False,  # Disabled - MCP doesn't use cookies/credentials
-    allow_methods=["GET", "POST"],  # Only methods we actually use
-    allow_headers=["*"],
+    allow_methods=["POST", "OPTIONS"] if cors_origins != ["*"] else ["GET", "POST"],  # Req 20.5
+    allow_headers=["Content-Type", "Authorization", "X-Correlation-ID"] if cors_origins != ["*"] else ["*"],  # Req 20.6
 )
 
 # Add request sanitization middleware for security (Requirements: 16.2, 16.5)
@@ -164,6 +187,37 @@ app.add_middleware(
 from .middleware.sanitization_middleware import RequestSanitizationMiddleware
 
 app.add_middleware(RequestSanitizationMiddleware)
+
+# Add API key authentication middleware (Requirements: 19.1, 19.2, 19.3)
+# This middleware validates Bearer tokens in Authorization header
+# Authentication is disabled by default (AUTH_ENABLED=false)
+from .middleware.auth_middleware import APIKeyAuthMiddleware, parse_api_keys
+
+_auth_settings = settings()
+if _auth_settings.auth_enabled:
+    _api_keys = parse_api_keys(_auth_settings.api_keys)
+    if _api_keys:
+        app.add_middleware(
+            APIKeyAuthMiddleware,
+            api_keys=_api_keys,
+            enabled=True,
+            realm=_auth_settings.auth_realm,
+        )
+        logger.info(f"API key authentication enabled with {len(_api_keys)} configured keys")
+    else:
+        logger.warning("AUTH_ENABLED=true but no API_KEYS configured - authentication disabled")
+
+# Add CORS logging middleware for security monitoring (Requirements: 20.3, 23.3)
+# This logs requests from non-allowed origins to the security service
+from .middleware.cors_middleware import CORSLoggingMiddleware
+
+if cors_origins != ["*"]:
+    app.add_middleware(
+        CORSLoggingMiddleware,
+        allowed_origins=cors_origins,
+        enabled=True,
+    )
+    logger.info(f"CORS logging enabled for {len(cors_origins)} allowed origins")
 
 # Add correlation ID middleware for request tracing
 # This must be added after CORS middleware so it wraps the request

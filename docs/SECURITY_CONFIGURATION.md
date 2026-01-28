@@ -2,21 +2,129 @@
 
 This document describes all security-related configuration options for the FinOps Tag Compliance MCP Server.
 
-**Requirements: 16.1, 16.2, 16.5**
+**Requirements: 16.1, 16.2, 16.5, 18.x, 19.x, 20.x, 21.x, 22.x, 23.x**
 
 ## Overview
 
 The MCP server provides multiple layers of security configuration to protect against prompt injection, tool misuse, and data exposure:
 
-1. **Request Sanitization** - Validates and limits incoming requests
-2. **Tool Budget Enforcement** - Prevents runaway tool consumption
-3. **Loop Detection** - Blocks repeated identical tool calls
-4. **Security Monitoring** - Tracks and rate-limits suspicious activity
-5. **Error Sanitization** - Prevents sensitive information leakage
+1. **API Key Authentication** - Bearer token authentication for API access (NEW)
+2. **CORS Restriction** - Configurable origin allowlist (NEW)
+3. **TLS/HTTPS** - Transport layer security via ALB (NEW)
+4. **Request Sanitization** - Validates and limits incoming requests
+5. **Tool Budget Enforcement** - Prevents runaway tool consumption
+6. **Loop Detection** - Blocks repeated identical tool calls
+7. **Security Monitoring** - Tracks and rate-limits suspicious activity
+8. **CloudWatch Alerting** - Alarms for authentication and CORS violations (NEW)
+9. **Error Sanitization** - Prevents sensitive information leakage
 
 ## Configuration Options
 
 All security settings are configured via environment variables. See `.env.example` for a complete template.
+
+---
+
+## Production Security (NEW)
+
+These settings enable production-grade security for remote deployments.
+
+### API Key Authentication (Requirements: 19.1, 19.2, 19.3, 19.4, 19.5)
+
+API key authentication protects MCP endpoints from unauthorized access.
+
+#### `AUTH_ENABLED`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Enable/disable API key authentication
+- **Environment Variable**: `AUTH_ENABLED`
+- **Example**: `AUTH_ENABLED=true`
+- **Notes**:
+  - When enabled, all requests except `/health`, `/`, `/docs` require authentication
+  - Requires at least one API key in `API_KEYS`
+
+#### `API_KEYS`
+- **Type**: String (comma-separated)
+- **Default**: `` (empty)
+- **Description**: Comma-separated list of valid API keys
+- **Environment Variable**: `API_KEYS`
+- **Example**: `API_KEYS=key1,key2,key3`
+- **Notes**:
+  - Generate secure keys: `python -c "import secrets; print(secrets.token_urlsafe(32))"`
+  - Rotate keys every 90 days
+  - Store production keys in AWS Secrets Manager
+
+#### `AUTH_REALM`
+- **Type**: String
+- **Default**: `mcp-server`
+- **Description**: Authentication realm for WWW-Authenticate header
+- **Environment Variable**: `AUTH_REALM`
+- **Example**: `AUTH_REALM=finops-mcp`
+- **Notes**:
+  - Included in 401 responses per RFC 6750
+  - Helps clients identify the authentication scope
+
+### CORS Configuration (Requirements: 20.1, 20.2, 20.3, 20.4, 20.5, 20.6)
+
+CORS restriction limits which web origins can access the API.
+
+#### `CORS_ALLOWED_ORIGINS`
+- **Type**: String (comma-separated)
+- **Default**: `*`
+- **Description**: Comma-separated list of allowed CORS origins, or `*` for all
+- **Environment Variable**: `CORS_ALLOWED_ORIGINS`
+- **Example**: `CORS_ALLOWED_ORIGINS=https://claude.ai,https://your-app.example.com`
+- **Notes**:
+  - Use `*` only for development
+  - For production, specify exact origins
+  - Empty string blocks all cross-origin requests
+
+**Production CORS Behavior**:
+When specific origins are configured (not `*`):
+- Methods restricted to `POST`, `OPTIONS` only
+- Headers restricted to `Content-Type`, `Authorization`, `X-Correlation-ID`
+- CORS violations are logged and emit CloudWatch metrics
+
+### TLS Configuration (Requirement: 18.5)
+
+TLS ensures encrypted transport between clients and server.
+
+#### `TLS_ENABLED`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Flag indicating TLS termination is handled externally
+- **Environment Variable**: `TLS_ENABLED`
+- **Example**: `TLS_ENABLED=true`
+- **Notes**:
+  - In production, TLS is terminated at ALB level
+  - Set to `true` when deploying behind HTTPS ALB
+  - Application serves HTTP on port 8080 internally
+
+### CloudWatch Metrics (Requirements: 23.2, 23.5)
+
+CloudWatch metrics enable alerting for security events.
+
+#### `CLOUDWATCH_METRICS_ENABLED`
+- **Type**: Boolean
+- **Default**: `false`
+- **Description**: Enable/disable CloudWatch custom metrics for security alerting
+- **Environment Variable**: `CLOUDWATCH_METRICS_ENABLED`
+- **Example**: `CLOUDWATCH_METRICS_ENABLED=true`
+- **Notes**:
+  - When enabled, authentication failures emit `AuthenticationFailures` metric
+  - CORS violations emit `CORSViolations` metric
+  - Metrics trigger CloudWatch alarms defined in CloudFormation
+
+#### `PROJECT_NAME`
+- **Type**: String
+- **Default**: `mcp-tagging`
+- **Description**: Project name for CloudWatch namespace
+- **Environment Variable**: `PROJECT_NAME`
+- **Example**: `PROJECT_NAME=mcp-tagging`
+- **Notes**:
+  - CloudWatch namespace: `{PROJECT_NAME}/{ENVIRONMENT}`
+  - Must match CloudFormation alarm configuration
+
+---
 
 ### Request Sanitization (Requirements: 16.2, 16.5)
 
@@ -346,27 +454,42 @@ HTTP_REQUEST_TIMEOUT_SECONDS=30
 For production environments with strict security:
 
 ```bash
+# Production Security (NEW)
+AUTH_ENABLED=true
+API_KEYS=your-secure-key-here  # Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
+AUTH_REALM=mcp-server
+CORS_ALLOWED_ORIGINS=https://claude.ai
+TLS_ENABLED=true
+CLOUDWATCH_METRICS_ENABLED=true
+PROJECT_NAME=mcp-tagging
+
+# Request Sanitization
 REQUEST_SANITIZATION_ENABLED=true
 MAX_REQUEST_SIZE_BYTES=5242880  # 5 MB
 MAX_HEADER_SIZE_BYTES=4096      # 4 KB
 MAX_HEADER_COUNT=30
 
+# Budget Tracking
 BUDGET_TRACKING_ENABLED=true
 MAX_TOOL_CALLS_PER_SESSION=50
 SESSION_BUDGET_TTL_SECONDS=1800  # 30 minutes
 
+# Loop Detection
 LOOP_DETECTION_ENABLED=true
 MAX_IDENTICAL_CALLS=2
 LOOP_DETECTION_WINDOW_SECONDS=300
 
+# Security Monitoring
 SECURITY_MONITORING_ENABLED=true
 MAX_UNKNOWN_TOOL_ATTEMPTS=3
 SECURITY_EVENT_WINDOW_SECONDS=300
 
+# Rate Limiting
 RATE_LIMIT_ENABLED=true
 RATE_LIMIT_REQUESTS_PER_MINUTE=30
 RATE_LIMIT_BURST_SIZE=5
 
+# Timeouts
 TOOL_EXECUTION_TIMEOUT_SECONDS=30
 AWS_API_TIMEOUT_SECONDS=10
 REDIS_TIMEOUT_SECONDS=5

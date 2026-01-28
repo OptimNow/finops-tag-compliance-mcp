@@ -57,21 +57,33 @@ While read-only, this information enables targeted attacks against your infrastr
 python -m mcp_server.stdio_server
 ```
 
-### HTTP Transport (Requires Additional Security)
+### HTTP Transport (Production-Ready with Security Features)
 
 **Use case**: Remote deployment, multi-user access, CI/CD integration
 
-**Security model**:
+**Security model** (as of January 2026):
 - Network-accessible REST API on port 8080
-- **No built-in authentication** (critical gap)
-- **Open CORS policy** (`allow_origins=["*"]`)
+- **Built-in API key authentication** (`AUTH_ENABLED=true`)
+- **Configurable CORS policy** (`CORS_ALLOWED_ORIGINS=https://claude.ai`)
+- **CloudWatch alerting** for security events
 
-**Threats**:
+**Threats** (when security features are disabled):
 - Unauthorized access from any network client
 - Cross-site request forgery from malicious websites
 - Man-in-the-middle attacks (no TLS at application level)
 
-**Recommendation**: Never expose HTTP transport directly to the internet. Always deploy behind an authenticating reverse proxy with TLS.
+**Recommendation**: For production, enable authentication and deploy behind ALB with TLS:
+```bash
+# Enable authentication
+AUTH_ENABLED=true
+API_KEYS=your-secure-key-here
+
+# Restrict CORS
+CORS_ALLOWED_ORIGINS=https://claude.ai
+
+# Enable CloudWatch alerting
+CLOUDWATCH_METRICS_ENABLED=true
+```
 
 ### Stdio-to-HTTP Bridge (Remote Server with Claude Desktop)
 

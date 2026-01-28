@@ -1,16 +1,13 @@
 {
-  "_comment_development": "Development configuration (no authentication)",
-  "_comment_production": "For production, use HTTPS and add MCP_API_KEY",
+  "_comment": "Production configuration with authentication and HTTPS",
+  "_comment_security": "Requirements: 22.1, 22.2, 22.4, 22.5",
   "mcpServers": {
     "finops-tagging": {
       "command": "python",
       "args": ["/path/to/mcp_bridge.py"],
       "env": {
-        "_comment": "Development: use http://localhost:8080 without API key",
-        "_comment_production": "Production: use https://your-alb.example.com with API key",
-        "MCP_SERVER_URL": "http://your-server:8080",
-        "_MCP_API_KEY": "your-api-key-here (uncomment and rename to MCP_API_KEY for production)",
-        "_MCP_VERIFY_TLS": "true (set to false only for development with self-signed certs)"
+        "MCP_SERVER_URL": "https://your-alb.example.com",
+        "MCP_API_KEY": "your-api-key-here"
       }
     }
   },

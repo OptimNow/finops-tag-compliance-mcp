@@ -178,6 +178,37 @@ class CoreSettings(BaseSettings):
         validation_alias="REDIS_TIMEOUT_SECONDS",
     )
 
+    # Authentication Configuration (Requirements: 19.1, 19.4)
+    auth_enabled: bool = Field(
+        default=False,
+        description="Enable API key authentication",
+        validation_alias="AUTH_ENABLED",
+    )
+    api_keys: str = Field(
+        default="",
+        description="Comma-separated list of valid API keys",
+        validation_alias="API_KEYS",
+    )
+    auth_realm: str = Field(
+        default="mcp-server",
+        description="Authentication realm for WWW-Authenticate header",
+        validation_alias="AUTH_REALM",
+    )
+
+    # CORS Configuration (Requirements: 20.1, 20.4)
+    cors_allowed_origins: str = Field(
+        default="*",
+        description="Comma-separated list of allowed CORS origins (use * for all in dev)",
+        validation_alias="CORS_ALLOWED_ORIGINS",
+    )
+
+    # TLS Configuration (Requirements: 18.5)
+    tls_enabled: bool = Field(
+        default=False,
+        description="Enable TLS mode (reject plaintext HTTP on MCP endpoints)",
+        validation_alias="TLS_ENABLED",
+    )
+
     model_config = SettingsConfigDict(
         env_prefix="",  # No prefix for environment variables
         env_file=".env",
