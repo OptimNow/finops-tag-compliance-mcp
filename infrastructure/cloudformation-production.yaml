@@ -107,9 +107,6 @@ Metadata:
           default: Network Configuration
         Parameters:
           - VpcCIDR
-
-Conditions:
-  HasPolicyBucketName: !Not [!Equals [!Ref PolicyBucketName, '']]
           - PublicSubnet1CIDR
           - PublicSubnet2CIDR
           - PrivateSubnet1CIDR
@@ -120,6 +117,9 @@ Conditions:
           - InstanceType
           - KeyPairName
           - DomainName
+
+Conditions:
+  HasPolicyBucketName: !Not [!Equals [!Ref PolicyBucketName, '']]
 
 Resources:
   # ==========================================================================
