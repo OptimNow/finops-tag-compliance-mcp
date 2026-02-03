@@ -215,16 +215,37 @@ Redis caching (`mcp_server/clients/cache.py`) is used for:
 - Loop detection call history
 - Security event tracking
 
-Cache keys are SHA256 hashes of normalized query parameters. Use `force_refresh=True` to bypass cache.
+Cache keys are SHA256 hashes of normalized query parameters including the AWS region. This ensures that changing regions invalidates cached results. Use `force_refresh=True` to bypass cache.
 
 ### Middleware Pipeline
 
 Middleware is applied in this order (from `main.py`):
-1. **CORS** - Allow all origins for MCP protocol
-2. **RequestSanitization** - Validates headers, size limits, prevents injection
-3. **CorrelationID** - Adds correlation IDs for request tracing
-4. **BudgetTracking** - Enforces tool call limits per session
-5. **LoopDetection** - Detects repeated identical calls
+1. **Authentication** - API key validation (when `AUTH_ENABLED=true`)
+2. **CORS** - Origin allowlist enforcement (configurable via `CORS_ALLOWED_ORIGINS`)
+3. **RequestSanitization** - Validates headers, size limits, prevents injection
+4. **CorrelationID** - Adds correlation IDs for request tracing
+5. **BudgetTracking** - Enforces tool call limits per session
+6. **LoopDetection** - Detects repeated identical calls
+
+### Production Security (Phase 1.9+)
+
+**Authentication** (`mcp_server/middleware/auth_middleware.py`):
+- API key authentication with Bearer token support
+- RFC 6750-compliant WWW-Authenticate headers on 401 responses
+- Configurable public endpoints bypass (`/health`, `/`, `/docs`)
+- Support for multiple API keys via comma-separated `API_KEYS` env var
+- CloudWatch metrics emission on authentication failures
+
+**CORS Restriction** (`mcp_server/middleware/cors_middleware.py`):
+- Origin allowlist via `CORS_ALLOWED_ORIGINS` env var
+- Violation logging to security service
+- CloudWatch metrics for CORS violations
+- Default permissive (`*`) for backward compatibility
+
+**Bridge Authentication** (`scripts/mcp_bridge.py`):
+- `MCP_API_KEY` environment variable support
+- HTTPS/TLS configuration via `MCP_VERIFY_TLS`
+- Proper error handling for 401/403 responses
 
 ### Error Handling
 
@@ -263,11 +284,19 @@ External JSON file that defines which AWS resource types to scan and how to cate
 
 See `docs/RESOURCE_TYPE_CONFIGURATION.md` for full documentation.
 
+**Security Settings** (HTTP transport only):
+- `AUTH_ENABLED` - Enable API key authentication (default: `false`)
+- `API_KEYS` - Comma-separated list of valid API keys
+- `AUTH_REALM` - Realm for WWW-Authenticate header (default: `mcp-server`)
+- `CORS_ALLOWED_ORIGINS` - Comma-separated allowed origins (default: `*`)
+- `TLS_ENABLED` - Enable TLS/HTTPS (default: `false`)
+
 **Feature Flags**:
 - `BUDGET_TRACKING_ENABLED` - Enable tool call budgets (default: `true`)
 - `LOOP_DETECTION_ENABLED` - Enable loop detection (default: `true`)
 - `SECURITY_MONITORING_ENABLED` - Enable security event monitoring (default: `true`)
 - `CLOUDWATCH_ENABLED` - Enable CloudWatch logging (default: `false`)
+- `CLOUDWATCH_METRICS_ENABLED` - Enable CloudWatch custom metrics (default: `false`)
 
 Settings are loaded from:
 1. Environment variables
@@ -656,10 +685,14 @@ Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [
 - `run_server.py` - HTTP entry point with banner and startup
 - `mcp_server/main.py` - FastAPI app, lifespan, HTTP endpoints
 - `mcp_server/mcp_handler.py` - Legacy MCP protocol handler (HTTP transport)
+- `mcp_server/middleware/auth_middleware.py` - API key authentication middleware
+- `mcp_server/middleware/cors_middleware.py` - CORS logging middleware
 - `mcp_server/tools/check_tag_compliance.py` - Core compliance scanning tool
 - `mcp_server/services/compliance_service.py` - Compliance checking logic
 - `mcp_server/clients/aws_client.py` - AWS API wrapper
+- `infrastructure/cloudformation-production.yaml` - Production CloudFormation template
 - `docs/TOOL_LOGIC_REFERENCE.md` - Detailed logic for each tool
 - `docs/TESTING_QUICK_START.md` - Testing guide
+- `docs/SECURITY_CONFIGURATION.md` - Production security configuration guide
 - `REFACTORING_PLAN.md` - Phase 1.9 core library extraction plan
 - `docs/ROADMAP.md` - Overall project roadmap (4 phases + Phase 1.9)

@@ -1950,3 +1950,250 @@ Tier 1 (HIGH priority) is complete. The remaining Tier 2/3 items improve maintai
 - All existing tests pass (no regressions)
 - Comprehensive documentation updated across 10+ files
 
+
+---
+
+## January 28, 2026: Production Security Features Complete
+
+### Day 42: Comprehensive Security Hardening (Requirements 18-24)
+
+**The Trigger:**
+
+With Phase 1.9 Tier 1 complete (ServiceContainer, split config, stdio server), the next priority was production security. A software engineer had documented requirements 18-24 in `.kiro/specs/production-security/` covering authentication, CORS restriction, and infrastructure hardening.
+
+**What Claude Did (6 Phases):**
+
+**Phase A: API Key Authentication**
+- Created `mcp_server/middleware/auth_middleware.py` (~327 lines)
+- Bearer token authentication with RFC 6750-compliant WWW-Authenticate headers
+- Configurable public endpoints bypass (`/health`, `/`, `/docs`, `/openapi.json`)
+- Support for multiple API keys via comma-separated `API_KEYS` env var
+- CloudWatch metrics emission on authentication failures
+- 22 unit tests + property-based tests with Hypothesis
+
+**Phase B: CORS Restriction**
+- Created `mcp_server/middleware/cors_middleware.py` (~205 lines)
+- Origin allowlist via `CORS_ALLOWED_ORIGINS` env var
+- Violation logging to security service with client IP tracking
+- CloudWatch metrics for CORS violations
+- Default permissive (`*`) for backward compatibility
+- Unit tests + property-based tests
+
+**Phase C: Bridge Authentication Support**
+- Updated `scripts/mcp_bridge.py` with `MCP_API_KEY` environment variable
+- Added HTTPS/TLS support via `MCP_VERIFY_TLS` setting
+- Proper error handling for 401/403 responses with user-friendly messages
+- Created `examples/claude_desktop_config_production.json` with auth config
+
+**Phase D: Production Infrastructure**
+- Created `infrastructure/cloudformation-production.yaml` (~779 lines)
+- VPC with public/private subnets and NAT Gateway
+- Application Load Balancer with TLS 1.3 termination via ACM
+- VPC endpoints for EC2, S3, CloudWatch, Secrets Manager (no internet routing for AWS API calls)
+- Security groups restricting MCP Server to ALB-only access
+- Secrets Manager for API key storage with auto-generation
+- CloudWatch alarms for security monitoring
+
+**Phase E: Security Monitoring**
+- Added CloudWatch custom metrics functions to `mcp_server/utils/cloudwatch_logger.py`:
+  - `emit_metric()` - Generic metric emission
+  - `emit_auth_failure_metric()` - Track authentication failures by type
+  - `emit_cors_violation_metric()` - Track CORS violations by origin
+- Updated `SecurityEvent` class with `client_ip` as top-level field
+- CloudWatch alarms: `AuthFailureAlarm`, `CORSViolationAlarm`
+- SNS topic for security alert notifications
+
+**Phase F: Documentation**
+- Updated `docs/DEPLOYMENT.md` with Production Security Deployment section
+- Updated `docs/SECURITY_CONFIGURATION.md` with new settings and examples
+- Updated `docs/MCP_SECURITY_BEST_PRACTICES.md` to reflect authentication is now implemented
+- Updated `.env.example` with all new environment variables
+
+**Configuration Added:**
+
+```bash
+# Authentication (disabled by default for backward compatibility)
+AUTH_ENABLED=false
+API_KEYS=your-api-key-1,your-api-key-2
+AUTH_REALM=mcp-server
+
+# CORS (permissive by default)
+CORS_ALLOWED_ORIGINS=*
+
+# TLS (for production)
+TLS_ENABLED=false
+
+# CloudWatch Metrics
+CLOUDWATCH_METRICS_ENABLED=false
+PROJECT_NAME=mcp-tagging
+```
+
+**Files Created (8):**
+- `mcp_server/middleware/auth_middleware.py` - Authentication middleware
+- `mcp_server/middleware/cors_middleware.py` - CORS logging middleware
+- `infrastructure/cloudformation-production.yaml` - Production CloudFormation
+- `examples/claude_desktop_config_production.json` - Production config example
+- `tests/unit/test_auth_middleware.py` - 22 unit tests
+- `tests/unit/test_cors_config.py` - CORS unit tests
+- `tests/property/test_auth_middleware.py` - Property tests (Hypothesis)
+- `tests/property/test_cors_config.py` - CORS property tests
+
+**Files Modified (12):**
+- `mcp_server/config.py` - Added auth/CORS/TLS settings
+- `mcp_server/main.py` - Integrated new middleware
+- `mcp_server/middleware/__init__.py` - Exported new middleware
+- `mcp_server/services/security_service.py` - Added client_ip to SecurityEvent
+- `mcp_server/utils/cloudwatch_logger.py` - Added metrics functions
+- `scripts/mcp_bridge.py` - Added auth and HTTPS support
+- `examples/claude_desktop_config_remote.json` - Updated with auth example
+- `.env.example` - Added new environment variables
+- `docs/DEPLOYMENT.md` - Added production security section
+- `docs/SECURITY_CONFIGURATION.md` - Added auth/CORS configuration
+- `docs/MCP_SECURITY_BEST_PRACTICES.md` - Updated status
+- `CLAUDE.md` - Updated middleware pipeline and key files
+
+**Testing Coverage:**
+- 22 unit tests for authentication middleware
+- Property-based tests using Hypothesis for auth and CORS
+- All security features disabled by default (backward compatible)
+- Existing 82+ tests continue to pass
+
+**What I Learned:**
+
+1. **RFC 6750 compliance matters**: The WWW-Authenticate header format is specific and clients expect it. Getting this right means better error messages for users.
+
+2. **Default-off is critical**: All security features default to disabled. This means existing deployments continue working, and users opt-in when ready.
+
+3. **VPC endpoints eliminate internet exposure**: AWS API calls from the private subnet go through VPC endpoints, never touching the internet.
+
+4. **CloudWatch metrics enable alerting**: Custom metrics (AuthenticationFailures, CORSViolations) feed into CloudWatch Alarms which notify via SNS.
+
+5. **Property-based testing catches edge cases**: Hypothesis generated test cases I wouldn't have thought of (empty strings, unicode, special characters).
+
+**My Role:**
+- Reviewed requirements 18-24 in `.kiro/specs/production-security/`
+- Approved the phased implementation approach
+- Validated CloudFormation template structure
+- Confirmed backward compatibility requirements
+- Requested the PR creation
+
+**Pull Request Created:**
+
+Branch: `feat/production-security`
+Files: 19 files, +3,691 lines
+PR URL: https://github.com/OptimNow/finops-tag-compliance-mcp/pull/new/feat/production-security
+
+**Outcome:**
+
+- API key authentication ready for production deployment
+- CORS restriction prevents unauthorized cross-origin access
+- Production CloudFormation template with VPC, ALB, TLS, and monitoring
+- CloudWatch metrics and alarms for security event visibility
+- All features disabled by default (zero breaking changes)
+- Comprehensive test coverage (unit + property-based)
+- Documentation complete for operators
+
+**Implementation Time**: ~4 hours across 6 phases
+**Complexity**: Medium-High (19 files, new middleware, infrastructure template)
+**User Impact**: High (enables secure production deployment)
+
+
+
+---
+
+## February 3, 2026: Cache Key Region Fix & Production Debugging
+
+### Day 42: Production Debugging Session
+
+**The Problem:**
+MCP server deployed on EC2 in us-east-1 was returning 0 EC2 instances even though 5 instances existed in the account.
+
+**Root Cause Analysis:**
+
+1. **Initial Suspicion - Region Mismatch**: First thought was the container was configured for the wrong region. Checked and found `AWS_REGION=us-east-1` was correctly set.
+
+2. **Direct AWS API Test**: Created a debug script that ran inside the container to test boto3 directly. Result: boto3 found all 5 EC2 instances correctly.
+
+3. **The Real Culprit - Stale Redis Cache**: The MCP server was returning cached results from a previous scan when the region was misconfigured. The cache key didn't include the region, so when the region was fixed, the old (empty) cached results were still being returned.
+
+**The Fix:**
+
+Updated `_generate_cache_key()` in `compliance_service.py` to include the AWS region in the cache key hash:
+
+```python
+def _generate_cache_key(
+    self,
+    resource_types: list[str],
+    filters: dict[str, Any] | None,
+    severity: str,
+) -> str:
+    key_data = {
+        "resource_types": sorted(resource_types),
+        "filters": filters or {},
+        "severity": severity,
+        "aws_region": self.aws_client.region,  # NEW: Include region in cache key
+    }
+    key_json = json.dumps(key_data, sort_keys=True)
+    key_hash = hashlib.sha256(key_json.encode()).hexdigest()
+    return f"compliance:{key_hash}"
+```
+
+**Test Fixes Required:**
+
+Both unit and property tests needed updates to mock the `region` attribute on the AWS client:
+
+```python
+# In test fixtures
+client.region = "us-east-1"
+```
+
+Also fixed property tests that were incorrectly calling `service._extract_account_from_arn()` - changed to use the imported `extract_account_from_arn` function from `resource_utils`.
+
+**Immediate Resolution:**
+
+Cleared the Redis cache on EC2:
+```bash
+sudo docker exec redis redis-cli FLUSHALL
+```
+
+After cache flush, the MCP server correctly returned all 5 EC2 instances.
+
+**What I Learned:**
+
+1. **Cache keys must include all relevant context**: Region is critical for AWS resources. Without it in the cache key, changing regions doesn't invalidate stale results.
+
+2. **Production debugging requires systematic approach**: 
+   - Check configuration first
+   - Test underlying APIs directly
+   - Check caching layer
+   - Verify the full request path
+
+3. **Shell quoting on EC2 is tricky**: The SSM Session Manager shell mangles special characters like quotes, pipes, and curly braces. Using base64-encoded Python commands was the workaround.
+
+**Elastic IP Investigation:**
+
+Also investigated "extra" Elastic IPs that appeared in the AWS console. Found they were expected:
+- 1 EIP for NAT Gateway (required for private subnet internet access)
+- 2 IPs from ALB network interfaces (not separate EIP charges)
+
+The production CloudFormation template creates a VPC with public/private subnets, and the NAT Gateway requires its own EIP for the private subnet to reach the internet.
+
+**Multi-Region Scanning Confirmation:**
+
+Confirmed that the current implementation does NOT do multi-region scanning. The `AWSClient` is initialized with a single region and only scans resources in that region. The multi-region scanning spec exists (`.kiro/specs/multi-region-scanning/`) but none of the tasks have been implemented yet.
+
+**Files Modified:**
+- `mcp_server/services/compliance_service.py` - Added region to cache key
+- `tests/unit/test_compliance_service.py` - Added region mock to fixture
+- `tests/property/test_compliance_service.py` - Added region mock, fixed function import
+
+**Test Results:**
+- 41 unit tests pass
+- 19 property tests pass
+
+**Current Status:**
+- EC2 instances now showing correctly (5 instances found)
+- Cache key includes region to prevent future cache issues
+- All tests passing
+- Ready for commit and PR
+

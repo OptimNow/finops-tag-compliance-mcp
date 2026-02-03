@@ -96,7 +96,10 @@ def configure_security_logging(
 
 
 class SecurityEvent:
-    """Represents a security event."""
+    """Represents a security event.
+
+    Requirements: 23.4 - Security events include client_ip for tracing.
+    """
 
     def __init__(
         self,
@@ -106,6 +109,7 @@ class SecurityEvent:
         details: dict | None = None,
         session_id: str | None = None,
         tool_name: str | None = None,
+        client_ip: str | None = None,
         timestamp: datetime | None = None,
     ):
         """
@@ -118,6 +122,7 @@ class SecurityEvent:
             details: Additional event details
             session_id: Session ID if available
             tool_name: Tool name if applicable
+            client_ip: Client IP address (Requirement 23.4)
             timestamp: Event timestamp (defaults to now)
         """
         self.event_type = event_type
@@ -126,14 +131,19 @@ class SecurityEvent:
         self.details = details or {}
         self.session_id = session_id
         self.tool_name = tool_name
+        self.client_ip = client_ip or self.details.get("client_ip", "unknown")
         self.timestamp = timestamp or datetime.utcnow()
 
     def to_dict(self) -> dict:
-        """Convert event to dictionary for logging."""
+        """Convert event to dictionary for logging.
+
+        Requirement 23.4: Includes client_ip as top-level field.
+        """
         return {
             "event_type": self.event_type,
             "severity": self.severity,
             "message": self.message,
+            "client_ip": self.client_ip,
             "details": self.details,
             "session_id": self.session_id,
             "tool_name": self.tool_name,
@@ -197,6 +207,7 @@ class SecurityService:
         details: dict | None = None,
         session_id: str | None = None,
         tool_name: str | None = None,
+        client_ip: str | None = None,
     ) -> SecurityEvent:
         """
         Log a security event.
@@ -208,12 +219,17 @@ class SecurityService:
             details: Additional event details
             session_id: Session ID if available
             tool_name: Tool name if applicable
+            client_ip: Client IP address (Requirement 23.4)
 
         Returns:
             The created SecurityEvent
 
-        Requirements: 16.4
+        Requirements: 16.4, 23.4
         """
+        # Extract client_ip from details if not provided directly
+        if not client_ip and details:
+            client_ip = details.get("client_ip")
+
         event = SecurityEvent(
             event_type=event_type,
             severity=severity,
@@ -221,6 +237,7 @@ class SecurityService:
             details=details,
             session_id=session_id,
             tool_name=tool_name,
+            client_ip=client_ip,
         )
 
         async with self._lock:
@@ -249,6 +266,7 @@ class SecurityService:
 
         # Log to dedicated security log stream
         # This goes to a separate CloudWatch log stream for security monitoring
+        # Requirement 23.4: Include client_ip in all security logs
         log_level = logging.CRITICAL if severity == "critical" else logging.WARNING
         security_logger.log(
             log_level,
@@ -257,6 +275,7 @@ class SecurityService:
                 "security_event": event.to_dict(),
                 "event_type": event_type,
                 "severity": severity,
+                "client_ip": event.client_ip,
                 "session_id": session_id,
                 "tool_name": tool_name,
             },

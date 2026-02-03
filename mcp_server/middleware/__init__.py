@@ -1,6 +1,12 @@
 """Middleware for MCP server."""
 
 from .audit_middleware import audit_tool, audit_tool_sync
+from .auth_middleware import (
+    APIKeyAuthMiddleware,
+    AuthenticationError,
+    hash_api_key,
+    parse_api_keys,
+)
 from .budget_middleware import (
     DEFAULT_MAX_TOOL_CALLS_PER_SESSION,
     DEFAULT_SESSION_TTL_SECONDS,
@@ -9,6 +15,11 @@ from .budget_middleware import (
     check_and_consume_budget,
     get_budget_tracker,
     set_budget_tracker,
+)
+from .cors_middleware import (
+    CORSLoggingMiddleware,
+    get_cors_config,
+    parse_cors_origins,
 )
 from .sanitization_middleware import (
     RequestSanitizationError,
@@ -24,6 +35,13 @@ from .sanitization_middleware import (
 __all__ = [
     "audit_tool",
     "audit_tool_sync",
+    "APIKeyAuthMiddleware",
+    "AuthenticationError",
+    "hash_api_key",
+    "parse_api_keys",
+    "CORSLoggingMiddleware",
+    "get_cors_config",
+    "parse_cors_origins",
     "BudgetTracker",
     "BudgetExhaustedError",
     "get_budget_tracker",

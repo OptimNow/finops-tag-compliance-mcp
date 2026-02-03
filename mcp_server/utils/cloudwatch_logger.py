@@ -2,11 +2,20 @@
 # Licensed under the Proprietary Software License.
 # See LICENSE file in the project root for full license information.
 
-"""CloudWatch logging configuration and utilities."""
+"""CloudWatch logging configuration and utilities.
+
+Provides CloudWatch logging and metrics emission for the MCP server.
+Includes custom metrics for security monitoring (authentication failures,
+CORS violations) that trigger CloudWatch alarms.
+
+Requirements: 23.2, 23.5
+"""
 
 import json
 import logging
 import os
+from datetime import datetime
+from typing import Any
 
 import boto3
 from botocore.exceptions import ClientError
@@ -213,3 +222,156 @@ def configure_cloudwatch_logging(
         import sys
 
         print(f"Failed to configure CloudWatch logging: {e}", file=sys.stderr)
+
+
+# =============================================================================
+# CloudWatch Metrics for Security Monitoring (Requirements: 23.2, 23.5)
+# =============================================================================
+
+# Global CloudWatch client for metrics (initialized lazily)
+_cloudwatch_client = None
+_metrics_enabled = None
+
+
+def _get_cloudwatch_client():
+    """Get or create CloudWatch client for metrics."""
+    global _cloudwatch_client
+    if _cloudwatch_client is None:
+        region = os.getenv("AWS_REGION", "us-east-1")
+        _cloudwatch_client = boto3.client("cloudwatch", region_name=region)
+    return _cloudwatch_client
+
+
+def _is_metrics_enabled() -> bool:
+    """Check if CloudWatch metrics are enabled."""
+    global _metrics_enabled
+    if _metrics_enabled is None:
+        env_value = os.getenv("CLOUDWATCH_METRICS_ENABLED", "true").lower()
+        _metrics_enabled = env_value != "false"
+    return _metrics_enabled
+
+
+def get_metrics_namespace() -> str:
+    """
+    Get the CloudWatch namespace for custom metrics.
+
+    Returns:
+        Namespace string in format "project-name/environment"
+    """
+    project = os.getenv("PROJECT_NAME", "mcp-tagging")
+    environment = os.getenv("ENVIRONMENT", "prod")
+    return f"{project}/{environment}"
+
+
+def emit_metric(
+    metric_name: str,
+    value: float = 1.0,
+    unit: str = "Count",
+    dimensions: dict[str, str] | None = None,
+) -> None:
+    """
+    Emit a custom metric to CloudWatch.
+
+    Args:
+        metric_name: Name of the metric (e.g., "AuthenticationFailures")
+        value: Metric value (default: 1.0)
+        unit: Metric unit (default: "Count")
+        dimensions: Optional dimension key-value pairs
+
+    Requirements: 23.2, 23.5
+    """
+    if not _is_metrics_enabled():
+        return
+
+    try:
+        client = _get_cloudwatch_client()
+        namespace = get_metrics_namespace()
+        environment = os.getenv("ENVIRONMENT", "prod")
+
+        # Build metric data
+        metric_data: dict[str, Any] = {
+            "MetricName": metric_name,
+            "Value": value,
+            "Unit": unit,
+            "Timestamp": datetime.utcnow(),
+        }
+
+        # Add default dimension for environment
+        default_dimensions = [{"Name": "Environment", "Value": environment}]
+
+        # Add custom dimensions if provided
+        if dimensions:
+            for name, dim_value in dimensions.items():
+                default_dimensions.append({"Name": name, "Value": dim_value})
+
+        metric_data["Dimensions"] = default_dimensions
+
+        # Put metric data
+        client.put_metric_data(
+            Namespace=namespace,
+            MetricData=[metric_data],
+        )
+
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Emitted CloudWatch metric: {metric_name}={value} ({unit})")
+
+    except Exception as e:
+        # Don't fail the request if metrics emission fails
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to emit CloudWatch metric {metric_name}: {e}")
+
+
+def emit_auth_failure_metric(
+    failure_type: str,
+    client_ip: str | None = None,
+) -> None:
+    """
+    Emit an authentication failure metric to CloudWatch.
+
+    This metric is used to trigger the AuthFailureAlarm defined in
+    the CloudFormation template.
+
+    Args:
+        failure_type: Type of auth failure (missing_header, invalid_format, etc.)
+        client_ip: Optional client IP address
+
+    Requirements: 23.2
+    """
+    dimensions = {"FailureType": failure_type}
+    if client_ip:
+        # Don't include full IP in dimensions (privacy), just track count
+        pass
+
+    emit_metric(
+        metric_name="AuthenticationFailures",
+        value=1.0,
+        unit="Count",
+        dimensions=dimensions,
+    )
+
+
+def emit_cors_violation_metric(
+    origin: str,
+    path: str | None = None,
+) -> None:
+    """
+    Emit a CORS violation metric to CloudWatch.
+
+    This metric is used to trigger the CORSViolationAlarm defined in
+    the CloudFormation template.
+
+    Args:
+        origin: The rejected origin
+        path: Optional request path
+
+    Requirements: 23.5
+    """
+    # Sanitize origin for dimension (max 256 chars, limited charset)
+    sanitized_origin = origin[:200].replace(",", "_") if origin else "unknown"
+
+    emit_metric(
+        metric_name="CORSViolations",
+        value=1.0,
+        unit="Count",
+        dimensions={"Origin": sanitized_origin},
+    )

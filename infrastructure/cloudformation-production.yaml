@@ -1,0 +1,859 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: |
+  Tagging MCP Server - Production Security Infrastructure
+
+  This template deploys the MCP server with production-grade security:
+  - VPC with public/private subnets
+  - Application Load Balancer with TLS termination
+  - EC2 in private subnet (no public IP)
+  - VPC endpoints for AWS APIs
+  - API key authentication via Secrets Manager
+  - CloudWatch alarms for security monitoring
+  - Optional S3 bucket for tagging policy configuration
+
+  Requirements: 18.1-18.6, 19.6, 21.1-21.5, 23.2, 23.5
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: mcp-tagging
+    Description: Project name for resource naming
+
+  Environment:
+    Type: String
+    Default: prod
+    AllowedValues: [dev, staging, prod]
+    Description: Environment name
+
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    Description: EC2 instance type
+
+  KeyPairName:
+    Type: AWS::EC2::KeyPair::KeyName
+    Description: EC2 KeyPair for SSH access (via bastion only)
+
+  ACMCertificateArn:
+    Type: String
+    Description: ARN of ACM certificate for HTTPS (must be in same region)
+    AllowedPattern: '^arn:aws:acm:[a-z0-9-]+:[0-9]+:certificate/[a-f0-9-]+$'
+    ConstraintDescription: Must be a valid ACM certificate ARN
+
+  DomainName:
+    Type: String
+    Default: ''
+    Description: Optional domain name for the ALB (for DNS alias)
+
+  AlertEmail:
+    Type: String
+    Description: Email address for security alerts
+    AllowedPattern: '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    ConstraintDescription: Must be a valid email address
+
+  CORSAllowedOrigins:
+    Type: String
+    Default: 'https://claude.ai'
+    Description: Comma-separated list of allowed CORS origins
+
+  PolicyBucketName:
+    Type: String
+    Default: 'finops-mcp-config-prod'
+    Description: S3 bucket name for tagging policy configuration (used by deploy_policy.ps1)
+
+  VpcCIDR:
+    Type: String
+    Default: 10.0.0.0/16
+    Description: CIDR block for the VPC
+
+  PublicSubnet1CIDR:
+    Type: String
+    Default: 10.0.1.0/24
+    Description: CIDR for public subnet 1 (AZ-a)
+
+  PublicSubnet2CIDR:
+    Type: String
+    Default: 10.0.2.0/24
+    Description: CIDR for public subnet 2 (AZ-b)
+
+  PrivateSubnet1CIDR:
+    Type: String
+    Default: 10.0.10.0/24
+    Description: CIDR for private subnet 1 (AZ-a)
+
+  PrivateSubnet2CIDR:
+    Type: String
+    Default: 10.0.11.0/24
+    Description: CIDR for private subnet 2 (AZ-b)
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Project Configuration
+        Parameters:
+          - ProjectName
+          - Environment
+      - Label:
+          default: Security Configuration
+        Parameters:
+          - ACMCertificateArn
+          - AlertEmail
+          - CORSAllowedOrigins
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - VpcCIDR
+          - PublicSubnet1CIDR
+          - PublicSubnet2CIDR
+          - PrivateSubnet1CIDR
+          - PrivateSubnet2CIDR
+      - Label:
+          default: EC2 Configuration
+        Parameters:
+          - InstanceType
+          - KeyPairName
+          - DomainName
+      - Label:
+          default: Storage Configuration
+        Parameters:
+          - PolicyBucketName
+
+Conditions:
+  HasPolicyBucketName: !Not [!Equals [!Ref PolicyBucketName, '']]
+
+Resources:
+  # ==========================================================================
+  # S3 Bucket for Policy Configuration
+  # ==========================================================================
+
+  PolicyConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref PolicyBucketName
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================================================
+  # VPC and Networking (Requirements: 21.1, 21.2)
+  # ==========================================================================
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCIDR
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpc-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-igw-${Environment}'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets (for ALB)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet1CIDR
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-1-${Environment}'
+        - Key: Type
+          Value: Public
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PublicSubnet2CIDR
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-2-${Environment}'
+        - Key: Type
+          Value: Public
+
+  # Private Subnets (for EC2) - Requirement 21.1
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet1CIDR
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-1-${Environment}'
+        - Key: Type
+          Value: Private
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !Ref PrivateSubnet2CIDR
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-2-${Environment}'
+        - Key: Type
+          Value: Private
+
+  # NAT Gateway for private subnet internet access
+  NATGatewayEIP:
+    Type: AWS::EC2::EIP
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      Domain: vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-eip-${Environment}'
+
+  NATGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP.AllocationId
+      SubnetId: !Ref PublicSubnet1
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-nat-${Environment}'
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-public-rt-${Environment}'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-private-rt-${Environment}'
+
+  PrivateRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway
+
+  PrivateSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable
+
+  # ==========================================================================
+  # Security Groups (Requirements: 21.2, 21.3)
+  # Using separate ingress/egress rules to avoid circular dependencies
+  # ==========================================================================
+
+  # ALB Security Group - Public facing
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS from anywhere
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-alb-sg-${Environment}'
+
+  # MCP Server Security Group - Requirement 21.3: Only allow from ALB
+  MCPServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MCP Server (ALB access only)
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS for AWS APIs
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-server-sg-${Environment}'
+
+  # Separate ingress rule to avoid circular dependency
+  MCPServerIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MCPServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: HTTP from ALB only
+
+  # Separate egress rule for ALB to MCP Server
+  ALBEgressToMCPServer:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      DestinationSecurityGroupId: !Ref MCPServerSecurityGroup
+      Description: Forward to MCP Server
+
+  # VPC Endpoint Security Group
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VPC endpoints
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-vpce-sg-${Environment}'
+
+  # Separate ingress rule for VPC endpoints
+  VPCEndpointIngressFromMCPServer:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref VPCEndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref MCPServerSecurityGroup
+      Description: HTTPS from MCP Server
+
+  # ==========================================================================
+  # VPC Endpoints (Requirement 21.4)
+  # ==========================================================================
+
+  # EC2 VPC Endpoint
+  EC2VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ec2'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # S3 Gateway Endpoint (free)
+  S3VPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.s3'
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - !Ref PrivateRouteTable
+
+  # CloudWatch Logs VPC Endpoint
+  CloudWatchLogsVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.logs'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # Secrets Manager VPC Endpoint
+  SecretsManagerVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.secretsmanager'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ==========================================================================
+  # Application Load Balancer (Requirements: 18.3, 21.2)
+  # ==========================================================================
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${ProjectName}-alb-${Environment}'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-alb-${Environment}'
+        - Key: Environment
+          Value: !Ref Environment
+
+  # HTTPS Listener - Requirement 18.3
+  HTTPSListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      Certificates:
+        - CertificateArn: !Ref ACMCertificateArn
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref MCPTargetGroup
+
+  # Target Group
+  MCPTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-tg-${Environment}'
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: instance
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Targets:
+        - Id: !Ref MCPServerInstance
+          Port: 8080
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-tg-${Environment}'
+
+  # ==========================================================================
+  # Secrets Manager for API Keys (Requirement 19.6)
+  # ==========================================================================
+
+  APIKeySecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: !Sub '${ProjectName}/${Environment}/api-keys'
+      Description: API keys for MCP Server authentication
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: 'primary_key'
+        PasswordLength: 32
+        ExcludePunctuation: true
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================================================
+  # IAM Role and Policy
+  # ==========================================================================
+
+  MCPServerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  MCPServerPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-policy-${Environment}'
+      Roles:
+        - !Ref MCPServerRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          # Read access for tag compliance checking
+          - Effect: Allow
+            Action:
+              - ec2:DescribeInstances
+              - ec2:DescribeTags
+              - ec2:DescribeVolumes
+              - ec2:DescribeRegions
+              - rds:DescribeDBInstances
+              - rds:DescribeDBClusters
+              - rds:ListTagsForResource
+              - s3:ListAllMyBuckets
+              - s3:GetBucketTagging
+              - s3:GetBucketLocation
+              - lambda:ListFunctions
+              - lambda:ListTags
+              - ecs:ListClusters
+              - ecs:ListServices
+              - ecs:DescribeServices
+              - ecs:ListTagsForResource
+              - es:ListDomainNames
+              - es:DescribeDomain
+              - es:DescribeDomains
+              - es:ListTags
+              - ce:GetCostAndUsage
+              - ce:GetCostForecast
+              - ce:GetTags
+              - tag:GetResources
+              - tag:GetTagKeys
+              - tag:GetTagValues
+              - sts:GetCallerIdentity
+            Resource: '*'
+          # Secrets Manager access for API keys
+          - Effect: Allow
+            Action:
+              - secretsmanager:GetSecretValue
+            Resource: !Ref APIKeySecret
+          # CloudWatch metrics for security monitoring
+          - Effect: Allow
+            Action:
+              - cloudwatch:PutMetricData
+            Resource: '*'
+            Condition:
+              StringEquals:
+                cloudwatch:namespace: !Sub '${ProjectName}/${Environment}'
+
+  # S3 policy for policy config bucket
+  MCPServerS3Policy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-s3-policy-${Environment}'
+      Roles:
+        - !Ref MCPServerRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${PolicyBucketName}'
+              - !Sub 'arn:aws:s3:::${PolicyBucketName}/*'
+
+  MCPServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub '${ProjectName}-profile-${Environment}'
+      Roles:
+        - !Ref MCPServerRole
+
+  # ==========================================================================
+  # EC2 Instance in Private Subnet (Requirement 21.1)
+  # ==========================================================================
+
+  MCPServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
+      KeyName: !Ref KeyPairName
+      IamInstanceProfile: !Ref MCPServerInstanceProfile
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroupIds:
+        - !Ref MCPServerSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+
+          # Update system
+          yum update -y
+
+          # Install Docker
+          yum install -y docker
+          systemctl start docker
+          systemctl enable docker
+          usermod -aG docker ec2-user
+
+          # Install Docker Compose
+          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+          chmod +x /usr/local/bin/docker-compose
+
+          # Install jq for JSON parsing
+          yum install -y jq
+
+          # Create app directory
+          mkdir -p /opt/tagging-mcp
+          chown ec2-user:ec2-user /opt/tagging-mcp
+
+          # Create environment file with security settings
+          cat > /opt/tagging-mcp/.env << 'EOF'
+          # Production security settings
+          AUTH_ENABLED=true
+          CORS_ALLOWED_ORIGINS=${CORSAllowedOrigins}
+          TLS_ENABLED=false
+          CLOUDWATCH_ENABLED=true
+          CLOUDWATCH_LOG_GROUP=/mcp-tagging/${Environment}
+          EOF
+
+          # Fetch API key from Secrets Manager and add to env file
+          API_KEY=$(aws secretsmanager get-secret-value --secret-id ${APIKeySecret} --query SecretString --output text | jq -r '.primary_key')
+          echo "API_KEYS=$API_KEY" >> /opt/tagging-mcp/.env
+
+          # Set permissions
+          chmod 600 /opt/tagging-mcp/.env
+          chown ec2-user:ec2-user /opt/tagging-mcp/.env
+
+          # Signal completion
+          echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-server-${Environment}'
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================================================
+  # CloudWatch Logging
+  # ==========================================================================
+
+  MCPServerLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/mcp-tagging/${Environment}'
+      RetentionInDays: 30
+
+  SecurityLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/mcp-tagging/${Environment}/security'
+      RetentionInDays: 90
+
+  # ==========================================================================
+  # Security Monitoring and Alerting (Requirements: 23.2, 23.5)
+  # ==========================================================================
+
+  # SNS Topic for Security Alerts - Requirement 23.5
+  SecurityAlertTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub '${ProjectName}-security-alerts-${Environment}'
+      DisplayName: MCP Server Security Alerts
+
+  SecurityAlertSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref SecurityAlertTopic
+      Protocol: email
+      Endpoint: !Ref AlertEmail
+
+  # Authentication Failure Alarm - Requirement 23.2
+  AuthFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-auth-failures-${Environment}'
+      AlarmDescription: Alert when authentication failures exceed 10 in 5 minutes
+      MetricName: AuthenticationFailures
+      Namespace: !Sub '${ProjectName}/${Environment}'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopic
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Environment
+
+  # CORS Violation Alarm
+  CORSViolationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-cors-violations-${Environment}'
+      AlarmDescription: Alert when CORS violations exceed 20 in 5 minutes
+      MetricName: CORSViolations
+      Namespace: !Sub '${ProjectName}/${Environment}'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopic
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: Environment
+          Value: !Ref Environment
+
+  # ALB 5xx Error Alarm
+  ALB5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-alb-5xx-${Environment}'
+      AlarmDescription: Alert when ALB 5xx errors exceed threshold
+      MetricName: HTTPCode_ELB_5XX_Count
+      Namespace: AWS/ApplicationELB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 10
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref SecurityAlertTopic
+      TreatMissingData: notBreaching
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt ApplicationLoadBalancer.LoadBalancerFullName
+
+Outputs:
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  LoadBalancerDNS:
+    Description: ALB DNS name (use for CNAME record)
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerDNS'
+
+  LoadBalancerArn:
+    Description: ALB ARN
+    Value: !Ref ApplicationLoadBalancer
+    Export:
+      Name: !Sub '${AWS::StackName}-LoadBalancerArn'
+
+  MCPServerEndpoint:
+    Description: MCP Server HTTPS endpoint
+    Value: !Sub 'https://${ApplicationLoadBalancer.DNSName}'
+    Export:
+      Name: !Sub '${AWS::StackName}-Endpoint'
+
+  APIKeySecretArn:
+    Description: Secrets Manager ARN for API keys
+    Value: !Ref APIKeySecret
+    Export:
+      Name: !Sub '${AWS::StackName}-APIKeySecretArn'
+
+  SecurityAlertTopicArn:
+    Description: SNS Topic ARN for security alerts
+    Value: !Ref SecurityAlertTopic
+    Export:
+      Name: !Sub '${AWS::StackName}-SecurityAlertTopicArn'
+
+  InstanceId:
+    Description: EC2 Instance ID
+    Value: !Ref MCPServerInstance
+    Export:
+      Name: !Sub '${AWS::StackName}-InstanceId'
+
+  PrivateSubnet1Id:
+    Description: Private Subnet 1 ID
+    Value: !Ref PrivateSubnet1
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnet1Id'
+
+  PrivateSubnet2Id:
+    Description: Private Subnet 2 ID
+    Value: !Ref PrivateSubnet2
+    Export:
+      Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
+
+  PolicyConfigBucketName:
+    Description: S3 bucket name for policy configuration
+    Value: !Ref PolicyConfigBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-PolicyBucketName'
+
+  PolicyConfigBucketArn:
+    Description: S3 bucket ARN for policy configuration
+    Value: !GetAtt PolicyConfigBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PolicyBucketArn'

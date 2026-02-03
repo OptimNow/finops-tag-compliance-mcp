@@ -1,683 +1,400 @@
-# Deployment Guide: Tag Compliance MCP Server
+﻿# Deployment Guide: Tag Compliance MCP Server
 
-This guide covers deploying the MCP server locally for development/testing and to AWS EC2 for production use.
+This guide covers deploying the MCP server locally and to AWS (development or production).
 
-## Quick Start -- stdio (Recommended for local)
+## Table of Contents
 
-Get up and running in 5 minutes. No Docker required.
+1. [Local Deployment](#1-local-deployment) - Run on your machine
+2. [AWS Deployment](#2-aws-deployment)
+   - [2.1 Development](#21-development-deployment) - Simple EC2 with public IP
+   - [2.2 Production (Secured)](#22-production-secured-deployment) - ALB + HTTPS + API keys
+3. [One-Click Tagging Policy Deployment](#3-one-click-tagging-policy-deployment) - Update policies remotely
+4. [Connecting Claude Desktop](#4-connecting-claude-desktop)
+   - [4.1 Local (stdio)](#41-local-stdio)
+   - [4.2 AWS Development (HTTP)](#42-aws-development-http)
+   - [4.3 AWS Production (HTTPS + API Key)](#43-aws-production-https--api-key)
+   - [4.4 Configuration](#44-configuration)
+5. [Monitoring](#5-monitoring)
+6. [Updating](#6-updating)
+7. [Troubleshooting](#7-troubleshooting)
+8. [Cleanup](#8-cleanup)
+
+---
+
+## 1. Local Deployment
+
+Run the MCP server on your local machine for development or personal use.
+
+### Quick Start (stdio - Recommended)
 
 ```bash
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
 cd finops-tag-compliance-mcp
 pip install -e .
-python -m mcp_server.stdio_server   # Runs until terminated
+python -m mcp_server.stdio_server
 ```
 
-Then add to your Claude Desktop config (`%APPDATA%\Claude\claude_desktop_config.json` on Windows, `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
+### Quick Start (Docker - HTTP transport)
 
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["-m", "mcp_server.stdio_server"],
-      "cwd": "/path/to/finops-tag-compliance-mcp"
-    }
-  }
-}
-```
+For Redis caching:
 
-Restart Claude Desktop and ask: *"What tagging policy is configured?"*
-
-**Test with MCP Inspector:**
 ```bash
-npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
-```
-
-**For Docker/HTTP deployment or production EC2**, continue reading below.
-
----
-
-## Quick Start -- Docker (HTTP transport)
-
-For running with Redis caching or Docker-based workflows:
-
-**Linux/Mac:**
-```bash
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+# Linux/Mac
 docker-compose up -d
-```
 
-**Windows (PowerShell):**
-```powershell
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
+# Windows
 docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
 ```
 
-Server runs on: `http://localhost:8080`
-
-Verify it's working:
-```bash
-curl http://localhost:8080/health
-```
-
----
-
-## Table of Contents
-
-1. [Local Deployment](#local-deployment) - Quick start for testing
-2. [AWS Deployment](#aws-deployment) - Production deployment to EC2
-3. [One-Click Policy Deployment](#one-click-policy-deployment-remote-ec2) - Update policies remotely
-4. [Connecting Claude Desktop](#connecting-claude-desktop)
-5. [Configuration](#configuration)
-6. [Monitoring](#monitoring)
-7. [Troubleshooting](#troubleshooting)
-
----
-
-## Local Deployment
-
-Deploy the MCP server on your local machine for development, testing, or personal use.
+Server runs on `http://localhost:8080`. Verify: `curl http://localhost:8080/health`
 
 ### Prerequisites
 
-- Python 3.11+ and `pip`
-- AWS CLI configured with credentials (`aws configure`)
-- Git
-- Docker Desktop (only for HTTP transport; not needed for stdio)
+- Python 3.11+ and pip
+- AWS CLI configured (`aws configure`)
+- Docker Desktop (only for HTTP transport)
 
-### Quick Start (5 minutes)
-
-```bash
-# 1. Clone the repository
-git clone https://github.com/YOUR_ORG/tagging-mcp-server.git
-cd tagging-mcp-server
-
-# 2. Create environment file
-cp .env.example .env
-
-# 3. Start the services
-docker-compose up -d
-
-# 4. Verify it's running
-curl http://localhost:8080/health
-```
-
-### Step-by-Step Instructions
-
-#### Step 1: Clone and Configure
+### Stop/Restart
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_ORG/tagging-mcp-server.git
-cd tagging-mcp-server
-
-# Create your environment file
-cp .env.example .env
-```
-
-Edit `.env` if needed (defaults work for most cases):
-
-```bash
-ENVIRONMENT=development
-LOG_LEVEL=INFO
-REDIS_URL=redis://redis:6379/0
-AWS_REGION=us-east-1
-```
-
-**Note for Windows users:**
-- The `.env.example` file is hidden by default. In File Explorer, enable "Show hidden files" (View → Show → Hidden items)
-- Or use PowerShell: `Copy-Item .env.example .env` to copy it
-
-#### Step 2: Configure AWS Credentials
-
-The server needs AWS credentials to scan your resources. On your local machine, it uses your `~/.aws` credentials folder.
-
-```bash
-# Verify AWS credentials are configured
-aws sts get-caller-identity
-
-# If not configured, run:
-aws configure
-```
-
-#### Step 3: Start the Server
-
-**Linux/Mac:**
-```bash
-# Start all services (MCP server + Redis)
-docker-compose up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f mcp-server
-```
-
-**Windows (PowerShell):**
-```powershell
-# Start all services using Windows-specific configuration
-docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
-
-# Check status
-docker-compose ps
-
-# View logs
-docker-compose logs -f mcp-server
-```
-
-**Important for Windows users:**
-- Docker Desktop must have file sharing enabled for your user directory
-- Go to: Docker Desktop → Settings → Resources → File Sharing
-- Add `C:\Users\YourUsername` (or wherever your `.aws` folder is located)
-- Click "Apply & Restart"
-
-#### Step 4: Verify Installation
-
-```bash
-# Health check
-curl http://localhost:8080/health
-
-# List available tools
-curl http://localhost:8080/mcp/tools
-
-# Test a tool (get tagging policy)
-curl -X POST http://localhost:8080/mcp/tools/call \
-  -H "Content-Type: application/json" \
-  -d '{"name": "get_tagging_policy", "arguments": {}}'
-```
-
-### Connect Claude Desktop (Local)
-
-Add to your Claude Desktop config:
-
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-**Option A: stdio (Recommended -- no bridge needed)**
-
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["-m", "mcp_server.stdio_server"],
-      "cwd": "C:\\path\\to\\finops-tag-compliance-mcp"
-    }
-  }
-}
-```
-
-Replace the `cwd` path with your actual repository path.
-
-> **Note:** With stdio, Claude Desktop launches the MCP server process directly. No Docker or bridge script needed. Make sure you've run `pip install -e .` in the repository first.
-
-**Option B: HTTP bridge (for Docker deployments)**
-
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["C:\\path\\to\\repo\\scripts\\mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://localhost:8080"
-      }
-    }
-  }
-}
-```
-
-Replace `C:\\path\\to\\repo` with your actual repository path. Requires `pip install requests`.
-
-### Stop/Restart Local Server
-
-```bash
-# Stop services
-docker-compose down
-
-# Restart services
-docker-compose restart
-
-# Rebuild after code changes
-docker-compose down
-docker-compose build --no-cache
-docker-compose up -d
+docker-compose down      # Stop
+docker-compose restart   # Restart
+docker-compose down && docker-compose build --no-cache && docker-compose up -d  # Rebuild
 ```
 
 ---
 
-## AWS Deployment
+## 2. AWS Deployment
 
-Deploy to AWS EC2 for production use with persistent storage and team access.
+### 2.1 Development Deployment
 
-### Architecture Overview
+Simple deployment with EC2 public IP, HTTP access, no authentication. Good for testing.
+
+#### Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        AWS Cloud                            │
-│  ┌───────────────────────────────────────────────────────┐ │
-│  │                    VPC                                 │ │
-│  │  ┌─────────────────────────────────────────────────┐  │ │
-│  │  │              EC2 (t3.medium)                     │  │ │
-│  │  │  ┌─────────────────────────────────────────┐    │  │ │
-│  │  │  │           Docker Compose                 │    │  │ │
-│  │  │  │  ┌─────────────┐  ┌─────────────────┐   │    │  │ │
-│  │  │  │  │ MCP Server  │  │     Redis       │   │    │  │ │
-│  │  │  │  │   :8080     │──│     :6379       │   │    │  │ │
-│  │  │  │  └─────────────┘  └─────────────────┘   │    │  │ │
-│  │  │  └─────────────────────────────────────────┘    │  │ │
-│  │  │                     │                            │  │ │
-│  │  │              IAM Instance Profile                │  │ │
-│  │  └─────────────────────┼───────────────────────────┘  │ │
-│  └────────────────────────┼──────────────────────────────┘ │
-│                           │                                 │
-│  ┌────────────────────────┼──────────────────────────────┐ │
-│  │                   AWS Services                         │ │
-│  │  EC2 │ RDS │ S3 │ Lambda │ ECS │ Cost Explorer        │ │
-│  └────────────────────────────────────────────────────────┘ │
-└─────────────────────────────────────────────────────────────┘
+Internet -> HTTP:8080 -> EC2 (public subnet) -> AWS APIs
 ```
 
-### Prerequisites
+#### Deploy via CloudFormation (Console)
 
-- AWS CLI configured with appropriate credentials
-- An existing VPC and subnet
-- An EC2 key pair for SSH access
+1. Go to CloudFormation -> Create stack -> With new resources
+2. Upload `infrastructure/cloudformation.yaml`
+3. Parameters:
+   - EnvironmentName: `dev`
+   - KeyPairName: Your EC2 key pair
+   - VpcId: Your VPC ID
+   - SubnetId: A public subnet ID
+   - PolicyBucketName: Leave empty for auto-generated name
+   - AllowedCIDR: Your IP (e.g., `1.2.3.4/32`) or `0.0.0.0/0` for testing
+4. Check "I acknowledge that AWS CloudFormation might create IAM resources"
+5. Create stack (5-10 minutes)
 
-> **Note**: IAM permissions are created automatically by CloudFormation. You do NOT need to manually configure IAM roles, policies, or instance profiles. The CloudFormation template creates all required IAM resources including the role, policy, and instance profile with the correct permissions.
+#### Deploy Application on EC2
 
-### Option 1: CloudFormation Deployment (Recommended)
-
-#### Step 1: Deploy Infrastructure
+SSH to EC2 and run:
 
 ```bash
-# Deploy the CloudFormation stack
-aws cloudformation create-stack \
-  --stack-name tagging-mcp-server \
-  --template-body file://infrastructure/cloudformation.yaml \
-  --parameters \
-    ParameterKey=EnvironmentName,ParameterValue=dev \
-    ParameterKey=KeyPairName,ParameterValue=YOUR_KEY_PAIR \
-    ParameterKey=VpcId,ParameterValue=vpc-xxxxxxxx \
-    ParameterKey=SubnetId,ParameterValue=subnet-xxxxxxxx \
-    ParameterKey=AllowedCIDR,ParameterValue=YOUR_IP/32 \
-  --capabilities CAPABILITY_NAMED_IAM
-
-# Wait for stack creation
-aws cloudformation wait stack-create-complete --stack-name tagging-mcp-server
-
-# Get outputs
-aws cloudformation describe-stacks --stack-name tagging-mcp-server \
-  --query 'Stacks[0].Outputs'
-```
-
-#### Step 2: Deploy Application
-
-```bash
-# Get the Elastic IP (from your local machine)
-INSTANCE_IP=$(aws cloudformation describe-stacks \
-  --stack-name tagging-mcp-server \
-  --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' \
-  --output text)
-
-# SSH into the instance
-ssh -i your-key.pem ec2-user@$INSTANCE_IP
-```
-
-Once connected to EC2, run these commands:
-
-```bash
-# Clone the repository
 cd ~
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
 cd finops-tag-compliance-mcp
 
-# Build the Docker image
-docker build -t tagging-mcp-server .
-
-# Clean up any existing containers (safe to run even if none exist)
-docker stop tagging-redis tagging-mcp-server 2>/dev/null
-docker rm tagging-redis tagging-mcp-server 2>/dev/null
-
-# Start Redis container
-docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
-
-# Start the MCP server
-# Note: We use docker run instead of docker-compose because Amazon Linux's
-# docker-compose version doesn't support the buildx features, and the
-# docker-compose.yml has Windows-specific volume mounts that don't work on EC2.
-# On EC2, the server uses the IAM instance profile for AWS credentials automatically.
-docker run -d --name tagging-mcp-server \
-  -p 8080:8080 \
+docker build -t mcp-server .
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+docker run -d --name mcp-server -p 8080:8080 \
   -e REDIS_URL=redis://172.17.0.1:6379/0 \
   -e AWS_REGION=us-east-1 \
-  -e ENVIRONMENT=production \
-  -e LOG_LEVEL=INFO \
   -v $(pwd)/policies:/app/policies:ro \
   -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  tagging-mcp-server
+  mcp-server
 
-# Wait for startup and verify
-sleep 5
-docker ps
 curl http://localhost:8080/health
 ```
 
-> **Why not docker-compose on EC2?** The `docker-compose.yml` is designed for local development on Windows/Mac where it mounts your `~/.aws` credentials folder. On EC2, credentials come from the IAM instance profile automatically, and Amazon Linux's docker-compose has compatibility issues with buildx. Using `docker run` directly is simpler and more reliable.
-
-#### Step 3: Verify Deployment
+#### Get Connection Info
 
 ```bash
-# From your local machine
-curl http://$INSTANCE_IP:8080/health
+# Elastic IP
+aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+  --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' --output text
 
-# Expected response:
-# {"status": "healthy", "version": "0.1.0", "cloud_providers": ["aws"], ...}
+# S3 Bucket name
+aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+  --query 'Stacks[0].Outputs[?OutputKey==`PolicyBucketName`].OutputValue' --output text
 ```
-
-### Option 2: Manual Deployment
-
-#### Step 1: Create IAM Role
-
-The MCP server requires read-only access to AWS resources. See the [IAM Permissions Guide](IAM_PERMISSIONS.md) for detailed setup.
-
-**Quick Setup** - Create an IAM role with this policy:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeInstances",
-        "ec2:DescribeTags",
-        "ec2:DescribeRegions",
-        "rds:DescribeDBInstances",
-        "rds:ListTagsForResource",
-        "s3:ListAllMyBuckets",
-        "s3:GetBucketTagging",
-        "s3:GetBucketLocation",
-        "lambda:ListFunctions",
-        "lambda:ListTags",
-        "ecs:ListClusters",
-        "ecs:ListServices",
-        "ecs:DescribeServices",
-        "ecs:ListTagsForResource",
-        "es:ListDomainNames",
-        "es:DescribeDomain",
-        "es:ListTags",
-        "ce:GetCostAndUsage",
-        "ce:GetCostForecast",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
-```
-
-#### Step 2: Launch EC2 Instance
-
-1. Launch a t3.medium instance with Amazon Linux 2023
-2. Attach the IAM role created above
-3. Configure security group:
-   - Inbound: 8080 (MCP), 22 (SSH)
-   - Outbound: 443 (AWS APIs), 80 (updates)
-4. Use this user data script:
-
-```bash
-#!/bin/bash
-yum update -y
-yum install -y docker git
-systemctl start docker
-systemctl enable docker
-usermod -aG docker ec2-user
-
-curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-chmod +x /usr/local/bin/docker-compose
-
-mkdir -p /opt/tagging-mcp
-chown ec2-user:ec2-user /opt/tagging-mcp
-```
-
-#### Step 3: Deploy Application
-
-SSH into the instance and follow Step 2 from Option 1.
-
-### Cost Estimate
-
-| Resource | Monthly Cost (us-east-1) |
-|----------|-------------------------|
-| t3.medium EC2 | ~$30 |
-| 20GB gp3 EBS | ~$2 |
-| CloudWatch Logs | ~$1-5 |
-| **Total** | **~$35-40/month** |
 
 ---
 
-## One-Click Policy Deployment (Remote EC2)
+### 2.2 Production (Secured) Deployment
 
-After deploying to EC2, you can set up a one-click workflow to update your tagging policy from your local machine. This lets you edit the policy locally and deploy it to EC2 with a single command.
+Full security: ALB with HTTPS, API key authentication, EC2 in private subnet, VPC endpoints.
+
+#### Architecture
+
+```
+Internet -> HTTPS:443 -> ALB (public) -> HTTP:8080 -> EC2 (private subnet) -> VPC Endpoints -> AWS APIs
+```
+
+Features:
+- TLS termination at ALB (ACM certificate)
+- API key authentication (Secrets Manager)
+- EC2 in private subnet (no public IP)
+- VPC endpoints for AWS API calls
+- CloudWatch alarms for security events
+- S3 bucket for tagging policy configuration
+
+#### Prerequisites
+
+1. ACM Certificate for your domain (e.g., `*.yourdomain.com`)
+   - Go to Certificate Manager -> Request certificate
+   - Add CNAME record to your DNS for validation
+   - Wait for status "Issued"
+
+2. DNS access to create CNAME record pointing to ALB
+
+#### Deploy via CloudFormation (Console)
+
+1. Go to CloudFormation -> Create stack -> With new resources
+2. Upload `infrastructure/cloudformation-production.yaml`
+3. Parameters:
+   - ProjectName: `mcp-tagging`
+   - Environment: `prod`
+   - KeyPairName: Your EC2 key pair
+   - ACMCertificateArn: ARN of your certificate
+   - AlertEmail: Email for security alerts
+   - CORSAllowedOrigins: `https://claude.ai`
+   - PolicyBucketName: Leave empty for auto-generated name
+4. IMPORTANT: Leave Tags section empty
+5. Check "I acknowledge that AWS CloudFormation might create IAM resources"
+6. Create stack (10-15 minutes)
+
+#### Configure DNS
+
+After stack creation:
+
+1. Get ALB DNS from CloudFormation Outputs (`LoadBalancerDNS`)
+2. Create CNAME record in your DNS provider:
+   - Name: `mcp` (creates `mcp.yourdomain.com`)
+   - Value: ALB DNS name
+
+#### Connect to EC2 via SSM
+
+The EC2 is in a private subnet - use SSM Session Manager:
+
+Via Console: EC2 -> Instances -> Select instance -> Connect -> Session Manager
+
+Via CLI:
+```bash
+INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' --output text)
+aws ssm start-session --target $INSTANCE_ID --region us-east-1
+```
+
+#### Manual Setup (UserData typically does not execute)
+
+The CloudFormation UserData script typically does not execute on first boot. You need to set up the environment manually via SSM.
+
+**Step 1: Install required packages**
+
+```bash
+sudo yum install -y git docker jq
+```
+
+**Step 2: Start Docker**
+
+```bash
+sudo systemctl start docker
+```
+
+```bash
+sudo systemctl enable docker
+```
+
+```bash
+sudo usermod -aG docker ec2-user
+```
+
+**Step 3: Create app directory and clone repo**
+
+```bash
+sudo mkdir -p /opt/tagging-mcp
+```
+
+```bash
+cd /opt/tagging-mcp
+```
+
+```bash
+sudo git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git .
+```
+
+```bash
+sudo chown -R ec2-user:ec2-user /opt/tagging-mcp
+```
+
+**Step 4: Exit and reconnect SSM** (required for docker group to take effect)
+
+Close the SSM session and reconnect via EC2 Console -> Connect -> Session Manager.
+
+#### Deploy Application on EC2
+
+After reconnecting to SSM, run these commands one at a time.
+
+**Step 5: Get the API key**
+
+```bash
+aws secretsmanager get-secret-value --secret-id mcp-tagging/prod/api-keys --query SecretString --output text
+```
+
+Copy the `primary_key` value from the JSON output (e.g., `TSvlygVknr1XhJ4UUEz6VEW5lrvjgDY6`).
+
+**Step 6: Create the .env file** (replace YOUR_API_KEY with the value from step 5)
+
+```bash
+sudo tee /opt/tagging-mcp/.env << 'EOF'
+AUTH_ENABLED=true
+CORS_ALLOWED_ORIGINS=https://claude.ai
+CLOUDWATCH_ENABLED=true
+CLOUDWATCH_LOG_GROUP=/mcp-tagging/prod
+AWS_REGION=ca-central-1
+ENVIRONMENT=production
+REDIS_URL=redis://localhost:6379/0
+API_KEYS=YOUR_API_KEY
+EOF
+```
+
+```bash
+sudo chmod 600 /opt/tagging-mcp/.env
+```
+
+```bash
+sudo chown ec2-user:ec2-user /opt/tagging-mcp/.env
+```
+
+**Step 7: Temporarily open port 80 outbound** (required for Docker build)
+
+The EC2 Security Group blocks outbound HTTP by default. Docker build needs to download packages from Debian repositories.
+
+1. Go to EC2 Console -> Security Groups
+2. Find the EC2 security group (`mcp-tagging-prod-ec2-sg`)
+3. Edit Outbound rules -> Add rule:
+   - Type: `HTTP`
+   - Port: `80`
+   - Destination: `0.0.0.0/0`
+   - Description: `Temporary - Docker build`
+4. Save rules
+
+**Step 8: Build Docker image**
+
+```bash
+cd /opt/tagging-mcp
+```
+
+```bash
+sudo docker build -t mcp-server .
+```
+
+**Step 9: Remove temporary outbound rule**
+
+After the build succeeds, go back to Security Groups and remove the HTTP outbound rule you added in Step 7.
+
+**Step 10: Start Redis**
+
+```bash
+sudo docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine
+```
+
+**Step 11: Start MCP Server**
+
+```bash
+sudo docker run -d --name mcp-server --network host --env-file /opt/tagging-mcp/.env -v /opt/tagging-mcp/policies:/app/policies:ro -v /opt/tagging-mcp/data:/app/data --restart unless-stopped mcp-server
+```
+
+**Step 12: Verify the server is running**
+
+```bash
+curl http://localhost:8080/health
+```
+
+Expected output: `{"status":"healthy",...}`
+
+#### Verify HTTPS Access
+
+From your local machine:
+
+```bash
+curl https://mcp.yourdomain.com/health
+```
+
+---
+
+## 3. One-Click Tagging Policy Deployment
+
+Update your tagging policy from your local machine and deploy to EC2 with one command.
 
 ### How It Works
 
 ```
-┌─────────────────┐     ┌─────────────┐     ┌─────────────┐
-│ Local Machine   │────▶│    S3       │────▶│    EC2      │
-│ Edit policy     │     │ (staging)   │     │ Pull & restart
-└─────────────────┘     └─────────────┘     └─────────────┘
+Local Machine -> S3 Bucket -> EC2 pulls and restarts
 ```
 
-1. You edit `policies/tagging_policy.json` locally
-2. Run `.\scripts\deploy_policy.ps1` (Windows) or `./scripts/deploy_policy.sh` (Mac/Linux)
-3. Script uploads to S3, tells EC2 to pull it, and restarts Docker
+### Get Your Values
 
-### Setup Steps
-
-#### Step 1: Create S3 Bucket for Policy Staging
-
-> **Note**: If you deployed using CloudFormation, the S3 bucket is already created! Skip to Step 3.
-
-If you deployed manually without CloudFormation:
+For Development:
 ```bash
-aws s3 mb s3://finops-mcp-config --region us-east-1
-```
+# S3 Bucket
+aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+  --query 'Stacks[0].Outputs[?OutputKey==`PolicyBucketName`].OutputValue' --output text
 
-#### Step 2: Add SSM and S3 Permissions to EC2 IAM Role
-
-> **Note**: If you deployed using CloudFormation, these permissions are already configured! Skip to Step 3.
-
-The CloudFormation template already includes these permissions. If you deployed manually, add them:
-
-```bash
-# Add SSM permissions (allows running commands on EC2 remotely)
-aws iam attach-role-policy \
-  --role-name tagging-mcp-server-role-dev \
-  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-
-# Add S3 read permission for the config bucket
-aws iam put-role-policy \
-  --role-name tagging-mcp-server-role-dev \
-  --policy-name S3ConfigAccess \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": ["s3:GetObject"],
-      "Resource": "arn:aws:s3:::finops-mcp-config/*"
-    }]
-  }'
-```
-
-#### Step 3: Set Up EC2 for External Policy Files
-
-> **Note**: If you deployed using CloudFormation, the `/home/ec2-user/mcp-policies` folder is already created with a default policy! You just need to restart the container with the volume mount.
-
-SSH into your EC2 instance and run these commands once:
-
-```bash
-# SSH to EC2
-ssh -i your-key.pem ec2-user@YOUR_EC2_IP
-
-# Create policies folder on EC2
-mkdir -p /home/ec2-user/mcp-policies
-
-# Copy current policy from the running container
-docker cp finops-mcp-server:/app/policies/tagging_policy.json /home/ec2-user/mcp-policies/
-
-# Stop and remove the old container
-docker rm -f finops-mcp-server
-
-# Restart with mounted volume so policy changes take effect
-docker run -d -p 8080:8080 --name finops-mcp-server \
-  -v /home/ec2-user/mcp-policies:/app/policies \
-  tagging-mcp-server
-
-# Verify it's working
-curl http://localhost:8080/health
-```
-
-#### Step 4: Update the Deployment Script with Your Values
-
-Edit `scripts/deploy_policy.ps1` (Windows) or `scripts/deploy_policy.sh` (Mac/Linux):
-
-```powershell
-# In deploy_policy.ps1, update these values:
-$S3Bucket = "finops-mcp-config"        # Your S3 bucket name
-$EC2InstanceId = "i-0dc314272ccf812db" # Your EC2 instance ID (from CloudFormation outputs)
-$Region = "us-east-1"                   # Your AWS region
-```
-
-To get your EC2 instance ID:
-```bash
+# Instance ID
 aws cloudformation describe-stacks --stack-name tagging-mcp-server \
   --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' --output text
 ```
 
-#### Step 5: Test the Deployment
-
-```powershell
-# Windows
-.\scripts\deploy_policy.ps1
-
-# Mac/Linux
-./scripts/deploy_policy.sh
-```
-
-You should see:
-```
-========================================
-  FinOps MCP Policy Deployment
-========================================
-
-[1/4] Validating policy JSON...
-      OK - Valid JSON
-[2/4] Uploading to S3...
-      OK - Uploaded to s3://finops-mcp-config/policies/
-[3/4] Updating EC2 instance...
-      OK - Command sent (ID: xxx)
-[4/4] Waiting for deployment to complete...
-      OK - Policy deployed successfully!
-
-========================================
-  Deployment Complete!
-========================================
-```
-
-### Daily Usage
-
-After setup, updating your policy is just:
-
-```powershell
-# 1. Edit your policy locally
-notepad policies/tagging_policy.json
-
-# 2. Deploy with one command
-.\scripts\deploy_policy.ps1
-```
-
-### Troubleshooting
-
-**"Could not send command to EC2" / "Instances not in a valid state for account"**
-
-This error means the SSM agent on your EC2 instance isn't registered with AWS Systems Manager. 
-
-**Option A: Fix SSM (recommended for future one-click deploys)**
-
-SSH to EC2 and run:
+For Production:
 ```bash
-# Check if SSM agent is installed and running
-sudo systemctl status amazon-ssm-agent
+# S3 Bucket
+aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`PolicyConfigBucketName`].OutputValue' --output text
 
-# If not running, start it
-sudo systemctl start amazon-ssm-agent
-sudo systemctl enable amazon-ssm-agent
-
-# If not installed (unlikely on Amazon Linux 2023)
-sudo yum install -y amazon-ssm-agent
-sudo systemctl start amazon-ssm-agent
-sudo systemctl enable amazon-ssm-agent
+# Instance ID
+aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' --output text
 ```
 
-After starting the SSM agent, wait 2-3 minutes for it to register with AWS, then the deploy script should work.
+### Deploy Policy
 
-**Option B: Manual workaround (quick fix)**
+Windows:
+```powershell
+.\scripts\deploy_policy.ps1 -S3Bucket "YOUR_BUCKET" -EC2InstanceId "i-xxxxx" -Region "us-east-1"
+```
 
-If you just need to update the policy now, SSH to EC2 and pull from S3 directly (since the S3 upload already succeeded):
+Mac/Linux:
+```bash
+./scripts/deploy_policy.sh YOUR_BUCKET i-xxxxx us-east-1
+```
+
+### First-Time Setup on EC2
+
+SSH/SSM to EC2 and run once:
 
 ```bash
-ssh -i your-key.pem ec2-user@YOUR_EC2_IP
+# Dev
+mkdir -p /home/ec2-user/finops-tag-compliance-mcp/policies
 
-# Pull the policy from S3 and restart
-aws s3 cp s3://finops-mcp-config/policies/tagging_policy.json /home/ec2-user/mcp-policies/tagging_policy.json
-docker restart tagging-mcp-server
+# Prod
+mkdir -p /opt/tagging-mcp/policies
 ```
-
-**"Could not upload to S3"**
-- Check S3 bucket exists: `aws s3 ls s3://finops-mcp-config`
-- Check your local AWS credentials have `s3:PutObject` permission
-
-**Policy not updating on EC2**
-- SSH to EC2 and check: `cat /home/ec2-user/mcp-policies/tagging_policy.json`
-- Check Docker logs: `docker logs tagging-mcp-server`
-- Verify the volume mount: `docker inspect tagging-mcp-server | grep Mounts -A 10`
 
 ---
 
-## Connecting Claude Desktop
+## 4. Connecting Claude Desktop
 
-There are two ways to connect Claude Desktop to the MCP server:
+### 4.1 Local (stdio)
 
-| Method | When to Use | Bridge Needed? |
-|--------|-------------|---------------|
-| **stdio** | Local development, single user | No |
-| **HTTP bridge** | Remote EC2, shared server, Docker | Yes |
+No bridge needed. Claude Desktop launches the server directly.
 
-### Prerequisites
-
-1. Python 3.11+ installed on your local machine
-2. This repository cloned locally
-3. For stdio: `pip install -e .` (in the repository)
-4. For HTTP bridge: `pip install requests`
-
-### Configuration
-
-**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
-**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
-**Linux**: `~/.config/claude/claude_desktop_config.json`
-
-### Option A: stdio (Recommended for local)
-
-Claude Desktop launches the MCP server as a subprocess. No Docker, no bridge, no HTTP.
-
-**Windows:**
+Windows (`%APPDATA%\Claude\claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
@@ -690,45 +407,29 @@ Claude Desktop launches the MCP server as a subprocess. No Docker, no bridge, no
 }
 ```
 
-**macOS/Linux:**
+macOS (`~/Library/Application Support/Claude/claude_desktop_config.json`):
 ```json
 {
   "mcpServers": {
     "finops-tagging": {
       "command": "python3",
       "args": ["-m", "mcp_server.stdio_server"],
-      "cwd": "/home/yourname/finops-tag-compliance-mcp"
+      "cwd": "/Users/yourname/finops-tag-compliance-mcp"
     }
   }
 }
 ```
 
-### Option B: HTTP bridge (for remote servers)
+### 4.2 AWS Development (HTTP)
 
-Use this when the MCP server runs on a different machine (EC2, Docker, etc.).
+Uses HTTP bridge to connect to EC2.
 
-**Local Docker deployment (Windows):**
 ```json
 {
   "mcpServers": {
-    "finops-tagging": {
+    "finops-tagging-dev": {
       "command": "python",
-      "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
-      "env": {
-        "MCP_SERVER_URL": "http://localhost:8080"
-      }
-    }
-  }
-}
-```
-
-**Remote EC2 deployment:**
-```json
-{
-  "mcpServers": {
-    "finops-tagging": {
-      "command": "python",
-      "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
+      "args": ["C:\\path\\to\\scripts\\mcp_bridge.py"],
       "env": {
         "MCP_SERVER_URL": "http://YOUR_EC2_ELASTIC_IP:8080"
       }
@@ -737,52 +438,62 @@ Use this when the MCP server runs on a different machine (EC2, Docker, etc.).
 }
 ```
 
-> **Note**: Use the Elastic IP from CloudFormation outputs, not the instance's public IP. The Elastic IP stays the same even if you stop/start the EC2 instance. Get it with:
-> ```bash
-> aws cloudformation describe-stacks --stack-name tagging-mcp-server \
->   --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' --output text
-> ```
+Get Elastic IP:
+```bash
+aws cloudformation describe-stacks --stack-name tagging-mcp-server \
+  --query 'Stacks[0].Outputs[?OutputKey==`ElasticIP`].OutputValue' --output text
+```
 
-**macOS/Linux (HTTP bridge):**
+### 4.3 AWS Production (HTTPS + API Key)
+
+Uses HTTPS bridge with API key authentication.
+
 ```json
 {
   "mcpServers": {
-    "finops-tagging": {
-      "command": "python3",
-      "args": ["/home/yourname/finops-tag-compliance-mcp/scripts/mcp_bridge.py"],
+    "finops-tagging-prod": {
+      "command": "python",
+      "args": ["C:\\path\\to\\scripts\\mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "http://localhost:8080"
+        "MCP_SERVER_URL": "https://mcp.yourdomain.com",
+        "MCP_API_KEY": "YOUR_API_KEY_HERE"
       }
     }
   }
 }
 ```
 
-### Verify Connection
+Get API key:
+```bash
+aws secretsmanager get-secret-value --secret-id mcp-tagging/prod/api-keys \
+  --query SecretString --output text | jq -r '.primary_key'
+```
 
-After restarting Claude Desktop, test by asking:
-- "What tagging policy is configured?"
-- "Check tag compliance for my EC2 instances"
-- "Find untagged S3 buckets"
+Test before configuring Claude Desktop:
+```powershell
+$env:MCP_SERVER_URL="https://mcp.yourdomain.com"
+$env:MCP_API_KEY="your-api-key"
+python scripts\mcp_bridge.py
+# Type: {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+```
 
----
+### 4.4 Configuration
 
-## Configuration
-
-### Environment Variables
+#### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ENVIRONMENT` | Environment name | `development` |
 | `LOG_LEVEL` | Logging level | `INFO` |
-| `REDIS_URL` | Redis connection URL | `redis://redis:6379/0` |
-| `REDIS_TTL` | Cache TTL in seconds | `3600` |
-| `AWS_REGION` | Default AWS region | `us-east-1` |
-| `POLICY_FILE_PATH` | Path to tagging policy | `/app/policies/tagging_policy.json` |
+| `REDIS_URL` | Redis connection | `redis://redis:6379/0` |
+| `AWS_REGION` | AWS region | `us-east-1` |
+| `AUTH_ENABLED` | Enable API key auth | `false` |
+| `API_KEYS` | Comma-separated API keys | - |
+| `CORS_ALLOWED_ORIGINS` | Allowed CORS origins | `*` |
 
-### Custom Tagging Policy
+#### Tagging Policy
 
-Edit `policies/tagging_policy.json` to match your organization's requirements:
+Edit `policies/tagging_policy.json`:
 
 ```json
 {
@@ -798,194 +509,41 @@ Edit `policies/tagging_policy.json` to match your organization's requirements:
 }
 ```
 
-See [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md) for detailed configuration options.
+See [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md) for details.
 
 ---
 
-## Monitoring
+## 5. Monitoring
 
 ### Health Check
 
 ```bash
-curl http://SERVER_ADDRESS:8080/health
+# Local/Dev
+curl http://localhost:8080/health
+
+# Production
+curl https://mcp.yourdomain.com/health
 ```
 
 ### View Logs
 
 ```bash
-# Local (docker-compose)
-docker-compose logs -f mcp-server
+# Docker
+docker logs -f mcp-server
 
-# EC2 (docker run)
-docker logs -f tagging-mcp-server
-
-# CloudWatch (EC2 deployment)
-aws logs tail /mcp-tagging/dev --follow
+# CloudWatch (Production)
+aws logs tail /mcp-tagging/prod --follow
 ```
 
-### Check Container Status
+### Container Status
 
 ```bash
-# Local
-docker-compose ps
-
-# EC2
 docker ps
 ```
 
 ---
 
-## Troubleshooting
-
-### Server Not Responding
-
-```bash
-# Check if containers are running
-docker ps
-
-# Check logs for errors (EC2)
-docker logs tagging-mcp-server
-
-# Check logs for errors (Local)
-docker-compose logs mcp-server
-
-# Restart on EC2
-docker restart tagging-mcp-server tagging-redis
-```
-
-### AWS API Errors
-
-```bash
-# Local: Verify AWS credentials
-aws sts get-caller-identity
-
-# EC2: Verify IAM role is attached
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
-```
-
-### Redis Connection Issues
-
-```bash
-# Check Redis container
-docker-compose logs redis
-
-# Test Redis connectivity
-docker exec -it tagging-redis redis-cli ping
-```
-
-### Claude Desktop Not Connecting
-
-1. Verify the bridge script path is correct
-2. Check that Python and `requests` are installed
-3. Verify the server is running: `curl http://SERVER_ADDRESS:8080/health`
-4. Check Claude Desktop logs for errors
-
-### Docker Build Issues on EC2
-
-If you see `compose build requires buildx 0.17 or later`:
-
-```bash
-# Use docker build instead of docker-compose build
-docker build -t tagging-mcp-server . --no-cache
-```
-
-Then start containers manually (see EC2 update section below).
-
-### Container Name Conflict
-
-If you see `The container name "/tagging-redis" is already in use`:
-
-```bash
-# Remove the old containers first
-docker stop tagging-redis tagging-mcp-server 2>/dev/null
-docker rm tagging-redis tagging-mcp-server 2>/dev/null
-
-# Then start fresh
-docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
-docker run -d --name tagging-mcp-server ...
-```
-
-This happens when containers weren't properly removed before redeploying. The `docker-compose down` command may not remove containers that were started with `docker run`.
-
-### Windows: Docker Mount Denied Error
-
-If you see "mounts denied" or "path is not shared from the host" on Windows:
-
-**Error message:**
-```
-The path /.aws is not shared from the host and is not known to Docker.
-You can configure shared paths from Docker -> Preferences... -> Resources -> File Sharing
-```
-
-**Solution:**
-
-1. **Enable File Sharing in Docker Desktop:**
-   - Open Docker Desktop
-   - Go to Settings → Resources → File Sharing
-   - Add `C:\Users\YourUsername` to the shared paths list
-   - Click "Apply & Restart"
-
-2. **Use the Windows-specific docker-compose file:**
-   ```powershell
-   # Stop existing containers
-   docker-compose down
-
-   # Start with Windows configuration
-   docker-compose -f docker-compose.yml -f docker-compose.windows.yml up -d
-   ```
-
-3. **Verify the mount path:**
-   ```powershell
-   # Check that Docker can see your .aws folder
-   docker run --rm -v ${env:USERPROFILE}/.aws:/test alpine ls /test
-   ```
-
-### Windows: Hidden .env.example File
-
-If you cannot see the `.env.example` file on Windows:
-
-**Solution 1 - Show hidden files:**
-1. Open File Explorer
-2. Click the "View" tab
-3. Check "Hidden items" checkbox
-4. You should now see `.env.example`
-
-**Solution 2 - Use PowerShell:**
-```powershell
-# Copy the file using PowerShell
-Copy-Item .env.example .env
-
-# Or check if it exists
-Test-Path .env.example
-```
-
-### Orphan Containers Running
-
-If you see unexpected containers like `brave_hermann` or other random names:
-
-**Cause:** These are orphan containers from previous runs that weren't properly stopped.
-
-**Solution:**
-```bash
-# List all containers (running and stopped)
-docker ps -a
-
-# Stop and remove all containers
-docker stop $(docker ps -aq)
-docker rm $(docker ps -aq)
-
-# Or use docker-compose to clean up properly
-docker-compose down
-
-# Then start fresh
-docker-compose up -d
-```
-
-**Prevention:** Always use `docker-compose down` to stop services instead of stopping individual containers.
-
----
-
-## Updating
+## 6. Updating
 
 ### Local
 
@@ -996,106 +554,113 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
-> **Note**: If you see `compose build requires buildx 0.17 or later`, use plain docker build instead:
-> ```bash
-> git pull origin main
-> docker-compose down
-> docker build -t finops-tag-compliance-mcp-mcp-server . --no-cache
-> docker-compose up -d
-> ```
+### AWS (Dev or Prod)
 
-### EC2
+SSH/SSM to EC2:
 
 ```bash
-ssh -i your-key.pem ec2-user@$INSTANCE_IP
-cd ~/finops-tag-compliance-mcp
+cd ~/finops-tag-compliance-mcp  # Dev
+# or
+cd /opt/tagging-mcp             # Prod
+
 git pull origin main
-
-# Stop and remove existing containers (handles both docker-compose and docker run containers)
-docker stop tagging-mcp-server tagging-redis 2>/dev/null
-docker rm tagging-mcp-server tagging-redis 2>/dev/null
-
-# Rebuild the image
-# Note: Use docker build directly - Amazon Linux's docker-compose may have buildx version issues
-docker build -t tagging-mcp-server . --no-cache
-
-# Start Redis
-docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine
-
-# Start MCP server
-docker run -d --name tagging-mcp-server \
-  -p 8080:8080 \
-  -e REDIS_URL=redis://172.17.0.1:6379/0 \
-  -e AWS_REGION=us-east-1 \
-  -e ENVIRONMENT=production \
-  -e LOG_LEVEL=INFO \
-  -v $(pwd)/policies:/app/policies:ro \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/logs:/app/logs \
-  tagging-mcp-server
-
-# Verify
-docker ps
+docker stop mcp-server redis
+docker rm mcp-server redis
+docker build -t mcp-server . --no-cache
+docker run -d --name redis -p 6379:6379 redis:7-alpine
+docker run -d --name mcp-server [your-options] mcp-server
 curl http://localhost:8080/health
-```
-
-**Quick one-liner for updates** (after initial setup):
-```bash
-git pull && docker stop tagging-mcp-server tagging-redis && docker rm tagging-mcp-server tagging-redis && docker build -t tagging-mcp-server . --no-cache && docker run -d --name tagging-redis -p 6379:6379 redis:7-alpine && docker run -d --name tagging-mcp-server -p 8080:8080 -e REDIS_URL=redis://172.17.0.1:6379/0 -e AWS_REGION=us-east-1 -e ENVIRONMENT=production -v $(pwd)/policies:/app/policies:ro -v $(pwd)/data:/app/data -v $(pwd)/logs:/app/logs tagging-mcp-server && sleep 3 && curl http://localhost:8080/health
 ```
 
 ---
 
-## Cleanup
+## 7. Troubleshooting
+
+### Server Not Responding
+
+```bash
+docker ps                    # Check containers running
+docker logs mcp-server       # Check logs
+docker restart mcp-server    # Restart
+```
+
+### AWS API Errors
+
+```bash
+# Local
+aws sts get-caller-identity
+
+# EC2
+curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+```
+
+### Redis Connection Issues
+
+```bash
+docker logs redis
+docker exec redis redis-cli ping
+```
+
+### Claude Desktop Not Connecting
+
+1. Check bridge script path is correct
+2. Verify `pip install requests` was run
+3. Test server: `curl http://SERVER:8080/health`
+4. Check Claude Desktop logs
+
+### Production: 503 Error
+
+1. Check Target Group health in EC2 Console
+2. Verify EC2 security group allows port 8080 from ALB
+3. Check container is running via SSM
+
+### Production: Docker Build Fails (Network)
+
+The EC2 is in a private subnet. Docker build needs internet access via NAT Gateway.
+If build fails, check NAT Gateway is working:
+```bash
+curl -I https://github.com
+```
+
+### SSM Session Manager Not Working
+
+```bash
+sudo systemctl status amazon-ssm-agent
+sudo systemctl start amazon-ssm-agent
+```
+
+---
+
+## 8. Cleanup
 
 ### Local
 
 ```bash
-docker-compose down -v  # -v removes volumes
+docker-compose down -v
 ```
 
-### EC2
+### AWS Development
 
 ```bash
-# Stop and remove containers
-docker stop tagging-mcp-server tagging-redis
-docker rm tagging-mcp-server tagging-redis
-
-# Delete CloudFormation stack (removes EC2, security group, IAM role, etc.)
 aws cloudformation delete-stack --stack-name tagging-mcp-server
-aws cloudformation wait stack-delete-complete --stack-name tagging-mcp-server
 ```
 
----
+### AWS Production
 
-## Security Recommendations
+```bash
+# Empty S3 bucket first (required)
+BUCKET=$(aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`PolicyConfigBucketName`].OutputValue' --output text)
+aws s3 rm s3://$BUCKET --recursive
 
-1. **Restrict AllowedCIDR**: Only allow your IP or VPN CIDR
-2. **Use HTTPS**: Put an ALB with SSL certificate in front for production
-3. **Enable VPC Flow Logs**: Monitor network traffic
-4. **Rotate credentials**: Use AWS Secrets Manager for any secrets
-5. **Enable CloudTrail**: Audit all API calls
-
----
-
-## Video Demo
-
-Watch a 2-minute demo showing the MCP server in action with Claude Desktop:
-
-[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
-
-**[▶️ Watch the demo on Loom](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)**
-
-The demo covers:
-- Checking tag compliance across AWS resources
-- Identifying untagged resources with cost impact
-- Getting ML-powered tag suggestions
-- Viewing compliance trends over time
+# Delete stack
+aws cloudformation delete-stack --stack-name mcp-tagging-prod
+```
 
 ---
 
 ## Next Steps
 
-- Read the [User Manual](USER_MANUAL.md) for tool usage and example prompts
-- Configure your [Tagging Policy](TAGGING_POLICY_GUIDE.md)
-- Review [IAM Permissions](IAM_PERMISSIONS.md) for security best practices
+- [User Manual](USER_MANUAL.md) - Tool usage and example prompts
+- [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md) - Configure your policy
+- [IAM Permissions](IAM_PERMISSIONS.md) - Security best practices

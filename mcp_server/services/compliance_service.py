@@ -54,6 +54,9 @@ class ComplianceService:
         """
         Generate a deterministic cache key from query parameters.
 
+        Includes the AWS region from the client to prevent stale cache issues
+        when the region configuration changes.
+
         Args:
             resource_types: List of resource types to check
             filters: Optional filters (region, account_id, etc.)
@@ -63,7 +66,9 @@ class ComplianceService:
             SHA256 hash of the normalized query parameters
         """
         # Normalize parameters for consistent hashing
+        # Include AWS client region to prevent cross-region cache pollution
         normalized = {
+            "aws_region": self.aws_client.region,
             "resource_types": sorted(resource_types),
             "filters": filters or {},
             "severity": severity,
@@ -392,6 +397,7 @@ class ComplianceService:
         - A new compliance scan is triggered
         - Resources are modified
         - Policy is updated
+        - Region configuration changes
 
         Args:
             resource_types: If specified, only invalidate cache for these types
@@ -407,7 +413,7 @@ class ComplianceService:
             logger.info("Invalidating all compliance cache entries")
             return await self.cache.clear()
         else:
-            # Invalidate specific cache entry
+            # Invalidate specific cache entry (includes current region in key)
             cache_key = self._generate_cache_key(
                 resource_types or [], filters, "all"  # Default severity for invalidation
             )
