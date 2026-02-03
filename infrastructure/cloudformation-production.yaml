@@ -58,8 +58,8 @@ Parameters:
 
   PolicyBucketName:
     Type: String
-    Default: ''
-    Description: Optional S3 bucket name for tagging policy configuration
+    Default: 'finops-mcp-config'
+    Description: S3 bucket name for tagging policy configuration (used by deploy_policy.ps1)
 
   VpcCIDR:
     Type: String
@@ -124,12 +124,11 @@ Conditions:
 
 Resources:
   # ==========================================================================
-  # S3 Bucket for Policy Configuration (Optional)
+  # S3 Bucket for Policy Configuration
   # ==========================================================================
 
   PolicyConfigBucket:
     Type: AWS::S3::Bucket
-    Condition: HasPolicyBucketName
     Properties:
       BucketName: !Ref PolicyBucketName
       BucketEncryption:
@@ -599,10 +598,9 @@ Resources:
               StringEquals:
                 cloudwatch:namespace: !Sub '${ProjectName}/${Environment}'
 
-  # Conditional S3 policy for policy config bucket
+  # S3 policy for policy config bucket
   MCPServerS3Policy:
     Type: AWS::IAM::Policy
-    Condition: HasPolicyBucketName
     Properties:
       PolicyName: !Sub '${ProjectName}-s3-policy-${Environment}'
       Roles:
@@ -849,14 +847,12 @@ Outputs:
       Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
 
   PolicyConfigBucketName:
-    Condition: HasPolicyBucketName
     Description: S3 bucket name for policy configuration
     Value: !Ref PolicyConfigBucket
     Export:
       Name: !Sub '${AWS::StackName}-PolicyBucketName'
 
   PolicyConfigBucketArn:
-    Condition: HasPolicyBucketName
     Description: S3 bucket ARN for policy configuration
     Value: !GetAtt PolicyConfigBucket.Arn
     Export:
