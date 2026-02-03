@@ -271,7 +271,20 @@ sudo chmod 600 /opt/tagging-mcp/.env
 sudo chown ec2-user:ec2-user /opt/tagging-mcp/.env
 ```
 
-**Step 7: Build Docker image**
+**Step 7: Temporarily open port 80 outbound** (required for Docker build)
+
+The EC2 Security Group blocks outbound HTTP by default. Docker build needs to download packages from Debian repositories.
+
+1. Go to EC2 Console -> Security Groups
+2. Find the EC2 security group (`mcp-tagging-prod-ec2-sg`)
+3. Edit Outbound rules -> Add rule:
+   - Type: `HTTP`
+   - Port: `80`
+   - Destination: `0.0.0.0/0`
+   - Description: `Temporary - Docker build`
+4. Save rules
+
+**Step 8: Build Docker image**
 
 ```bash
 cd /opt/tagging-mcp
@@ -281,19 +294,23 @@ cd /opt/tagging-mcp
 sudo docker build -t mcp-server .
 ```
 
-**Step 8: Start Redis**
+**Step 9: Remove temporary outbound rule**
+
+After the build succeeds, go back to Security Groups and remove the HTTP outbound rule you added in Step 7.
+
+**Step 10: Start Redis**
 
 ```bash
 sudo docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine
 ```
 
-**Step 9: Start MCP Server**
+**Step 11: Start MCP Server**
 
 ```bash
 sudo docker run -d --name mcp-server --network host --env-file /opt/tagging-mcp/.env -v /opt/tagging-mcp/policies:/app/policies:ro -v /opt/tagging-mcp/data:/app/data --restart unless-stopped mcp-server
 ```
 
-**Step 10: Verify the server is running**
+**Step 12: Verify the server is running**
 
 ```bash
 curl http://localhost:8080/health
