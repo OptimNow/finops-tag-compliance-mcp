@@ -58,7 +58,7 @@ Parameters:
 
   PolicyBucketName:
     Type: String
-    Default: 'finops-mcp-config'
+    Default: 'finops-mcp-config-prod'
     Description: S3 bucket name for tagging policy configuration (used by deploy_policy.ps1)
 
   VpcCIDR:
