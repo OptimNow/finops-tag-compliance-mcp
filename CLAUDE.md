@@ -215,7 +215,7 @@ Redis caching (`mcp_server/clients/cache.py`) is used for:
 - Loop detection call history
 - Security event tracking
 
-Cache keys are SHA256 hashes of normalized query parameters. Use `force_refresh=True` to bypass cache.
+Cache keys are SHA256 hashes of normalized query parameters including the AWS region. This ensures that changing regions invalidates cached results. Use `force_refresh=True` to bypass cache.
 
 ### Middleware Pipeline
 

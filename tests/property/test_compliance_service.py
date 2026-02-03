@@ -23,6 +23,7 @@ from mcp_server.models.enums import Severity, ViolationType
 from mcp_server.models.violations import Violation
 from mcp_server.services.compliance_service import ComplianceService
 from mcp_server.services.policy_service import PolicyService
+from mcp_server.utils.resource_utils import extract_account_from_arn
 
 # =============================================================================
 # Helper functions to create mocks
@@ -41,7 +42,9 @@ def create_mock_cache():
 
 def create_mock_aws_client():
     """Create a mock AWS client."""
-    return MagicMock(spec=AWSClient)
+    client = MagicMock(spec=AWSClient)
+    client.region = "us-east-1"  # Include region for cache key generation
+    return client
 
 
 def create_mock_policy_service():
@@ -472,7 +475,7 @@ class TestFilterConsistency:
 
         # All returned resources must be from the target account
         for resource in filtered:
-            extracted_account = service._extract_account_from_arn(resource.get("arn", ""))
+            extracted_account = extract_account_from_arn(resource.get("arn", ""))
             assert extracted_account == target_account, (
                 f"Resource {resource['resource_id']} has account {extracted_account} "
                 f"but filter was for {target_account}"
@@ -524,7 +527,7 @@ class TestFilterConsistency:
 
         # All returned resources must be from one of the target accounts
         for resource in filtered:
-            extracted_account = service._extract_account_from_arn(resource.get("arn", ""))
+            extracted_account = extract_account_from_arn(resource.get("arn", ""))
             assert extracted_account in target_accounts, (
                 f"Resource {resource['resource_id']} has account {extracted_account} "
                 f"but filter was for {target_accounts}"
@@ -714,7 +717,7 @@ class TestFilterConsistency:
                 f"Resource {resource['resource_id']} has region {resource['region']} "
                 f"but filter was for {target_region}"
             )
-            extracted_account = service._extract_account_from_arn(resource.get("arn", ""))
+            extracted_account = extract_account_from_arn(resource.get("arn", ""))
             assert extracted_account == target_account, (
                 f"Resource {resource['resource_id']} has account {extracted_account} "
                 f"but filter was for {target_account}"

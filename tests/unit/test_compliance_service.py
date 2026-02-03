@@ -28,7 +28,9 @@ def mock_cache():
 @pytest.fixture
 def mock_aws_client():
     """Create a mock AWS client."""
-    return MagicMock(spec=AWSClient)
+    client = MagicMock(spec=AWSClient)
+    client.region = "us-east-1"  # Include region for cache key generation
+    return client
 
 
 @pytest.fixture

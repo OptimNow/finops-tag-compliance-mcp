@@ -2097,3 +2097,103 @@ PR URL: https://github.com/OptimNow/finops-tag-compliance-mcp/pull/new/feat/prod
 **Complexity**: Medium-High (19 files, new middleware, infrastructure template)
 **User Impact**: High (enables secure production deployment)
 
+
+
+---
+
+## February 3, 2026: Cache Key Region Fix & Production Debugging
+
+### Day 42: Production Debugging Session
+
+**The Problem:**
+MCP server deployed on EC2 in us-east-1 was returning 0 EC2 instances even though 5 instances existed in the account.
+
+**Root Cause Analysis:**
+
+1. **Initial Suspicion - Region Mismatch**: First thought was the container was configured for the wrong region. Checked and found `AWS_REGION=us-east-1` was correctly set.
+
+2. **Direct AWS API Test**: Created a debug script that ran inside the container to test boto3 directly. Result: boto3 found all 5 EC2 instances correctly.
+
+3. **The Real Culprit - Stale Redis Cache**: The MCP server was returning cached results from a previous scan when the region was misconfigured. The cache key didn't include the region, so when the region was fixed, the old (empty) cached results were still being returned.
+
+**The Fix:**
+
+Updated `_generate_cache_key()` in `compliance_service.py` to include the AWS region in the cache key hash:
+
+```python
+def _generate_cache_key(
+    self,
+    resource_types: list[str],
+    filters: dict[str, Any] | None,
+    severity: str,
+) -> str:
+    key_data = {
+        "resource_types": sorted(resource_types),
+        "filters": filters or {},
+        "severity": severity,
+        "aws_region": self.aws_client.region,  # NEW: Include region in cache key
+    }
+    key_json = json.dumps(key_data, sort_keys=True)
+    key_hash = hashlib.sha256(key_json.encode()).hexdigest()
+    return f"compliance:{key_hash}"
+```
+
+**Test Fixes Required:**
+
+Both unit and property tests needed updates to mock the `region` attribute on the AWS client:
+
+```python
+# In test fixtures
+client.region = "us-east-1"
+```
+
+Also fixed property tests that were incorrectly calling `service._extract_account_from_arn()` - changed to use the imported `extract_account_from_arn` function from `resource_utils`.
+
+**Immediate Resolution:**
+
+Cleared the Redis cache on EC2:
+```bash
+sudo docker exec redis redis-cli FLUSHALL
+```
+
+After cache flush, the MCP server correctly returned all 5 EC2 instances.
+
+**What I Learned:**
+
+1. **Cache keys must include all relevant context**: Region is critical for AWS resources. Without it in the cache key, changing regions doesn't invalidate stale results.
+
+2. **Production debugging requires systematic approach**: 
+   - Check configuration first
+   - Test underlying APIs directly
+   - Check caching layer
+   - Verify the full request path
+
+3. **Shell quoting on EC2 is tricky**: The SSM Session Manager shell mangles special characters like quotes, pipes, and curly braces. Using base64-encoded Python commands was the workaround.
+
+**Elastic IP Investigation:**
+
+Also investigated "extra" Elastic IPs that appeared in the AWS console. Found they were expected:
+- 1 EIP for NAT Gateway (required for private subnet internet access)
+- 2 IPs from ALB network interfaces (not separate EIP charges)
+
+The production CloudFormation template creates a VPC with public/private subnets, and the NAT Gateway requires its own EIP for the private subnet to reach the internet.
+
+**Multi-Region Scanning Confirmation:**
+
+Confirmed that the current implementation does NOT do multi-region scanning. The `AWSClient` is initialized with a single region and only scans resources in that region. The multi-region scanning spec exists (`.kiro/specs/multi-region-scanning/`) but none of the tasks have been implemented yet.
+
+**Files Modified:**
+- `mcp_server/services/compliance_service.py` - Added region to cache key
+- `tests/unit/test_compliance_service.py` - Added region mock to fixture
+- `tests/property/test_compliance_service.py` - Added region mock, fixed function import
+
+**Test Results:**
+- 41 unit tests pass
+- 19 property tests pass
+
+**Current Status:**
+- EC2 instances now showing correctly (5 instances found)
+- Cache key includes region to prevent future cache issues
+- All tests passing
+- Ready for commit and PR
+
