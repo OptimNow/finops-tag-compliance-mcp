@@ -1,13 +1,22 @@
 {
   "_comment": "Production configuration with authentication and HTTPS",
   "_comment_security": "Requirements: 22.1, 22.2, 22.4, 22.5",
+  "_instructions": [
+    "1. Copy this file to your Claude Desktop config location:",
+    "   - Windows: %APPDATA%\\Claude\\claude_desktop_config.json",
+    "   - macOS: ~/Library/Application Support/Claude/claude_desktop_config.json",
+    "2. Update 'args' with the full path to mcp_bridge.py on your machine",
+    "3. Get your API key from AWS Secrets Manager: mcp-tagging/prod/api-keys -> primary_key",
+    "4. Replace 'YOUR_API_KEY_HERE' with the actual API key",
+    "5. Restart Claude Desktop"
+  ],
   "mcpServers": {
     "finops-tagging": {
       "command": "python",
-      "args": ["/path/to/mcp_bridge.py"],
+      "args": ["C:\\path\\to\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "https://your-alb.example.com",
-        "MCP_API_KEY": "your-api-key-here"
+        "MCP_SERVER_URL": "https://mcp.optimnow.io",
+        "MCP_API_KEY": "YOUR_API_KEY_HERE"
       }
     }
   },

@@ -1109,11 +1109,74 @@ For production deployments with full security features, use the production Cloud
 
 ### Prerequisites
 
-1. ACM certificate for your domain
+1. ACM certificate for your domain (see below)
 2. AWS CLI configured with appropriate permissions
 3. Email address for security alerts
 
-### Deploy with CloudFormation
+### Step 1: Create ACM Certificate (SSL/TLS)
+
+**Why do you need a certificate?**
+
+The production architecture uses an Application Load Balancer (ALB) to provide HTTPS access. Unlike the basic deployment where you access the EC2 directly via HTTP, the production setup encrypts all traffic:
+
+```
+Basic:      Internet → HTTP (8080) → EC2 (public IP)
+Production: Internet → HTTPS (443) → ALB [certificate] → HTTP (8080) → EC2 (private)
+```
+
+The ACM certificate proves to browsers that your domain is legitimate and enables encryption.
+
+**Create the certificate:**
+
+1. Go to **AWS Console → Certificate Manager (ACM)** in your target region (e.g., us-east-1)
+2. Click **Request certificate** → **Request a public certificate** → Next
+3. Enter your domain name: `mcp.yourdomain.com` (or `*.yourdomain.com` for wildcard)
+4. Select **DNS validation** (recommended)
+5. Click **Request**
+
+**Validate the certificate:**
+
+ACM needs to verify you own the domain. It provides a CNAME record you must add to your DNS.
+
+- **If your domain is in Route 53**: Click "Create records in Route 53" (automatic)
+- **If your domain is elsewhere** (OVH, Gandi, Cloudflare, GoDaddy, etc.):
+  1. In ACM, click on your certificate to see the CNAME details
+  2. Copy the **CNAME name** (e.g., `_abc123.mcp.yourdomain.com`)
+  3. Copy the **CNAME value** (e.g., `_xyz789.acm-validations.aws`)
+  4. Go to your DNS provider and create this CNAME record
+  5. Wait 5-30 minutes for validation (can take longer depending on DNS propagation)
+
+**Verify validation:**
+```bash
+# Check if the CNAME is propagated
+nslookup _abc123.mcp.yourdomain.com
+
+# Or check certificate status
+aws acm describe-certificate --certificate-arn YOUR_CERT_ARN \
+  --query 'Certificate.Status'
+```
+
+Once status is **"ISSUED"**, copy the certificate ARN for the next step.
+
+### Step 2: Deploy with CloudFormation
+
+**Option A: AWS Console (Recommended for first-time users)**
+
+1. Go to **AWS Console → CloudFormation → Create stack → With new resources**
+2. Select **Upload a template file** and upload `infrastructure/cloudformation-production.yaml`
+3. Fill in the parameters:
+   - **Stack name**: `mcp-tagging-prod`
+   - **ProjectName**: `mcp-tagging`
+   - **Environment**: `prod`
+   - **KeyPairName**: Your EC2 key pair name
+   - **ACMCertificateArn**: The ARN of your ACM certificate (from Step 1)
+   - **AlertEmail**: Your email for security alerts
+   - **CORSAllowedOrigins**: `https://claude.ai` (default)
+4. **IMPORTANT**: Leave the **Tags** section empty (tags are defined in the template)
+5. Check "I acknowledge that AWS CloudFormation might create IAM resources with custom names"
+6. Click **Create stack** and wait for completion (~10-15 minutes)
+
+**Option B: AWS CLI**
 
 ```bash
 # 1. Get your ACM certificate ARN (create in AWS Console if needed)
@@ -1140,7 +1203,195 @@ aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
   --query 'Stacks[0].Outputs'
 ```
 
+### Step 3: Configure DNS (CNAME Record)
+
+After the stack is created, get the ALB DNS name from the CloudFormation outputs:
+
+```bash
+ALB_DNS=$(aws cloudformation describe-stacks \
+  --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
+  --output text)
+echo "ALB DNS: $ALB_DNS"
+```
+
+Then create a CNAME record at your DNS provider:
+- **Type**: CNAME
+- **Name/Host**: `mcp` (to create `mcp.yourdomain.com`)
+- **Value/Points to**: The ALB DNS name (e.g., `mcp-tagging-alb-prod-xxx.us-east-1.elb.amazonaws.com`)
+
+### Step 4: Connect to EC2 via SSM Session Manager
+
+The EC2 instance is in a private subnet with no public IP. You must use AWS Systems Manager Session Manager to connect.
+
+**Prerequisites: Install SSM Plugin**
+
+- **Windows**: Download and install from https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe
+- **macOS**: `brew install --cask session-manager-plugin`
+- **Linux**: See [AWS documentation](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+
+**Connect to the instance:**
+
+```bash
+# Get the instance ID from CloudFormation outputs
+INSTANCE_ID=$(aws cloudformation describe-stacks \
+  --stack-name mcp-tagging-prod \
+  --query 'Stacks[0].Outputs[?OutputKey==`InstanceId`].OutputValue' \
+  --output text)
+
+# Start SSM session
+aws ssm start-session --target $INSTANCE_ID --region us-east-1
+```
+
+Or use the AWS Console:
+1. Go to **EC2 → Instances** → Select your instance
+2. Click **Connect** → **Session Manager** tab → **Connect**
+
+### Step 5: Deploy the Application Code
+
+Once connected via SSM, run these commands one at a time (SSM requires single-line commands):
+
+```bash
+# 1. Install git (not pre-installed on Amazon Linux 2023)
+sudo yum install -y git
+```
+
+```bash
+# 2. Clone the repository to /opt/tagging-mcp
+cd /opt/tagging-mcp && sudo -u ec2-user git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git .
+```
+
+```bash
+# 3. Checkout the production-security branch (or main for stable release)
+cd /opt/tagging-mcp && sudo -u ec2-user git checkout feat/production-security
+```
+
+```bash
+# 4. Create the .env file manually (UserData may fail to create it)
+# First, get the API key from Secrets Manager
+API_KEY=$(aws secretsmanager get-secret-value --secret-id mcp-tagging/prod/api-keys --query SecretString --output text | jq -r '.primary_key')
+```
+
+```bash
+# 5. Create the .env file with all required settings
+cat > /opt/tagging-mcp/.env << EOF
+AUTH_ENABLED=true
+CORS_ALLOWED_ORIGINS=https://claude.ai
+TLS_ENABLED=false
+CLOUDWATCH_ENABLED=true
+CLOUDWATCH_LOG_GROUP=/mcp-tagging/prod
+AWS_REGION=us-east-1
+ENVIRONMENT=production
+REDIS_URL=redis://localhost:6379/0
+API_KEYS=$API_KEY
+EOF
+```
+
+```bash
+# 6. Set proper permissions on .env
+sudo chmod 600 /opt/tagging-mcp/.env && sudo chown ec2-user:ec2-user /opt/tagging-mcp/.env
+```
+
+```bash
+# 7. Build the Docker image (may take 2-3 minutes)
+cd /opt/tagging-mcp && sudo docker build -t mcp-server .
+```
+
+```bash
+# 8. Start Redis container for caching
+sudo docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine redis-server --appendonly yes
+```
+
+```bash
+# 9. Verify Redis is running
+sudo docker ps
+```
+
+```bash
+# 10. Test Redis connection
+sudo docker exec redis redis-cli ping
+```
+
+```bash
+# 11. Start the MCP server container with host network (to access Redis on localhost)
+sudo docker run -d --name mcp-server --network host --env-file /opt/tagging-mcp/.env -v /opt/tagging-mcp/policies:/app/policies:ro -v /opt/tagging-mcp/data:/app/data mcp-server
+```
+
+```bash
+# 12. Verify both containers are running
+sudo docker ps
+```
+
+```bash
+# 13. Test the health endpoint
+curl http://localhost:8080/health
+```
+
+The health response should show:
+- `"status": "healthy"` or `"degraded"` (degraded is OK if Redis isn't connected yet)
+- `"redis_connected": true`
+- `"sqlite_connected": true`
+
+**Important Notes:**
+- The `.env` file must be created manually because CloudFormation UserData may fail to fetch the API key from Secrets Manager
+- Redis runs as a separate container for caching AWS API responses
+- The MCP server uses `--network host` to access Redis on localhost
+
+### Step 6: Register EC2 in Target Group (if needed)
+
+The CloudFormation template should automatically register the EC2 instance in the ALB Target Group. However, if you see a 503 error when accessing the ALB, you may need to register it manually:
+
+1. Go to **AWS Console → EC2 → Target Groups**
+2. Select `mcp-tagging-tg-prod`
+3. Click **Register targets**
+4. Select your EC2 instance
+5. Click **Include as pending below**
+6. Click **Register pending targets**
+
+Wait 30-60 seconds for the health check to pass (status should become "healthy").
+
+### Step 7: Verify the Deployment
+
+**Test health endpoint (from your local machine):**
+
+```bash
+# Using the ALB DNS directly
+curl https://YOUR_ALB_DNS/health
+
+# Or using your custom domain (after DNS propagation)
+curl https://mcp.yourdomain.com/health
+```
+
+**Test with API key authentication:**
+
+```bash
+# Get the API key from Secrets Manager
+API_KEY=$(aws secretsmanager get-secret-value \
+  --secret-id mcp-tagging/prod/api-keys \
+  --query SecretString --output text | jq -r '.primary_key')
+
+# Test authenticated request
+curl -H "Authorization: Bearer $API_KEY" \
+  https://mcp.yourdomain.com/health
+```
+
+**Test that unauthenticated requests are rejected:**
+
+```bash
+# This should return 401 Unauthorized
+curl https://mcp.yourdomain.com/mcp/tools
+```
+
 ### Retrieve API Key from Secrets Manager
+
+**Option A: AWS Console**
+
+1. Go to **AWS Console → Secrets Manager**
+2. Search for `mcp-tagging/prod/api-keys`
+3. Click on the secret → **Retrieve secret value**
+4. Copy the `primary_key` value
+
+**Option B: AWS CLI**
 
 ```bash
 # Get the secret ARN from CloudFormation outputs
@@ -1162,29 +1413,47 @@ echo "Your API key: $API_KEY"
 
 Add to your Claude Desktop config with the API key:
 
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
 ```json
 {
   "mcpServers": {
-    "finops-tagging": {
+    "finops-tagging-prod": {
       "command": "python",
-      "args": ["C:\\path\\to\\scripts\\mcp_bridge.py"],
+      "args": ["C:\\Users\\YourName\\Documents\\GitHub\\finops-tag-compliance-mcp\\scripts\\mcp_bridge.py"],
       "env": {
-        "MCP_SERVER_URL": "https://your-alb-dns.example.com",
-        "MCP_API_KEY": "your-api-key-from-secrets-manager"
+        "MCP_SERVER_URL": "https://mcp.optimnow.io",
+        "MCP_API_KEY": "YOUR_API_KEY_HERE"
       }
     }
   }
 }
 ```
 
-Get the ALB DNS name:
+**Steps:**
+1. Replace `C:\\Users\\YourName\\Documents\\GitHub\\` with your actual path to the repository
+2. Get your API key from AWS Secrets Manager: `mcp-tagging/prod/api-keys` → `primary_key`
+3. Replace `YOUR_API_KEY_HERE` with the actual API key
+4. Restart Claude Desktop
+
+**Get the API key via CLI:**
 ```bash
-ALB_DNS=$(aws cloudformation describe-stacks \
-  --stack-name mcp-tagging-prod \
-  --query 'Stacks[0].Outputs[?OutputKey==`LoadBalancerDNS`].OutputValue' \
-  --output text)
-echo "ALB DNS: $ALB_DNS"
+aws secretsmanager get-secret-value \
+  --secret-id mcp-tagging/prod/api-keys \
+  --query SecretString --output text | jq -r '.primary_key'
 ```
+
+**Test the connection** before configuring Claude Desktop:
+```powershell
+# PowerShell
+$env:MCP_SERVER_URL="https://mcp.optimnow.io"
+$env:MCP_API_KEY="your-api-key"
+python "C:\path\to\scripts\mcp_bridge.py"
+# Then type: {"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}
+```
+
+See also: `examples/claude_desktop_config_production.json` for a complete example configuration.
 
 ### Security Features Enabled
 
@@ -1230,6 +1499,62 @@ aws ec2 reboot-instances --instance-ids $INSTANCE_ID
 
 # Update Claude Desktop config with new key
 ```
+
+### Production Troubleshooting
+
+**503 Service Temporarily Unavailable**
+
+This means the ALB cannot reach the EC2 instance. Check:
+
+1. **Target Group registration**: Go to EC2 → Target Groups → Check if instance is registered and healthy
+2. **Security Group**: Verify the EC2 security group allows inbound on port 8080 from the ALB security group
+3. **Container running**: Connect via SSM and run `sudo docker ps` to verify the container is running
+
+**Docker build fails with "Unable to connect to deb.debian.org"**
+
+The Security Group only allows HTTPS (443) outbound by default. For Docker build, you need HTTP (80) temporarily:
+
+1. Go to EC2 → Security Groups → Find the MCP Server security group
+2. Add an outbound rule: HTTP (80) to 0.0.0.0/0
+3. Run the Docker build
+4. **Remove the HTTP rule after build completes** (security best practice)
+
+**Health check shows "redis_connected": false**
+
+Redis container may not be running:
+
+```bash
+# Check if Redis is running
+sudo docker ps | grep redis
+
+# If not running, start it
+sudo docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine redis-server --appendonly yes
+
+# Restart MCP server to reconnect
+sudo docker restart mcp-server
+```
+
+**Cannot connect via SSM Session Manager**
+
+1. Verify the SSM plugin is installed on your local machine
+2. Check that the EC2 instance has the `AmazonSSMManagedInstanceCore` policy attached
+3. Wait 2-3 minutes after instance launch for SSM agent to register
+
+**UserData script didn't create .env file**
+
+This is a known issue. Create the file manually following Step 5 above.
+
+**Container crashes immediately after starting**
+
+Check the logs:
+```bash
+sudo docker logs mcp-server
+```
+
+Common causes:
+- Missing `.env` file
+- Invalid environment variables
+- Missing volume mounts
 
 ---
 

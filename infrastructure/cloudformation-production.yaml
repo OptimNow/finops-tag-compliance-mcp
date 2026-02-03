@@ -277,15 +277,20 @@ Resources:
     Properties:
       GroupDescription: Security group for VPC endpoints
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          SourceSecurityGroupId: !Ref MCPServerSecurityGroup
-          Description: HTTPS from MCP Server
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-vpce-sg-${Environment}'
+
+  # Separate ingress rule to avoid circular dependency
+  VPCEndpointFromMCPServerIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref VPCEndpointSecurityGroup
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      SourceSecurityGroupId: !Ref MCPServerSecurityGroup
+      Description: HTTPS from MCP Server
 
   # EC2 VPC Endpoint
   EC2VPCEndpoint:
@@ -355,12 +360,6 @@ Resources:
           ToPort: 443
           CidrIp: 0.0.0.0/0
           Description: HTTPS from anywhere
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          DestinationSecurityGroupId: !Ref MCPServerSecurityGroup
-          Description: Forward to MCP Server
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-alb-sg-${Environment}'
@@ -371,12 +370,6 @@ Resources:
     Properties:
       GroupDescription: Security group for MCP Server (ALB access only)
       VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
-          SourceSecurityGroupId: !Ref ALBSecurityGroup
-          Description: HTTP from ALB only
       SecurityGroupEgress:
         - IpProtocol: tcp
           FromPort: 443
@@ -386,6 +379,27 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-server-sg-${Environment}'
+
+  # Separate ingress rules to break circular dependency
+  ALBToMCPServerIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MCPServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: HTTP from ALB only
+
+  ALBToMCPServerEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      DestinationSecurityGroupId: !Ref MCPServerSecurityGroup
+      Description: Forward to MCP Server
 
   # ==========================================================================
   # Application Load Balancer (Requirements: 18.3, 21.2)
@@ -422,7 +436,8 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref MCPTargetGroup
 
-  # Target Group
+  # Target Group - Note: EC2 instance is registered separately via MCPTargetGroupAttachment
+  # to avoid circular dependency (Target Group needs to exist before EC2 can reference it)
   MCPTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -437,10 +452,19 @@ Resources:
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       Matcher:
-        HttpCode: '200'
+        HttpCode: '200-299'
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-tg-${Environment}'
+
+  # Register EC2 instance with Target Group via CloudFormation (more reliable than UserData)
+  MCPTargetGroupAttachment:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
+    DependsOn: MCPServerInstance
+    Properties:
+      TargetGroupArn: !Ref MCPTargetGroup
+      TargetId: !Ref MCPServerInstance
+      Port: 8080
 
   # ==========================================================================
   # Secrets Manager for API Keys (Requirement 19.6)
@@ -480,11 +504,6 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
-      Tags:
-        - Key: Application
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
 
   MCPServerPolicy:
     Type: AWS::IAM::Policy
@@ -601,6 +620,8 @@ Resources:
           TLS_ENABLED=false
           CLOUDWATCH_ENABLED=true
           CLOUDWATCH_LOG_GROUP=/mcp-tagging/${Environment}
+          AWS_REGION=${AWS::Region}
+          ENVIRONMENT=${Environment}
           EOF
 
           # Fetch API key from Secrets Manager and add to env file
@@ -620,14 +641,6 @@ Resources:
           Value: !Ref ProjectName
         - Key: Environment
           Value: !Ref Environment
-
-  # Register instance with target group
-  MCPTargetGroupAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    Properties:
-      TargetGroupArn: !Ref MCPTargetGroup
-      TargetId: !Ref MCPServerInstance
-      Port: 8080
 
   # ==========================================================================
   # CloudWatch Logging
