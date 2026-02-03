@@ -9,6 +9,7 @@ Description: |
   - VPC endpoints for AWS APIs
   - API key authentication via Secrets Manager
   - CloudWatch alarms for security monitoring
+  - Optional S3 bucket for tagging policy configuration
 
   Requirements: 18.1-18.6, 19.6, 21.1-21.5, 23.2, 23.5
 
@@ -58,7 +59,7 @@ Parameters:
   PolicyBucketName:
     Type: String
     Default: ''
-    Description: S3 bucket name for tagging policy (leave empty for auto-generated name)
+    Description: Optional S3 bucket name for tagging policy configuration
 
   VpcCIDR:
     Type: String
@@ -100,10 +101,6 @@ Metadata:
           - AlertEmail
           - CORSAllowedOrigins
       - Label:
-          default: Storage Configuration
-        Parameters:
-          - PolicyBucketName
-      - Label:
           default: Network Configuration
         Parameters:
           - VpcCIDR
@@ -117,22 +114,24 @@ Metadata:
           - InstanceType
           - KeyPairName
           - DomainName
+      - Label:
+          default: Storage Configuration
+        Parameters:
+          - PolicyBucketName
 
 Conditions:
   HasPolicyBucketName: !Not [!Equals [!Ref PolicyBucketName, '']]
 
 Resources:
   # ==========================================================================
-  # S3 Bucket for Policy Configuration
+  # S3 Bucket for Policy Configuration (Optional)
   # ==========================================================================
 
   PolicyConfigBucket:
     Type: AWS::S3::Bucket
+    Condition: HasPolicyBucketName
     Properties:
-      BucketName: !If
-        - HasPolicyBucketName
-        - !Ref PolicyBucketName
-        - !Sub '${ProjectName}-config-${Environment}-${AWS::AccountId}'
+      BucketName: !Ref PolicyBucketName
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
@@ -309,9 +308,65 @@ Resources:
       RouteTableId: !Ref PrivateRouteTable
 
   # ==========================================================================
-  # VPC Endpoints (Requirement 21.4)
+  # Security Groups (Requirements: 21.2, 21.3)
+  # Using separate ingress/egress rules to avoid circular dependencies
   # ==========================================================================
 
+  # ALB Security Group - Public facing
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS from anywhere
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-alb-sg-${Environment}'
+
+  # MCP Server Security Group - Requirement 21.3: Only allow from ALB
+  MCPServerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for MCP Server (ALB access only)
+      VpcId: !Ref VPC
+      SecurityGroupEgress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: HTTPS for AWS APIs
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-server-sg-${Environment}'
+
+  # Separate ingress rule to avoid circular dependency
+  MCPServerIngressFromALB:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref MCPServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      SourceSecurityGroupId: !Ref ALBSecurityGroup
+      Description: HTTP from ALB only
+
+  # Separate egress rule for ALB to MCP Server
+  ALBEgressToMCPServer:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref ALBSecurityGroup
+      IpProtocol: tcp
+      FromPort: 8080
+      ToPort: 8080
+      DestinationSecurityGroupId: !Ref MCPServerSecurityGroup
+      Description: Forward to MCP Server
+
+  # VPC Endpoint Security Group
   VPCEndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -321,8 +376,8 @@ Resources:
         - Key: Name
           Value: !Sub '${ProjectName}-vpce-sg-${Environment}'
 
-  # Separate ingress rule to avoid circular dependency
-  VPCEndpointFromMCPServerIngress:
+  # Separate ingress rule for VPC endpoints
+  VPCEndpointIngressFromMCPServer:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
       GroupId: !Ref VPCEndpointSecurityGroup
@@ -331,6 +386,10 @@ Resources:
       ToPort: 443
       SourceSecurityGroupId: !Ref MCPServerSecurityGroup
       Description: HTTPS from MCP Server
+
+  # ==========================================================================
+  # VPC Endpoints (Requirement 21.4)
+  # ==========================================================================
 
   # EC2 VPC Endpoint
   EC2VPCEndpoint:
@@ -385,63 +444,6 @@ Resources:
       PrivateDnsEnabled: true
 
   # ==========================================================================
-  # Security Groups (Requirements: 21.2, 21.3)
-  # ==========================================================================
-
-  # ALB Security Group - Public facing
-  ALBSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for Application Load Balancer
-      VpcId: !Ref VPC
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS from anywhere
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-alb-sg-${Environment}'
-
-  # MCP Server Security Group - Requirement 21.3: Only allow from ALB
-  MCPServerSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: Security group for MCP Server (ALB access only)
-      VpcId: !Ref VPC
-      SecurityGroupEgress:
-        - IpProtocol: tcp
-          FromPort: 443
-          ToPort: 443
-          CidrIp: 0.0.0.0/0
-          Description: HTTPS for AWS APIs
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-server-sg-${Environment}'
-
-  # Separate ingress rules to break circular dependency
-  ALBToMCPServerIngress:
-    Type: AWS::EC2::SecurityGroupIngress
-    Properties:
-      GroupId: !Ref MCPServerSecurityGroup
-      IpProtocol: tcp
-      FromPort: 8080
-      ToPort: 8080
-      SourceSecurityGroupId: !Ref ALBSecurityGroup
-      Description: HTTP from ALB only
-
-  ALBToMCPServerEgress:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref ALBSecurityGroup
-      IpProtocol: tcp
-      FromPort: 8080
-      ToPort: 8080
-      DestinationSecurityGroupId: !Ref MCPServerSecurityGroup
-      Description: Forward to MCP Server
-
-  # ==========================================================================
   # Application Load Balancer (Requirements: 18.3, 21.2)
   # ==========================================================================
 
@@ -476,8 +478,7 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref MCPTargetGroup
 
-  # Target Group - Note: EC2 instance is registered separately via MCPTargetGroupAttachment
-  # to avoid circular dependency (Target Group needs to exist before EC2 can reference it)
+  # Target Group
   MCPTargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
@@ -492,19 +493,13 @@ Resources:
       HealthyThresholdCount: 2
       UnhealthyThresholdCount: 3
       Matcher:
-        HttpCode: '200-299'
+        HttpCode: '200'
+      Targets:
+        - Id: !Ref MCPServerInstance
+          Port: 8080
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-tg-${Environment}'
-
-  # Register EC2 instance with Target Group via CloudFormation (more reliable than UserData)
-  MCPTargetGroupAttachment:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroupAttachment
-    DependsOn: MCPServerInstance
-    Properties:
-      TargetGroupArn: !Ref MCPTargetGroup
-      TargetId: !Ref MCPServerInstance
-      Port: 8080
 
   # ==========================================================================
   # Secrets Manager for API Keys (Requirement 19.6)
@@ -544,6 +539,11 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
         - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
 
   MCPServerPolicy:
     Type: AWS::IAM::Policy
@@ -585,14 +585,6 @@ Resources:
               - tag:GetTagValues
               - sts:GetCallerIdentity
             Resource: '*'
-          # S3 access for policy config bucket
-          - Effect: Allow
-            Action:
-              - s3:GetObject
-              - s3:ListBucket
-            Resource:
-              - !GetAtt PolicyConfigBucket.Arn
-              - !Sub '${PolicyConfigBucket.Arn}/*'
           # Secrets Manager access for API keys
           - Effect: Allow
             Action:
@@ -606,6 +598,25 @@ Resources:
             Condition:
               StringEquals:
                 cloudwatch:namespace: !Sub '${ProjectName}/${Environment}'
+
+  # Conditional S3 policy for policy config bucket
+  MCPServerS3Policy:
+    Type: AWS::IAM::Policy
+    Condition: HasPolicyBucketName
+    Properties:
+      PolicyName: !Sub '${ProjectName}-s3-policy-${Environment}'
+      Roles:
+        - !Ref MCPServerRole
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !Sub 'arn:aws:s3:::${PolicyBucketName}'
+              - !Sub 'arn:aws:s3:::${PolicyBucketName}/*'
 
   MCPServerInstanceProfile:
     Type: AWS::IAM::InstanceProfile
@@ -668,8 +679,6 @@ Resources:
           TLS_ENABLED=false
           CLOUDWATCH_ENABLED=true
           CLOUDWATCH_LOG_GROUP=/mcp-tagging/${Environment}
-          AWS_REGION=${AWS::Region}
-          ENVIRONMENT=${Environment}
           EOF
 
           # Fetch API key from Secrets Manager and add to env file
@@ -840,13 +849,15 @@ Outputs:
       Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
 
   PolicyConfigBucketName:
-    Description: S3 bucket name for tagging policy configuration
+    Condition: HasPolicyBucketName
+    Description: S3 bucket name for policy configuration
     Value: !Ref PolicyConfigBucket
     Export:
-      Name: !Sub '${AWS::StackName}-PolicyConfigBucketName'
+      Name: !Sub '${AWS::StackName}-PolicyBucketName'
 
   PolicyConfigBucketArn:
-    Description: S3 bucket ARN for tagging policy configuration
+    Condition: HasPolicyBucketName
+    Description: S3 bucket ARN for policy configuration
     Value: !GetAtt PolicyConfigBucket.Arn
     Export:
-      Name: !Sub '${AWS::StackName}-PolicyConfigBucketArn'
+      Name: !Sub '${AWS::StackName}-PolicyBucketArn'
