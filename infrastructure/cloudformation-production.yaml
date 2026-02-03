@@ -55,6 +55,11 @@ Parameters:
     Default: 'https://claude.ai'
     Description: Comma-separated list of allowed CORS origins
 
+  PolicyBucketName:
+    Type: String
+    Default: ''
+    Description: S3 bucket name for tagging policy (leave empty for auto-generated name)
+
   VpcCIDR:
     Type: String
     Default: 10.0.0.0/16
@@ -95,9 +100,16 @@ Metadata:
           - AlertEmail
           - CORSAllowedOrigins
       - Label:
+          default: Storage Configuration
+        Parameters:
+          - PolicyBucketName
+      - Label:
           default: Network Configuration
         Parameters:
           - VpcCIDR
+
+Conditions:
+  HasPolicyBucketName: !Not [!Equals [!Ref PolicyBucketName, '']]
           - PublicSubnet1CIDR
           - PublicSubnet2CIDR
           - PrivateSubnet1CIDR
@@ -110,6 +122,34 @@ Metadata:
           - DomainName
 
 Resources:
+  # ==========================================================================
+  # S3 Bucket for Policy Configuration
+  # ==========================================================================
+
+  PolicyConfigBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !If
+        - HasPolicyBucketName
+        - !Ref PolicyBucketName
+        - !Sub '${ProjectName}-config-${Environment}-${AWS::AccountId}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
   # ==========================================================================
   # VPC and Networking (Requirements: 21.1, 21.2)
   # ==========================================================================
@@ -545,6 +585,14 @@ Resources:
               - tag:GetTagValues
               - sts:GetCallerIdentity
             Resource: '*'
+          # S3 access for policy config bucket
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListBucket
+            Resource:
+              - !GetAtt PolicyConfigBucket.Arn
+              - !Sub '${PolicyConfigBucket.Arn}/*'
           # Secrets Manager access for API keys
           - Effect: Allow
             Action:
@@ -790,3 +838,15 @@ Outputs:
     Value: !Ref PrivateSubnet2
     Export:
       Name: !Sub '${AWS::StackName}-PrivateSubnet2Id'
+
+  PolicyConfigBucketName:
+    Description: S3 bucket name for tagging policy configuration
+    Value: !Ref PolicyConfigBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-PolicyConfigBucketName'
+
+  PolicyConfigBucketArn:
+    Description: S3 bucket ARN for tagging policy configuration
+    Value: !GetAtt PolicyConfigBucket.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-PolicyConfigBucketArn'
