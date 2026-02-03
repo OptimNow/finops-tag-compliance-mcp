@@ -59,6 +59,7 @@ Server runs on `http://localhost:8080`. Verify: `curl http://localhost:8080/heal
 ```bash
 docker-compose down      # Stop
 docker-compose restart   # Restart
+docker-compose down && docker-compose build --no-cache && docker-compose up -d  # Rebuild
 ```
 
 ---
@@ -85,7 +86,7 @@ Internet -> HTTP:8080 -> EC2 (public subnet) -> AWS APIs
    - VpcId: Your VPC ID
    - SubnetId: A public subnet ID
    - PolicyBucketName: Leave empty for auto-generated name
-   - AllowedCIDR: Your IP or `0.0.0.0/0` for testing
+   - AllowedCIDR: Your IP (e.g., `1.2.3.4/32`) or `0.0.0.0/0` for testing
 4. Check "I acknowledge that AWS CloudFormation might create IAM resources"
 5. Create stack (5-10 minutes)
 
@@ -144,7 +145,7 @@ Features:
 
 #### Prerequisites
 
-1. ACM Certificate for your domain
+1. ACM Certificate for your domain (e.g., `*.yourdomain.com`)
    - Go to Certificate Manager -> Request certificate
    - Add CNAME record to your DNS for validation
    - Wait for status "Issued"
@@ -173,7 +174,7 @@ After stack creation:
 
 1. Get ALB DNS from CloudFormation Outputs (`LoadBalancerDNS`)
 2. Create CNAME record in your DNS provider:
-   - Name: `mcp`
+   - Name: `mcp` (creates `mcp.yourdomain.com`)
    - Value: ALB DNS name
 
 #### Connect to EC2 via SSM
@@ -189,57 +190,116 @@ INSTANCE_ID=$(aws cloudformation describe-stacks --stack-name mcp-tagging-prod \
 aws ssm start-session --target $INSTANCE_ID --region us-east-1
 ```
 
-#### Deploy Application on EC2
+#### Manual Setup (UserData typically does not execute)
 
-Run these commands one at a time via SSM:
+The CloudFormation UserData script typically does not execute on first boot. You need to set up the environment manually via SSM.
+
+**Step 1: Install required packages**
 
 ```bash
-sudo yum install -y git
+sudo yum install -y git docker jq
+```
+
+**Step 2: Start Docker**
+
+```bash
+sudo systemctl start docker
 ```
 
 ```bash
-cd /opt/tagging-mcp && sudo git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git .
+sudo systemctl enable docker
+```
+
+```bash
+sudo usermod -aG docker ec2-user
+```
+
+**Step 3: Create app directory and clone repo**
+
+```bash
+sudo mkdir -p /opt/tagging-mcp
+```
+
+```bash
+cd /opt/tagging-mcp
+```
+
+```bash
+sudo git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git .
 ```
 
 ```bash
 sudo chown -R ec2-user:ec2-user /opt/tagging-mcp
 ```
 
-```bash
-API_KEY=$(aws secretsmanager get-secret-value --secret-id mcp-tagging/prod/api-keys --query SecretString --output text | jq -r '.primary_key') && echo "API_KEY: $API_KEY"
-```
+**Step 4: Exit and reconnect SSM** (required for docker group to take effect)
+
+Close the SSM session and reconnect via EC2 Console -> Connect -> Session Manager.
+
+#### Deploy Application on EC2
+
+After reconnecting to SSM, run these commands one at a time.
+
+**Step 5: Get the API key**
 
 ```bash
-cat > /opt/tagging-mcp/.env << EOF
+aws secretsmanager get-secret-value --secret-id mcp-tagging/prod/api-keys --query SecretString --output text
+```
+
+Copy the `primary_key` value from the JSON output (e.g., `TSvlygVknr1XhJ4UUEz6VEW5lrvjgDY6`).
+
+**Step 6: Create the .env file** (replace YOUR_API_KEY with the value from step 5)
+
+```bash
+sudo tee /opt/tagging-mcp/.env << 'EOF'
 AUTH_ENABLED=true
 CORS_ALLOWED_ORIGINS=https://claude.ai
 CLOUDWATCH_ENABLED=true
 CLOUDWATCH_LOG_GROUP=/mcp-tagging/prod
-AWS_REGION=us-east-1
+AWS_REGION=ca-central-1
 ENVIRONMENT=production
 REDIS_URL=redis://localhost:6379/0
+API_KEYS=YOUR_API_KEY
 EOF
 ```
 
 ```bash
-echo "API_KEYS=$API_KEY" >> /opt/tagging-mcp/.env && chmod 600 /opt/tagging-mcp/.env
+sudo chmod 600 /opt/tagging-mcp/.env
 ```
 
 ```bash
-cd /opt/tagging-mcp && sudo docker build -t mcp-server .
+sudo chown ec2-user:ec2-user /opt/tagging-mcp/.env
 ```
+
+**Step 7: Build Docker image**
+
+```bash
+cd /opt/tagging-mcp
+```
+
+```bash
+sudo docker build -t mcp-server .
+```
+
+**Step 8: Start Redis**
 
 ```bash
 sudo docker run -d --name redis -p 6379:6379 --restart unless-stopped redis:7-alpine
 ```
 
+**Step 9: Start MCP Server**
+
 ```bash
 sudo docker run -d --name mcp-server --network host --env-file /opt/tagging-mcp/.env -v /opt/tagging-mcp/policies:/app/policies:ro -v /opt/tagging-mcp/data:/app/data --restart unless-stopped mcp-server
 ```
 
+**Step 10: Verify the server is running**
+
 ```bash
 curl http://localhost:8080/health
 ```
+
+Expected output: `{"status":"healthy",...}`
 
 #### Verify HTTPS Access
 
