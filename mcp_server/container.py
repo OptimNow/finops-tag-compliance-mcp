@@ -173,9 +173,9 @@ class ServiceContainer:
         if s.multi_region_enabled and self._aws_client and self._policy_service:
             try:
                 region_discovery = RegionDiscoveryService(
-                    aws_client=self._aws_client,
+                    ec2_client=self._aws_client.ec2,
                     cache=self._redis_cache,
-                    cache_ttl_seconds=s.region_cache_ttl_seconds,
+                    cache_ttl=s.region_cache_ttl_seconds,
                 )
                 regional_client_factory = RegionalClientFactory()
                 self._multi_region_scanner = MultiRegionScanner(
