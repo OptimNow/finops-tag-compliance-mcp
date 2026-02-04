@@ -72,32 +72,37 @@ class RegionalSummary(BaseModel):
 
 class RegionalScanResult(BaseModel):
     """Result from scanning a single region.
-    
+
     Contains the detailed results of scanning resources in a specific AWS region,
     including success status, resources found, violations, and timing information.
     """
-    
+
     region: str = Field(..., description="AWS region code")
     success: bool = Field(..., description="Whether the scan succeeded")
     resources: list[dict] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="Resources found in this region"
     )
     violations: list[Violation] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="Violations found in this region"
     )
     compliant_count: int = Field(
-        default=0, 
+        default=0,
         ge=0,
         description="Number of compliant resources"
     )
+    non_compliant_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of unique non-compliant resources (resources with at least one violation)"
+    )
     error_message: str | None = Field(
-        default=None, 
+        default=None,
         description="Error message if scan failed"
     )
     scan_duration_ms: int = Field(
-        default=0, 
+        default=0,
         ge=0,
         description="Scan duration in milliseconds"
     )

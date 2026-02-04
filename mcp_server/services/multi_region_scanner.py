@@ -487,17 +487,26 @@ class MultiRegionScanner:
         )
         
         # Convert to RegionalScanResult
-        # Add region attribute to each resource (Requirement 4.2)
+        # Build unique resource list from violations (one entry per resource, not per violation)
+        # A resource with 3 missing tags should be counted as 1 resource, not 3
         resources_with_region = []
+        seen_resource_ids: set[str] = set()
+
         for violation in compliance_result.violations:
-            resource_dict = {
-                "resource_id": violation.resource_id,
-                "resource_type": violation.resource_type,
-                "region": region,  # Add region attribute
-                "arn": violation.resource_id,  # ARN is typically the resource_id
-            }
-            resources_with_region.append(resource_dict)
-        
+            resource_id = violation.resource_id
+            if resource_id not in seen_resource_ids:
+                seen_resource_ids.add(resource_id)
+                resource_dict = {
+                    "resource_id": resource_id,
+                    "resource_type": violation.resource_type,
+                    "region": region,  # Add region attribute
+                    "arn": resource_id,  # ARN is typically the resource_id
+                }
+                resources_with_region.append(resource_dict)
+
+        # Calculate unique non-compliant resources (resources with at least one violation)
+        non_compliant_count = len(seen_resource_ids)
+
         # Build resource list from violations (resources with issues)
         # and add compliant resources count
         return RegionalScanResult(
@@ -506,6 +515,7 @@ class MultiRegionScanner:
             resources=resources_with_region,
             violations=compliance_result.violations,
             compliant_count=compliance_result.compliant_resources,
+            non_compliant_count=non_compliant_count,  # Track unique non-compliant resources
             error_message=None,
         )
 
@@ -563,41 +573,43 @@ class MultiRegionScanner:
         for result in successful_results:
             # Skip global result in regional breakdown if it's marked
             is_global_scan = global_result is not None and result.region == global_result.region
-            
+
             # Count resources, avoiding duplicates for global resources
-            region_resource_count = 0
+            region_non_compliant_count = 0
             for resource in result.resources:
                 resource_id = resource.get("resource_id", "")
                 is_global = resource.get("is_global", False)
-                
+
                 if is_global:
                     # Global resources: only count once (Requirement 5.3)
                     if resource_id not in seen_resource_ids:
                         seen_resource_ids.add(resource_id)
-                        region_resource_count += 1
+                        region_non_compliant_count += 1
                 else:
-                    region_resource_count += 1
-            
-            # Calculate region-specific metrics
-            region_violations = [v for v in result.violations if v.resource_id not in seen_resource_ids or not is_global_scan]
-            region_violation_count = len(result.violations)
+                    region_non_compliant_count += 1
+
+            # Calculate region-specific metrics using UNIQUE resource counts
+            # Use non_compliant_count from RegionalScanResult (unique resources with violations)
+            # instead of counting violations (which inflates the count)
             region_compliant = result.compliant_count
-            region_total = region_compliant + region_violation_count
-            
+            region_non_compliant = result.non_compliant_count if result.non_compliant_count > 0 else region_non_compliant_count
+            region_total = region_compliant + region_non_compliant
+            region_violation_count = len(result.violations)  # Keep for reporting
+
             # Calculate region compliance score
             if region_total > 0:
                 region_score = region_compliant / region_total
             else:
                 region_score = 1.0  # Empty region is fully compliant
-            
+
             # Calculate region cost gap
             region_cost_gap = sum(v.cost_impact_monthly for v in result.violations)
-            
+
             # Add to totals
             total_resources += region_total
             total_compliant += region_compliant
             total_cost_gap += region_cost_gap
-            
+
             # Add to regional breakdown
             regional_breakdown[result.region] = RegionalSummary(
                 region=result.region,
