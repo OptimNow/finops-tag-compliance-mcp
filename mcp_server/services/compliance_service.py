@@ -14,7 +14,11 @@ from ..models.compliance import ComplianceResult
 from ..models.violations import Violation
 from ..services.policy_service import PolicyService
 from ..utils.resource_type_config import get_resource_type_config
-from ..utils.resource_utils import extract_account_from_arn, fetch_resources_by_type
+from ..utils.resource_utils import (
+    expand_all_to_supported_types,
+    extract_account_from_arn,
+    fetch_resources_by_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -219,10 +223,16 @@ class ComplianceService:
             f"Scanning resources: {resource_types}, filters: {filters}, severity: {severity}"
         )
 
+        # Expand "all" to the full list of supported resource types
+        # This ensures we scan each type individually to catch resources with zero tags
+        expanded_resource_types = expand_all_to_supported_types(resource_types)
+        if expanded_resource_types != resource_types:
+            logger.info(f"Expanded 'all' to {len(expanded_resource_types)} resource types")
+
         # Collect all resources across resource types
         all_resources = []
 
-        for resource_type in resource_types:
+        for resource_type in expanded_resource_types:
             try:
                 resources = await self._fetch_resources_by_type(resource_type, filters)
                 all_resources.extend(resources)
