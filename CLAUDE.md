@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Quick Reference
+
+| Action | Command |
+|--------|---------|
+| Run MCP server (stdio) | `python -m mcp_server.stdio_server` |
+| Run HTTP server | `python run_server.py` |
+| Run all tests | `python run_tests.py` |
+| Run unit tests only | `python run_tests.py --unit` |
+| Format code | `black mcp_server/ tests/` |
+| Type check | `mypy mcp_server/` |
+| Test with MCP Inspector | `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server` |
+
+**Critical Files:**
+- `mcp_server/stdio_server.py` - MCP entry point (Claude Desktop)
+- `mcp_server/container.py` - Service container (dependency injection)
+- `mcp_server/services/compliance_service.py` - Core compliance logic
+- `mcp_server/services/multi_region_scanner.py` - Multi-region orchestration
+- `policies/tagging_policy.json` - Tagging policy configuration
+- `config/resource_types.json` - Resource types configuration
+
 ## Project Overview
 
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
@@ -147,6 +167,66 @@ mcp_server/
 └── utils/               # Correlation IDs, CloudWatch, error sanitization
 ```
 
+### Multi-Region Scanning
+
+The server supports scanning AWS resources across all enabled regions in parallel. This is critical for organizations with resources distributed globally.
+
+**Architecture:**
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      MULTI-REGION SCANNING                              │
+├─────────────────────────────────────────────────────────────────────────┤
+│  services/multi_region_scanner.py  → Orchestrates parallel regional scans│
+│  services/region_discovery.py      → Discovers enabled AWS regions       │
+│  clients/regional_client_factory.py→ Creates/caches regional AWS clients │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Components:**
+- `MultiRegionScanner` - Coordinates parallel scanning across regions using asyncio
+- `RegionDiscoveryService` - Queries EC2 to find enabled regions in the account
+- `RegionalClientFactory` - Creates and caches regional `AWSClient` instances
+
+**How It Works:**
+1. `RegionDiscoveryService` queries EC2 to get all enabled regions
+2. `RegionalClientFactory` creates an `AWSClient` for each region (cached)
+3. `MultiRegionScanner.scan_all_regions()` runs compliance checks in parallel
+4. Results are aggregated into a `MultiRegionComplianceResult` with regional breakdown
+
+**Tools with Multi-Region Support:**
+| Tool | Multi-Region | Notes |
+|------|-------------|-------|
+| `check_tag_compliance` | ✅ Full | Returns regional breakdown and metadata |
+| `find_untagged_resources` | ✅ Full | Searches all regions in parallel |
+| `validate_resource_tags` | ✅ Via ARN | Uses regional client based on ARN region |
+| `get_cost_attribution_gap` | ✅ Full | Fetches resources from all regions |
+| `suggest_tags` | ✅ Via ARN | Uses regional client based on ARN region |
+| `get_tagging_policy` | N/A | No AWS calls |
+| `generate_compliance_report` | ✅ Inherits | Uses check_tag_compliance internally |
+| `get_violation_history` | N/A | Local database only |
+
+**Configuration:**
+- `MULTI_REGION_ENABLED` - Enable multi-region scanning (default: `true`)
+- `AWS_REGION` - Default region for Cost Explorer (always `us-east-1` for costs)
+
+**Response Format (Multi-Region):**
+```json
+{
+  "compliance_score": 0.75,
+  "total_resources": 150,
+  "region_metadata": {
+    "total_regions": 5,
+    "successful_regions": 5,
+    "failed_regions": 0,
+    "skipped_regions": 0
+  },
+  "regional_breakdown": {
+    "us-east-1": { "total_resources": 50, "compliance_score": 0.80 },
+    "eu-west-3": { "total_resources": 30, "compliance_score": 0.70 }
+  }
+}
+```
+
 ### Service Layer Details
 
 The application follows a **service-oriented architecture** with clear separation of concerns:
@@ -156,6 +236,7 @@ The application follows a **service-oriented architecture** with clear separatio
 - `RedisCache` - Caching layer for compliance results (1-hour TTL)
 - `PolicyService` - Loads and validates tagging policy from `policies/tagging_policy.json`
 - `ComplianceService` - Core compliance checking logic (uses AWS + Policy services)
+- `MultiRegionScanner` - Orchestrates parallel multi-region compliance scans
 - `AuditService` - SQLite-based audit logging for all tool invocations
 - `HistoryService` - SQLite-based storage for compliance scan history
 - `SecurityService` - Security event monitoring and rate limiting
@@ -169,6 +250,11 @@ ServiceContainer
   │     ├── AWSClient
   │     ├── PolicyService
   │     └── RedisCache (optional)
+  ├── MultiRegionScanner
+  │     ├── RegionalClientFactory
+  │     │     └── AWSClient (per region, cached)
+  │     ├── RegionDiscoveryService
+  │     └── ComplianceService
   ├── AuditService
   ├── HistoryService
   ├── SecurityService
@@ -689,10 +775,12 @@ Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [
 - `mcp_server/middleware/cors_middleware.py` - CORS logging middleware
 - `mcp_server/tools/check_tag_compliance.py` - Core compliance scanning tool
 - `mcp_server/services/compliance_service.py` - Compliance checking logic
+- `mcp_server/services/multi_region_scanner.py` - **Multi-region scanning orchestration**
+- `mcp_server/services/region_discovery.py` - AWS region discovery service
 - `mcp_server/clients/aws_client.py` - AWS API wrapper
+- `mcp_server/clients/regional_client_factory.py` - Regional client creation and caching
 - `infrastructure/cloudformation-production.yaml` - Production CloudFormation template
 - `docs/TOOL_LOGIC_REFERENCE.md` - Detailed logic for each tool
 - `docs/TESTING_QUICK_START.md` - Testing guide
 - `docs/SECURITY_CONFIGURATION.md` - Production security configuration guide
-- `REFACTORING_PLAN.md` - Phase 1.9 core library extraction plan
 - `docs/ROADMAP.md` - Overall project roadmap (4 phases + Phase 1.9)

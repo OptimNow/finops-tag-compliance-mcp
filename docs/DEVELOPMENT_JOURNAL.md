@@ -2197,3 +2197,158 @@ Confirmed that the current implementation does NOT do multi-region scanning. The
 - All tests passing
 - Ready for commit and PR
 
+---
+
+## February 4, 2026: Multi-Region Scanning Implementation Complete
+
+### Day 43: Full Multi-Region Support Across All Tools
+
+**The Problem:**
+Multi-region scanning was implemented at the infrastructure level (MultiRegionScanner, RegionalClientFactory, RegionDiscoveryService) but wasn't properly wired into the stdio MCP server. When using Claude Desktop, only us-east-1 resources were being scanned, even when resources existed in other regions like eu-west-3 (Paris).
+
+**Root Cause Analysis:**
+
+1. **stdio_server.py wasn't passing multi_region_scanner**: The tool functions in `stdio_server.py` were calling the underlying tool modules but not passing the `multi_region_scanner` parameter from the ServiceContainer.
+
+2. **Condition blocked "all" mode**: In `check_tag_compliance.py` and `find_untagged_resources.py`, there was a condition that disabled multi-region when using the Tagging API:
+   ```python
+   use_multi_region = (
+       multi_region_scanner is not None
+       and multi_region_scanner.multi_region_enabled
+       and not use_tagging_api  # <-- This blocked multi-region for "all" mode!
+   )
+   ```
+
+3. **Other tools lacked multi-region support**: `get_cost_attribution_gap` and `suggest_tags` had no multi-region awareness.
+
+**The Fixes:**
+
+**Fix 1: Wire multi_region_scanner in stdio_server.py**
+
+Added `multi_region_scanner=_container.multi_region_scanner` to all applicable tool calls:
+- `check_tag_compliance`
+- `find_untagged_resources`
+- `validate_resource_tags`
+- `get_cost_attribution_gap`
+- `suggest_tags`
+
+Also added response serialization for multi-region results:
+```python
+if hasattr(result, "region_metadata"):
+    response["region_metadata"] = {
+        "total_regions": result.region_metadata.total_regions,
+        "successful_regions": result.region_metadata.successful_regions,
+        ...
+    }
+    response["regional_breakdown"] = {...}
+```
+
+**Fix 2: Remove blocking condition for "all" mode**
+
+Changed from:
+```python
+use_multi_region = (
+    multi_region_scanner is not None
+    and multi_region_scanner.multi_region_enabled
+    and not use_tagging_api
+)
+```
+
+To:
+```python
+use_multi_region = (
+    multi_region_scanner is not None
+    and multi_region_scanner.multi_region_enabled
+)
+```
+
+This allows multi-region scanning for ALL resource type modes, including `["all"]`.
+
+**Fix 3: Add multi-region to get_cost_attribution_gap**
+
+- Added `multi_region_scanner` parameter to function signature
+- Updated CostService constructor to accept multi_region_scanner
+- Added `_fetch_resources_multi_region()` method for parallel regional fetching:
+```python
+async def _fetch_resources_multi_region(
+    self,
+    resource_types: list[str]
+) -> list[dict]:
+    """Fetch resources from all regions in parallel."""
+    regions = await self.multi_region_scanner.region_discovery.get_enabled_regions()
+
+    async def fetch_region(region: str) -> list[dict]:
+        client = self.multi_region_scanner.client_factory.get_client(region)
+        # ... fetch resources ...
+
+    tasks = [fetch_region(r) for r in regions]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # ... aggregate results ...
+```
+
+**Fix 4: Add multi-region to suggest_tags**
+
+- Added `multi_region_scanner` parameter
+- Parse ARN to extract resource region
+- Use correct regional client based on ARN:
+```python
+if (
+    multi_region_scanner is not None
+    and multi_region_scanner.multi_region_enabled
+    and region
+    and region != aws_client.region
+):
+    regional_client = multi_region_scanner.client_factory.get_client(region)
+else:
+    regional_client = aws_client
+```
+
+**Python 3.10 Compatibility Fix:**
+
+During development, discovered `from datetime import UTC` is Python 3.11+ only. Fixed by replacing with `from datetime import timezone` and using `timezone.utc` across:
+- 12 source files
+- 9 test files
+
+**Tools Multi-Region Status:**
+
+| Tool | Status | Implementation |
+|------|--------|----------------|
+| `check_tag_compliance` | ✅ Working | Full parallel regional scanning |
+| `find_untagged_resources` | ✅ Working | Full parallel regional scanning |
+| `validate_resource_tags` | ✅ Working | Regional client via ARN |
+| `get_cost_attribution_gap` | ✅ Working | Full parallel regional scanning |
+| `suggest_tags` | ✅ Working | Regional client via ARN |
+| `get_tagging_policy` | N/A | No AWS calls |
+| `generate_compliance_report` | ✅ Working | Uses check_tag_compliance |
+| `get_violation_history` | N/A | Local database only |
+
+**Commits:**
+1. `50ee2e4` - Wire multi_region_scanner into stdio_server tools + Python 3.10 compat
+2. `a122f6c` - Enable multi-region scanning for all resource type modes including "all"
+3. `3de6cf6` - Add multi-region support to remaining MCP tools
+
+**Files Modified:**
+- `mcp_server/stdio_server.py` - Wire scanner to all tools
+- `mcp_server/tools/check_tag_compliance.py` - Remove blocking condition
+- `mcp_server/tools/find_untagged_resources.py` - Remove blocking condition
+- `mcp_server/tools/get_cost_attribution_gap.py` - Add scanner parameter
+- `mcp_server/tools/suggest_tags.py` - Add regional client support
+- `mcp_server/services/cost_service.py` - Add multi-region fetching
+- 21 files for Python 3.10 compatibility (datetime.UTC → timezone.utc)
+
+**What I Learned:**
+
+1. **Wiring is as important as implementation**: The multi-region infrastructure was complete, but tools weren't using it because the entry point (stdio_server.py) wasn't passing the scanner.
+
+2. **Test with real multi-region resources**: Having resources in Paris (eu-west-3) exposed that us-east-1-only scanning was happening.
+
+3. **ARN-based tools need regional awareness**: For tools like `suggest_tags` that work on specific ARNs, the region is embedded in the ARN and must be extracted to use the correct regional client.
+
+4. **Python version matters**: Code that works on 3.11+ (datetime.UTC) silently breaks on 3.10. Always test on the minimum supported version.
+
+**Current Status:**
+- Multi-region scanning works across all applicable tools
+- Paris resources now visible alongside us-east-1 resources
+- Regional breakdown included in compliance results
+- All changes committed and pushed to feat/multi-region-scanning branch
+
