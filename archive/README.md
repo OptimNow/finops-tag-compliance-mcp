@@ -9,6 +9,7 @@ This directory contains historical files that are no longer needed for active de
   - PHASE-1-SPECIFICATION.md (Phase 1 complete)
   - SPECIFICATION.md (superseded by phase-specific docs)
   - REFACTORING_PLAN.md (Phase 1.9 planning document)
+  - POLICY_GENERATOR_PROMPT.md (Future feature idea - policy builder web app)
 
 ## Files Moved to Other Locations
 
