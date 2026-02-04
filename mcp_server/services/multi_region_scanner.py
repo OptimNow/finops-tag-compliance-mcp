@@ -136,12 +136,12 @@ class MultiRegionScanner:
         max_retries: int = DEFAULT_MAX_RETRIES,
         base_delay_seconds: float = DEFAULT_BASE_DELAY_SECONDS,
         max_delay_seconds: float = DEFAULT_MAX_DELAY_SECONDS,
-        multi_region_enabled: bool = True,
+        allowed_regions: list[str] | None = None,
         default_region: str = "us-east-1",
     ):
         """
         Initialize with dependencies and configuration.
-        
+
         Args:
             region_discovery: Service for discovering enabled regions
             client_factory: Factory for creating regional AWS clients
@@ -152,11 +152,10 @@ class MultiRegionScanner:
             max_retries: Maximum retry attempts for transient errors (default: 3)
             base_delay_seconds: Base delay for exponential backoff (default: 1.0)
             max_delay_seconds: Maximum delay between retries (default: 30.0)
-            multi_region_enabled: Enable multi-region scanning (default: True).
-                                 When False, only the default region is scanned.
-                                 Requirements: 7.1, 7.4
-            default_region: Default AWS region to use when multi-region is disabled
-                           (default: "us-east-1"). Requirements: 7.4
+            allowed_regions: Optional list of regions to restrict scanning to.
+                            If None, all enabled regions in the account are scanned.
+                            If set, only these regions will be scanned (must be enabled).
+            default_region: Default AWS region for API calls (default: "us-east-1")
         """
         self.region_discovery = region_discovery
         self.client_factory = client_factory
@@ -166,14 +165,26 @@ class MultiRegionScanner:
         self.max_retries = max_retries
         self.base_delay_seconds = base_delay_seconds
         self.max_delay_seconds = max_delay_seconds
-        self.multi_region_enabled = multi_region_enabled
+        self.allowed_regions = allowed_regions
         self.default_region = default_region
-        
-        logger.info(
-            f"MultiRegionScanner initialized: multi_region_enabled={multi_region_enabled}, "
-            f"default_region={default_region}, max_concurrent={max_concurrent_regions}, "
-            f"timeout={region_timeout_seconds}s, max_retries={max_retries}"
-        )
+
+        if allowed_regions:
+            logger.info(
+                f"MultiRegionScanner initialized: allowed_regions={allowed_regions}, "
+                f"max_concurrent={max_concurrent_regions}, "
+                f"timeout={region_timeout_seconds}s, max_retries={max_retries}"
+            )
+        else:
+            logger.info(
+                f"MultiRegionScanner initialized: all enabled regions, "
+                f"max_concurrent={max_concurrent_regions}, "
+                f"timeout={region_timeout_seconds}s, max_retries={max_retries}"
+            )
+
+    @property
+    def multi_region_enabled(self) -> bool:
+        """Backward-compatible property. Multi-region is always enabled."""
+        return True
 
     async def scan_all_regions(
         self,
@@ -183,29 +194,30 @@ class MultiRegionScanner:
     ) -> MultiRegionComplianceResult:
         """
         Scan resources across all enabled regions.
-        
+
         Executes region scans in parallel with configurable concurrency.
         Aggregates results and handles partial failures.
-        
-        When multi_region_enabled is False, only the default region is scanned,
-        skipping region discovery entirely (Requirements 7.1, 7.4).
-        
+
+        Region selection priority:
+        1. User query filter (filters.regions) - most specific
+        2. Infrastructure setting (allowed_regions) - restricts available regions
+        3. All enabled regions in the account - default behavior
+
         Args:
             resource_types: Resource types to scan (e.g., ["ec2:instance", "rds:db"])
-            filters: Optional filters (may include region filter)
+            filters: Optional filters (may include region filter from user query)
             severity: Severity filter for violations ("all", "errors_only", "warnings_only")
-            
+
         Returns:
             Aggregated compliance result from all regions
-            
+
         Raises:
             MultiRegionScanError: If all regions fail to scan
-            
-        Requirements: 3.1, 3.2, 3.3, 3.4, 3.5, 4.1, 4.2, 4.3, 4.4, 4.5, 5.1, 5.2, 5.3, 7.1, 7.4
+            InvalidRegionFilterError: If user requests regions not in allowed list
         """
         logger.info(
             f"Starting multi-region scan: resource_types={resource_types}, "
-            f"filters={filters}, severity={severity}, multi_region_enabled={self.multi_region_enabled}"
+            f"filters={filters}, severity={severity}, allowed_regions={self.allowed_regions}"
         )
 
         # Check if this is an "all" mode scan - expand and handle specially
@@ -224,27 +236,32 @@ class MultiRegionScanner:
         regional_types = [rt for rt in resource_types if not self._is_global_resource_type(rt)]
 
         logger.info(f"Global resource types: {global_types}, Regional types: {regional_types}")
-        
-        # Determine regions to scan based on multi_region_enabled setting
-        # Requirements 7.1, 7.4: When disabled, scan only the default region
-        if not self.multi_region_enabled:
-            logger.info(
-                f"Multi-region scanning disabled. Scanning only default region: {self.default_region}"
-            )
-            enabled_regions = [self.default_region]
-            regions_to_scan = [self.default_region]
-            skipped_regions: list[str] = []
+
+        # Determine regions to scan
+        # Step 1: Get enabled regions from AWS
+        enabled_regions = await self.region_discovery.get_enabled_regions()
+        logger.info(f"Discovered {len(enabled_regions)} enabled regions in account")
+
+        # Step 2: Apply infrastructure restriction (allowed_regions setting)
+        if self.allowed_regions:
+            # Validate that all allowed_regions are actually enabled
+            invalid_allowed = [r for r in self.allowed_regions if r not in enabled_regions]
+            if invalid_allowed:
+                logger.warning(
+                    f"Some allowed_regions are not enabled in the account: {invalid_allowed}"
+                )
+            # Restrict to allowed regions that are also enabled
+            available_regions = [r for r in self.allowed_regions if r in enabled_regions]
+            logger.info(f"Restricted to allowed regions: {available_regions}")
         else:
-            # Get enabled regions (Requirement 3.1)
-            enabled_regions = await self.region_discovery.get_enabled_regions()
-            logger.info(f"Discovered {len(enabled_regions)} enabled regions")
-            
-            # Apply region filter if provided
-            regions_to_scan = self._apply_region_filter(enabled_regions, filters)
-            logger.info(f"Regions to scan after filtering: {regions_to_scan}")
-            
-            # Track skipped regions
-            skipped_regions = [r for r in enabled_regions if r not in regions_to_scan]
+            available_regions = enabled_regions
+
+        # Step 3: Apply user query filter (filters.regions)
+        regions_to_scan = self._apply_region_filter(available_regions, filters)
+        logger.info(f"Regions to scan after user filter: {regions_to_scan}")
+
+        # Track skipped regions (available but not scanned due to user filter)
+        skipped_regions = [r for r in available_regions if r not in regions_to_scan]
         
         # Scan global resources once (Requirement 5.1)
         # Global resources (S3, IAM, CloudFront, Route53) are not region-specific.

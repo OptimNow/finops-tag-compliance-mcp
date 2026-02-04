@@ -169,8 +169,8 @@ class ServiceContainer:
                 self._compliance_service = None
 
         # 6b. Multi-region scanner (depends on AWS + policy + compliance + cache)
-        # Requirements: 7.1, 7.2, 7.3
-        if s.multi_region_enabled and self._aws_client and self._policy_service:
+        # Multi-region scanning is ALWAYS enabled. Use allowed_regions to restrict.
+        if self._aws_client and self._policy_service:
             try:
                 region_discovery = RegionDiscoveryService(
                     ec2_client=self._aws_client.ec2,
@@ -178,7 +178,7 @@ class ServiceContainer:
                     cache_ttl=s.region_cache_ttl_seconds,
                 )
                 regional_client_factory = RegionalClientFactory()
-                
+
                 # Factory function to create ComplianceService for a regional client
                 # Captures policy_service and redis_cache from container scope
                 def make_compliance_service(aws_client: AWSClient) -> ComplianceService:
@@ -187,29 +187,36 @@ class ServiceContainer:
                         policy_service=self._policy_service,
                         cache=self._redis_cache,
                     )
-                
+
                 self._multi_region_scanner = MultiRegionScanner(
                     region_discovery=region_discovery,
                     client_factory=regional_client_factory,
                     compliance_service_factory=make_compliance_service,
                     max_concurrent_regions=s.max_concurrent_regions,
                     region_timeout_seconds=s.region_scan_timeout_seconds,
-                    multi_region_enabled=s.multi_region_enabled,
+                    allowed_regions=s.allowed_regions,
                     default_region=s.aws_region,
                 )
-                logger.info(
-                    f"ServiceContainer: multi-region scanner initialized "
-                    f"(max_concurrent={s.max_concurrent_regions}, "
-                    f"timeout={s.region_scan_timeout_seconds}s)"
-                )
+                if s.allowed_regions:
+                    logger.info(
+                        f"ServiceContainer: multi-region scanner initialized "
+                        f"(allowed_regions={s.allowed_regions}, "
+                        f"max_concurrent={s.max_concurrent_regions}, "
+                        f"timeout={s.region_scan_timeout_seconds}s)"
+                    )
+                else:
+                    logger.info(
+                        f"ServiceContainer: multi-region scanner initialized "
+                        f"(all enabled regions, "
+                        f"max_concurrent={s.max_concurrent_regions}, "
+                        f"timeout={s.region_scan_timeout_seconds}s)"
+                    )
             except Exception as e:
                 logger.warning(
                     f"ServiceContainer: failed to initialize multi-region scanner: {e}"
                 )
                 self._multi_region_scanner = None
         else:
-            if not s.multi_region_enabled:
-                logger.info("ServiceContainer: multi-region scanning is disabled")
             self._multi_region_scanner = None
 
         # 7. Budget tracker (Requirements: 15.3)

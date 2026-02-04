@@ -20,7 +20,7 @@ Requirements: 14.2
 """
 
 
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -161,11 +161,16 @@ class CoreSettings(BaseSettings):
         validation_alias="SECURITY_MONITORING_ENABLED",
     )
 
-    # Multi-Region Scanning Configuration (Requirements: 7.1, 7.2, 7.3)
-    multi_region_enabled: bool = Field(
-        default=True,
-        description="Enable multi-region scanning",
-        validation_alias="MULTI_REGION_ENABLED",
+    # Multi-Region Scanning Configuration
+    # Multi-region scanning is ALWAYS enabled. Use allowed_regions to restrict.
+    allowed_regions: list[str] | None = Field(
+        default=None,
+        description=(
+            "Restrict scanning to specific AWS regions (comma-separated). "
+            "If not set, all enabled regions in the account are scanned. "
+            "Example: ALLOWED_REGIONS=us-east-1,us-west-2,eu-west-1"
+        ),
+        validation_alias="ALLOWED_REGIONS",
     )
     max_concurrent_regions: int = Field(
         default=5,
@@ -242,6 +247,18 @@ class CoreSettings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
+
+    @field_validator("allowed_regions", mode="before")
+    @classmethod
+    def parse_allowed_regions(cls, v):
+        """Parse comma-separated region list from environment variable."""
+        if v is None or v == "":
+            return None
+        if isinstance(v, str):
+            # Parse comma-separated string: "us-east-1,us-west-2,eu-west-1"
+            regions = [r.strip() for r in v.split(",") if r.strip()]
+            return regions if regions else None
+        return v
 
 
 class ServerSettings(CoreSettings):

@@ -206,8 +206,17 @@ The server supports scanning AWS resources across all enabled regions in paralle
 | `get_violation_history` | N/A | Local database only |
 
 **Configuration:**
-- `MULTI_REGION_ENABLED` - Enable multi-region scanning (default: `true`)
+- Multi-region scanning is **always enabled** by default (no toggle)
+- `ALLOWED_REGIONS` - Restrict scanning to specific regions (comma-separated, e.g., `us-east-1,us-west-2,eu-west-1`). If not set, all enabled regions in the AWS account are scanned.
+- `MAX_CONCURRENT_REGIONS` - Maximum regions to scan in parallel (default: `5`, range: 1-20)
+- `REGION_SCAN_TIMEOUT_SECONDS` - Timeout for scanning a single region (default: `60`, range: 10-300)
+- `REGION_CACHE_TTL_SECONDS` - TTL for caching enabled regions list (default: `3600`)
 - `AWS_REGION` - Default region for Cost Explorer (always `us-east-1` for costs)
+
+**Region Hierarchy:**
+1. AWS enabled regions (discovered via EC2 API)
+2. `ALLOWED_REGIONS` infrastructure restriction (limits available regions)
+3. User query filter (further narrows within allowed regions)
 
 **Response Format (Multi-Region):**
 ```json

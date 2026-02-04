@@ -7057,36 +7057,36 @@ class TestRegionFilterApplication:
 
 
 # =============================================================================
-# Property 12: Multi-Region Disabled Mode
+# Property 12: Allowed Regions Restriction
 # =============================================================================
 
 
-class TestMultiRegionDisabledMode:
+class TestAllowedRegionsRestriction:
     """
-    Property 12: Multi-Region Disabled Mode
-    
-    For any scan request when `MULTI_REGION_ENABLED=False`, the MultiRegionScanner
-    SHALL scan only the default configured region, and `region_metadata.total_regions`
-    SHALL equal 1.
-    
+    Property 12: Allowed Regions Restriction
+
+    For any scan request when `allowed_regions` is set, the MultiRegionScanner
+    SHALL scan only the intersection of enabled regions and allowed regions.
+    Multi-region is ALWAYS enabled; use allowed_regions to restrict scanning.
+
     Feature: multi-region-scanning
     Validates: Requirements 7.1, 7.4
     """
 
     @given(
-        default_region=region_name_strategy,
+        allowed_region=region_name_strategy,
         resource_type=regional_resource_type_strategy
     )
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_scans_only_default_region(
-        self, default_region: str, resource_type: str
+    async def test_single_allowed_region_scans_only_that_region(
+        self, allowed_region: str, resource_type: str
     ):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When multi-region is disabled, only the default region SHALL be scanned.
+
+        When allowed_regions contains a single region, only that region SHALL be scanned.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
@@ -7094,27 +7094,30 @@ class TestMultiRegionDisabledMode:
 
         # Track which regions were scanned
         scanned_regions: list[str] = []
-        
-        # Mock RegionDiscoveryService - should NOT be called when disabled
+
+        # Include allowed_region in the enabled regions list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        if allowed_region not in all_enabled:
+            all_enabled.append(allowed_region)
+
+        # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
-        
+
         def get_client_side_effect(region: str) -> MagicMock:
             mock_client = MagicMock()
             mock_client.region = region
             return mock_client
-        
+
         mock_client_factory.get_client = MagicMock(side_effect=get_client_side_effect)
-        
+
         # Mock ComplianceService factory that tracks scanned regions
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
-            
+
             async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
                 scanned_regions.append(aws_client.region)
                 return ComplianceResult(
@@ -7123,47 +7126,128 @@ class TestMultiRegionDisabledMode:
                     compliant_resources=0,
                     violations=[],
                 )
-            
+
             mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
             return mock_service
 
-        # Create scanner with multi_region_enabled=False
+        # Create scanner with single allowed_region
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=[allowed_region],  # Restrict to single region
+            default_region="us-east-1",
         )
-        
+
         # Execute scan
         await scanner.scan_all_regions(
             resource_types=[resource_type],
             filters=None,
             severity="all",
         )
-        
-        # Verify only the default region was scanned
+
+        # Verify only the allowed region was scanned
         assert len(scanned_regions) == 1, (
-            f"Expected exactly 1 region to be scanned when disabled, "
+            f"Expected exactly 1 region to be scanned with allowed_regions=[{allowed_region}], "
             f"but {len(scanned_regions)} were scanned: {scanned_regions}"
         )
-        assert scanned_regions[0] == default_region, (
-            f"Expected default region '{default_region}' to be scanned, "
+        assert scanned_regions[0] == allowed_region, (
+            f"Expected allowed region '{allowed_region}' to be scanned, "
             f"but '{scanned_regions[0]}' was scanned instead"
+        )
+
+    @given(
+        allowed_regions=st.lists(region_name_strategy, min_size=2, max_size=4, unique=True)
+    )
+    @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @pytest.mark.asyncio
+    async def test_multiple_allowed_regions_scans_only_allowed(
+        self, allowed_regions: list[str]
+    ):
+        """
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
+        Validates: Requirements 7.1, 7.4
+
+        When allowed_regions contains multiple regions, only those regions SHALL be scanned.
+        """
+        from unittest.mock import AsyncMock, MagicMock
+        from mcp_server.services.multi_region_scanner import MultiRegionScanner
+        from mcp_server.models.compliance import ComplianceResult
+
+        # Track which regions were scanned
+        scanned_regions: list[str] = []
+
+        # Ensure all allowed regions are in the enabled list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1", "ap-northeast-1"]
+        for region in allowed_regions:
+            if region not in all_enabled:
+                all_enabled.append(region)
+
+        # Mock RegionDiscoveryService
+        mock_region_discovery = MagicMock()
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
+        # Mock RegionalClientFactory
+        mock_client_factory = MagicMock()
+        mock_client_factory.get_client = MagicMock(
+            side_effect=lambda r: MagicMock(region=r)
+        )
+
+        # Mock ComplianceService factory
+        def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
+            mock_service = MagicMock()
+
+            async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
+                scanned_regions.append(aws_client.region)
+                return ComplianceResult(
+                    compliance_score=1.0,
+                    total_resources=5,
+                    compliant_resources=5,
+                    violations=[],
+                )
+
+            mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
+            return mock_service
+
+        # Create scanner with allowed_regions
+        scanner = MultiRegionScanner(
+            region_discovery=mock_region_discovery,
+            client_factory=mock_client_factory,
+            compliance_service_factory=compliance_service_factory,
+            max_concurrent_regions=5,
+            region_timeout_seconds=60,
+            allowed_regions=allowed_regions,
+            default_region="us-east-1",
+        )
+
+        # Execute scan
+        result = await scanner.scan_all_regions(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify total_regions equals allowed_regions count
+        assert result.region_metadata.total_regions == len(allowed_regions), (
+            f"Expected total_regions={len(allowed_regions)} with allowed_regions={allowed_regions}, "
+            f"but got {result.region_metadata.total_regions}"
+        )
+        # Verify only allowed regions were scanned
+        assert set(scanned_regions) == set(allowed_regions), (
+            f"Expected to scan only {allowed_regions}, but scanned {scanned_regions}"
         )
 
     @given(default_region=region_name_strategy)
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_total_regions_equals_one(self, default_region: str):
+    async def test_region_discovery_always_called(self, default_region: str):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When multi-region is disabled, region_metadata.total_regions SHALL equal 1.
+
+        Region discovery SHALL always be called (even with allowed_regions).
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
@@ -7174,76 +7258,13 @@ class TestMultiRegionDisabledMode:
         mock_region_discovery.get_enabled_regions = AsyncMock(
             return_value=["us-east-1", "us-west-2", "eu-west-1"]
         )
-        
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
             side_effect=lambda r: MagicMock(region=r)
-        )
-        
-        # Mock ComplianceService factory
-        def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
-            mock_service = MagicMock()
-            mock_service.check_compliance = AsyncMock(
-                return_value=ComplianceResult(
-                    compliance_score=1.0,
-                    total_resources=5,
-                    compliant_resources=5,
-                    violations=[],
-                )
-            )
-            return mock_service
-        
-        # Create scanner with multi_region_enabled=False
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=compliance_service_factory,
-            max_concurrent_regions=5,
-            region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
-        )
-        
-        # Execute scan
-        result = await scanner.scan_all_regions(
-            resource_types=["ec2:instance"],
-            filters=None,
-            severity="all",
-        )
-        
-        # Verify total_regions equals 1
-        assert result.region_metadata.total_regions == 1, (
-            f"Expected total_regions=1 when disabled, "
-            f"but got {result.region_metadata.total_regions}"
         )
 
-    @given(default_region=region_name_strategy)
-    @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    @pytest.mark.asyncio
-    async def test_disabled_mode_region_discovery_not_called(self, default_region: str):
-        """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
-        Validates: Requirements 7.1, 7.4
-        
-        When multi-region is disabled, region discovery SHALL NOT be called.
-        """
-        from unittest.mock import AsyncMock, MagicMock
-        from mcp_server.services.multi_region_scanner import MultiRegionScanner
-        from mcp_server.models.compliance import ComplianceResult
-        
-        # Mock RegionDiscoveryService - should NOT be called
-        mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
-        
-        # Mock RegionalClientFactory
-        mock_client_factory = MagicMock()
-        mock_client_factory.get_client = MagicMock(
-            side_effect=lambda r: MagicMock(region=r)
-        )
-        
         # Mock ComplianceService factory
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
@@ -7256,15 +7277,15 @@ class TestMultiRegionDisabledMode:
                 )
             )
             return mock_service
-        
-        # Create scanner with multi_region_enabled=False
+
+        # Create scanner with allowed_regions
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
+            allowed_regions=["us-east-1"],
             default_region=default_region,
         )
 
@@ -7274,41 +7295,45 @@ class TestMultiRegionDisabledMode:
             filters=None,
             severity="all",
         )
-        
-        # Verify region discovery was NOT called
-        assert mock_region_discovery.get_enabled_regions.call_count == 0, (
-            f"Expected get_enabled_regions to NOT be called when disabled, "
+
+        # Verify region discovery WAS called (to validate allowed regions)
+        assert mock_region_discovery.get_enabled_regions.call_count >= 1, (
+            f"Expected get_enabled_regions to be called, "
             f"but was called {mock_region_discovery.get_enabled_regions.call_count} times"
         )
 
     @given(
-        default_region=region_name_strategy,
-        region_filter=st.lists(region_name_strategy, min_size=1, max_size=5, unique=True)
+        allowed_regions=st.lists(region_name_strategy, min_size=2, max_size=4, unique=True)
     )
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_ignores_region_filters(
-        self, default_region: str, region_filter: list[str]
+    async def test_user_filter_within_allowed_regions(
+        self, allowed_regions: list[str]
     ):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When multi-region is disabled, region filters SHALL be ignored.
+
+        User filters SHALL further narrow within allowed_regions (intersection).
+        Filter must be a subset of allowed_regions to avoid InvalidRegionFilterError.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
-        
+
         # Track which regions were scanned
         scanned_regions: list[str] = []
-        
+
+        # User filter is a subset of allowed_regions (to test valid narrowing)
+        region_filter = allowed_regions[:1]  # Take first region only
+
+        # Ensure allowed regions are in enabled list
+        all_regions = list(set(allowed_regions + ["us-east-1", "us-west-2"]))
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_regions)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
@@ -7318,7 +7343,7 @@ class TestMultiRegionDisabledMode:
         # Mock ComplianceService factory that tracks scanned regions
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
-            
+
             async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
                 scanned_regions.append(aws_client.region)
                 return ComplianceResult(
@@ -7327,136 +7352,68 @@ class TestMultiRegionDisabledMode:
                     compliant_resources=0,
                     violations=[],
                 )
-            
+
             mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
             return mock_service
-        
-        # Create scanner with multi_region_enabled=False
+
+        # Create scanner with allowed_regions
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=allowed_regions,
+            default_region="us-east-1",
         )
-        
-        # Execute scan WITH a region filter (should be ignored)
+
+        # Execute scan WITH a user region filter (subset of allowed)
         await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
-            filters={"regions": region_filter},  # This filter should be ignored
+            filters={"regions": region_filter},
             severity="all",
         )
-        
-        # Verify only the default region was scanned (filter ignored)
-        assert len(scanned_regions) == 1, (
-            f"Expected exactly 1 region when disabled (filter ignored), "
-            f"but {len(scanned_regions)} were scanned: {scanned_regions}"
-        )
-        assert scanned_regions[0] == default_region, (
-            f"Expected default region '{default_region}' to be scanned "
-            f"(ignoring filter {region_filter}), but '{scanned_regions[0]}' was scanned"
+
+        # Expected: intersection of allowed_regions and region_filter
+        expected_regions = set(allowed_regions) & set(region_filter)
+
+        # Verify only the intersection was scanned
+        assert set(scanned_regions) == expected_regions, (
+            f"Expected intersection of allowed={allowed_regions} and filter={region_filter} = {expected_regions}, "
+            f"but scanned {scanned_regions}"
         )
 
-    @given(default_region=region_name_strategy)
+    @given(allowed_region=region_name_strategy)
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_default_region_configurable(self, default_region: str):
-        """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
-        Validates: Requirements 7.1, 7.4
-        
-        The default region SHALL be configurable when multi-region is disabled.
-        """
-        from unittest.mock import AsyncMock, MagicMock
-        from mcp_server.services.multi_region_scanner import MultiRegionScanner
-        from mcp_server.models.compliance import ComplianceResult
-        
-        # Track which regions were scanned
-        scanned_regions: list[str] = []
-        
-        # Mock RegionDiscoveryService
-        mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=[])
-        
-        # Mock RegionalClientFactory
-        mock_client_factory = MagicMock()
-        mock_client_factory.get_client = MagicMock(
-            side_effect=lambda r: MagicMock(region=r)
-        )
-        
-        # Mock ComplianceService factory
-        def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
-            mock_service = MagicMock()
-            
-            async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
-                scanned_regions.append(aws_client.region)
-                return ComplianceResult(
-                    compliance_score=1.0,
-                    total_resources=0,
-                    compliant_resources=0,
-                    violations=[],
-                )
-            
-            mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
-            return mock_service
-
-        # Create scanner with multi_region_enabled=False and custom default_region
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=compliance_service_factory,
-            max_concurrent_regions=5,
-            region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,  # Custom default region
-        )
-        
-        # Execute scan
-        await scanner.scan_all_regions(
-            resource_types=["ec2:instance"],
-            filters=None,
-            severity="all",
-        )
-        
-        # Verify the configured default region was used
-        assert len(scanned_regions) == 1, (
-            f"Expected exactly 1 region to be scanned"
-        )
-        assert scanned_regions[0] == default_region, (
-            f"Expected configured default region '{default_region}' to be scanned, "
-            f"but '{scanned_regions[0]}' was scanned"
-        )
-
-    @given(default_region=region_name_strategy)
-    @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
-    @pytest.mark.asyncio
-    async def test_disabled_mode_successful_regions_contains_only_default(
-        self, default_region: str
+    async def test_successful_regions_matches_allowed(
+        self, allowed_region: str
     ):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When disabled, successful_regions SHALL contain only the default region.
+
+        When using allowed_regions, successful_regions SHALL only contain allowed regions.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
 
+        # Ensure allowed_region is in enabled list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1"]
+        if allowed_region not in all_enabled:
+            all_enabled.append(allowed_region)
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
             side_effect=lambda r: MagicMock(region=r)
         )
-        
+
         # Mock ComplianceService factory
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
@@ -7469,64 +7426,67 @@ class TestMultiRegionDisabledMode:
                 )
             )
             return mock_service
-        
-        # Create scanner with multi_region_enabled=False
+
+        # Create scanner with single allowed_region
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=[allowed_region],
+            default_region="us-east-1",
         )
-        
+
         # Execute scan
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
-        
-        # Verify successful_regions contains only the default region
+
+        # Verify successful_regions contains only the allowed region
         assert len(result.region_metadata.successful_regions) == 1, (
-            f"Expected 1 successful region when disabled, "
+            f"Expected 1 successful region with allowed_regions=[{allowed_region}], "
             f"but got {len(result.region_metadata.successful_regions)}"
         )
-        assert result.region_metadata.successful_regions[0] == default_region, (
-            f"Expected successful_regions to contain '{default_region}', "
+        assert result.region_metadata.successful_regions[0] == allowed_region, (
+            f"Expected successful_regions to contain '{allowed_region}', "
             f"but got {result.region_metadata.successful_regions}"
         )
 
 
-    @given(default_region=region_name_strategy)
+    @given(allowed_region=region_name_strategy)
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_regional_breakdown_contains_only_default(
-        self, default_region: str
+    async def test_regional_breakdown_matches_allowed(
+        self, allowed_region: str
     ):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When disabled, regional_breakdown SHALL contain only the default region.
+
+        When using allowed_regions, regional_breakdown SHALL only contain allowed regions.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
-        
+
+        # Ensure allowed_region is in enabled list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1"]
+        if allowed_region not in all_enabled:
+            all_enabled.append(allowed_region)
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
             side_effect=lambda r: MagicMock(region=r)
         )
-        
+
         # Mock ComplianceService factory
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
@@ -7540,61 +7500,60 @@ class TestMultiRegionDisabledMode:
             )
             return mock_service
 
-        # Create scanner with multi_region_enabled=False
+        # Create scanner with single allowed_region
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=[allowed_region],
+            default_region="us-east-1",
         )
-        
+
         # Execute scan
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
-        
-        # Verify regional_breakdown contains only the default region
+
+        # Verify regional_breakdown contains only the allowed region
         breakdown_regions = set(result.regional_breakdown.keys())
-        assert breakdown_regions == {default_region}, (
-            f"Expected regional_breakdown to contain only '{default_region}', "
+        assert breakdown_regions == {allowed_region}, (
+            f"Expected regional_breakdown to contain only '{allowed_region}', "
             f"but got {breakdown_regions}"
         )
 
     @pytest.mark.asyncio
-    async def test_disabled_mode_with_default_us_east_1(self):
+    async def test_no_allowed_regions_scans_all_enabled(self):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When disabled with default us-east-1, only us-east-1 SHALL be scanned.
+
+        When allowed_regions is None, all enabled regions SHALL be scanned.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
-        
+
         scanned_regions: list[str] = []
-        
+        enabled_regions = ["us-east-1", "us-west-2", "eu-west-1"]
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=enabled_regions)
 
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
             side_effect=lambda r: MagicMock(region=r)
         )
-        
+
         # Mock ComplianceService factory
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
-            
+
             async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
                 scanned_regions.append(aws_client.region)
                 return ComplianceResult(
@@ -7603,73 +7562,77 @@ class TestMultiRegionDisabledMode:
                     compliant_resources=0,
                     violations=[],
                 )
-            
+
             mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
             return mock_service
-        
-        # Create scanner with multi_region_enabled=False (default region is us-east-1)
+
+        # Create scanner with NO allowed_regions (None = all enabled)
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region="us-east-1",  # Default
+            allowed_regions=None,  # No restriction
+            default_region="us-east-1",
         )
-        
+
         # Execute scan
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
-        
-        # Verify only us-east-1 was scanned
-        assert scanned_regions == ["us-east-1"], (
-            f"Expected only us-east-1 to be scanned, but got {scanned_regions}"
+
+        # Verify all enabled regions were scanned
+        assert set(scanned_regions) == set(enabled_regions), (
+            f"Expected all enabled regions {enabled_regions} to be scanned, but got {scanned_regions}"
         )
-        assert result.region_metadata.total_regions == 1
-        assert result.region_metadata.successful_regions == ["us-east-1"]
+        assert result.region_metadata.total_regions == len(enabled_regions)
+        assert set(result.region_metadata.successful_regions) == set(enabled_regions)
 
 
     @given(
-        default_region=region_name_strategy,
+        allowed_regions=st.lists(region_name_strategy, min_size=1, max_size=3, unique=True),
         resource_types=st.lists(regional_resource_type_strategy, min_size=1, max_size=3, unique=True)
     )
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_works_with_multiple_resource_types(
-        self, default_region: str, resource_types: list[str]
+    async def test_allowed_regions_with_multiple_resource_types(
+        self, allowed_regions: list[str], resource_types: list[str]
     ):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When disabled, scanning multiple resource types SHALL still use only default region.
+
+        Scanning multiple resource types SHALL still respect allowed_regions.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
-        
+
         scanned_regions: list[str] = []
-        
+
+        # Ensure allowed regions are in enabled list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        for region in allowed_regions:
+            if region not in all_enabled:
+                all_enabled.append(region)
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
             side_effect=lambda r: MagicMock(region=r)
         )
-        
+
         # Mock ComplianceService factory
         def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
             mock_service = MagicMock()
-            
+
             async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
                 scanned_regions.append(aws_client.region)
                 return ComplianceResult(
@@ -7678,56 +7641,60 @@ class TestMultiRegionDisabledMode:
                     compliant_resources=len(resource_types),
                     violations=[],
                 )
-            
+
             mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
             return mock_service
 
-        # Create scanner with multi_region_enabled=False
+        # Create scanner with allowed_regions
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=allowed_regions,
+            default_region="us-east-1",
         )
-        
+
         # Execute scan with multiple resource types
         result = await scanner.scan_all_regions(
             resource_types=resource_types,
             filters=None,
             severity="all",
         )
-        
-        # Verify only the default region was scanned
+
+        # Verify only allowed regions were scanned
         unique_scanned = set(scanned_regions)
-        assert unique_scanned == {default_region}, (
-            f"Expected only '{default_region}' to be scanned for {resource_types}, "
+        assert unique_scanned == set(allowed_regions), (
+            f"Expected only {allowed_regions} to be scanned for {resource_types}, "
             f"but got {unique_scanned}"
         )
-        assert result.region_metadata.total_regions == 1
+        assert result.region_metadata.total_regions == len(allowed_regions)
 
-    @given(default_region=region_name_strategy)
+    @given(allowed_regions=st.lists(region_name_strategy, min_size=1, max_size=3, unique=True))
     @settings(max_examples=100, deadline=None, suppress_health_check=[HealthCheck.function_scoped_fixture])
     @pytest.mark.asyncio
-    async def test_disabled_mode_no_skipped_regions(self, default_region: str):
+    async def test_allowed_regions_no_skipped_regions(self, allowed_regions: list[str]):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        When disabled, skipped_regions SHALL be empty (no regions are skipped).
+
+        When using allowed_regions, skipped_regions SHALL be empty (non-allowed regions are not 'skipped').
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
-        
+
+        # Ensure allowed regions are in enabled list
+        all_enabled = ["us-east-1", "us-west-2", "eu-west-1"]
+        for region in allowed_regions:
+            if region not in all_enabled:
+                all_enabled.append(region)
+
         # Mock RegionDiscoveryService
         mock_region_discovery = MagicMock()
-        mock_region_discovery.get_enabled_regions = AsyncMock(
-            return_value=["us-east-1", "us-west-2", "eu-west-1"]
-        )
-        
+        mock_region_discovery.get_enabled_regions = AsyncMock(return_value=all_enabled)
+
         # Mock RegionalClientFactory
         mock_client_factory = MagicMock()
         mock_client_factory.get_client = MagicMock(
@@ -7746,61 +7713,62 @@ class TestMultiRegionDisabledMode:
                 )
             )
             return mock_service
-        
-        # Create scanner with multi_region_enabled=False
+
+        # Create scanner with allowed_regions
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
-            default_region=default_region,
+            allowed_regions=allowed_regions,
+            default_region="us-east-1",
         )
-        
+
         # Execute scan
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
-        
+
         # Verify skipped_regions is empty
         assert len(result.region_metadata.skipped_regions) == 0, (
-            f"Expected no skipped regions when disabled, "
+            f"Expected no skipped regions with allowed_regions, "
             f"but got {result.region_metadata.skipped_regions}"
         )
 
     @pytest.mark.asyncio
-    async def test_enabled_vs_disabled_mode_comparison(self):
+    async def test_allowed_vs_no_restriction_comparison(self):
         """
-        Feature: multi-region-scanning, Property 12: Multi-Region Disabled Mode
+        Feature: multi-region-scanning, Property 12: Allowed Regions Restriction
         Validates: Requirements 7.1, 7.4
-        
-        Enabled mode SHALL scan multiple regions while disabled scans only one.
+
+        No restriction SHALL scan all regions while allowed_regions restricts.
         """
         from unittest.mock import AsyncMock, MagicMock
         from mcp_server.services.multi_region_scanner import MultiRegionScanner
         from mcp_server.models.compliance import ComplianceResult
 
         enabled_regions = ["us-east-1", "us-west-2", "eu-west-1"]
-        
+        allowed_subset = ["us-east-1"]
+
         # Track scanned regions for each mode
-        enabled_scanned: list[str] = []
-        disabled_scanned: list[str] = []
-        
+        unrestricted_scanned: list[str] = []
+        restricted_scanned: list[str] = []
+
         def create_mocks(scanned_list: list[str]):
             mock_region_discovery = MagicMock()
             mock_region_discovery.get_enabled_regions = AsyncMock(return_value=enabled_regions)
-            
+
             mock_client_factory = MagicMock()
             mock_client_factory.get_client = MagicMock(
                 side_effect=lambda r: MagicMock(region=r)
             )
-            
+
             def compliance_service_factory(aws_client: MagicMock) -> MagicMock:
                 mock_service = MagicMock()
-                
+
                 async def check_compliance_side_effect(**kwargs) -> ComplianceResult:
                     scanned_list.append(aws_client.region)
                     return ComplianceResult(
@@ -7809,60 +7777,60 @@ class TestMultiRegionDisabledMode:
                         compliant_resources=0,
                         violations=[],
                     )
-                
+
                 mock_service.check_compliance = AsyncMock(side_effect=check_compliance_side_effect)
                 return mock_service
-            
+
             return mock_region_discovery, mock_client_factory, compliance_service_factory
-        
-        # Test ENABLED mode
-        rd1, cf1, csf1 = create_mocks(enabled_scanned)
-        enabled_scanner = MultiRegionScanner(
+
+        # Test UNRESTRICTED mode (allowed_regions=None)
+        rd1, cf1, csf1 = create_mocks(unrestricted_scanned)
+        unrestricted_scanner = MultiRegionScanner(
             region_discovery=rd1,
             client_factory=cf1,
             compliance_service_factory=csf1,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=True,  # ENABLED
+            allowed_regions=None,  # No restriction
             default_region="us-east-1",
         )
-        
-        enabled_result = await enabled_scanner.scan_all_regions(
+
+        unrestricted_result = await unrestricted_scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
 
-        # Test DISABLED mode
-        rd2, cf2, csf2 = create_mocks(disabled_scanned)
-        disabled_scanner = MultiRegionScanner(
+        # Test RESTRICTED mode (allowed_regions=["us-east-1"])
+        rd2, cf2, csf2 = create_mocks(restricted_scanned)
+        restricted_scanner = MultiRegionScanner(
             region_discovery=rd2,
             client_factory=cf2,
             compliance_service_factory=csf2,
             max_concurrent_regions=5,
             region_timeout_seconds=60,
-            multi_region_enabled=False,  # DISABLED
+            allowed_regions=allowed_subset,  # Restricted
             default_region="us-east-1",
         )
-        
-        disabled_result = await disabled_scanner.scan_all_regions(
+
+        restricted_result = await restricted_scanner.scan_all_regions(
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
         )
-        
-        # Verify enabled mode scanned all regions
-        assert set(enabled_scanned) == set(enabled_regions), (
-            f"Enabled mode should scan all regions. "
-            f"Expected: {enabled_regions}, Got: {enabled_scanned}"
+
+        # Verify unrestricted mode scanned all regions
+        assert set(unrestricted_scanned) == set(enabled_regions), (
+            f"Unrestricted mode should scan all regions. "
+            f"Expected: {enabled_regions}, Got: {unrestricted_scanned}"
         )
-        assert enabled_result.region_metadata.total_regions == len(enabled_regions)
-        
-        # Verify disabled mode scanned only one region
-        assert len(disabled_scanned) == 1, (
-            f"Disabled mode should scan only 1 region, but scanned {len(disabled_scanned)}"
+        assert unrestricted_result.region_metadata.total_regions == len(enabled_regions)
+
+        # Verify restricted mode scanned only allowed regions
+        assert set(restricted_scanned) == set(allowed_subset), (
+            f"Restricted mode should scan only {allowed_subset}, but scanned {restricted_scanned}"
         )
-        assert disabled_result.region_metadata.total_regions == 1
+        assert restricted_result.region_metadata.total_regions == len(allowed_subset)
 
 
 # =============================================================================

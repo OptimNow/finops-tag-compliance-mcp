@@ -89,11 +89,48 @@ def mock_multi_region_scanner():
 
 
 @pytest.fixture
-def mock_multi_region_scanner_disabled():
-    """Create a mock MultiRegionScanner with multi-region disabled."""
+def mock_multi_region_scanner_restricted():
+    """Create a mock MultiRegionScanner with restricted regions via allowed_regions.
+
+    Note: multi_region_enabled is always True now. Use allowed_regions to restrict.
+    """
     scanner = MagicMock(spec=MultiRegionScanner)
-    scanner.multi_region_enabled = False
-    scanner.scan_all_regions = AsyncMock()
+    scanner.multi_region_enabled = True  # Always True now
+    scanner.allowed_regions = ["us-east-1", "us-west-2"]  # Restricted via setting
+    scanner.scan_all_regions = AsyncMock(
+        return_value=MultiRegionComplianceResult(
+            compliance_score=0.85,
+            total_resources=20,
+            compliant_resources=17,
+            violations=[],
+            cost_attribution_gap=150.0,
+            scan_timestamp=datetime.utcnow(),
+            region_metadata=RegionScanMetadata(
+                total_regions=2,
+                successful_regions=["us-east-1", "us-west-2"],
+                failed_regions=[],
+                skipped_regions=[],
+            ),
+            regional_breakdown={
+                "us-east-1": RegionalSummary(
+                    region="us-east-1",
+                    total_resources=10,
+                    compliant_resources=8,
+                    compliance_score=0.8,
+                    violation_count=2,
+                    cost_attribution_gap=100.0,
+                ),
+                "us-west-2": RegionalSummary(
+                    region="us-west-2",
+                    total_resources=10,
+                    compliant_resources=9,
+                    compliance_score=0.9,
+                    violation_count=1,
+                    cost_attribution_gap=50.0,
+                ),
+            },
+        )
+    )
     return scanner
 
 
@@ -222,27 +259,31 @@ class TestCheckTagComplianceMultiRegion:
         )
 
     @pytest.mark.asyncio
-    async def test_multi_region_disabled_falls_back_to_single_region(
-        self, mock_compliance_service, mock_multi_region_scanner_disabled
+    async def test_multi_region_with_restricted_regions(
+        self, mock_compliance_service, mock_multi_region_scanner_restricted
     ):
-        """Test fallback to single-region when multi-region is disabled.
-        
-        Requirements: 7.4 - Preserve backward compatibility for single-region mode
+        """Test multi-region scanner with restricted allowed_regions setting.
+
+        Multi-region is always enabled now. Use allowed_regions to restrict.
+        Requirements: 7.4 - Support allowed_regions infrastructure restriction
         """
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
             resource_types=["ec2:instance"],
             filters=None,
             severity="all",
-            multi_region_scanner=mock_multi_region_scanner_disabled,
+            multi_region_scanner=mock_multi_region_scanner_restricted,
         )
 
-        # Should use compliance_service, not multi_region_scanner
-        mock_compliance_service.check_compliance.assert_called_once()
-        mock_multi_region_scanner_disabled.scan_all_regions.assert_not_called()
+        # Should use multi_region_scanner (multi-region is always enabled)
+        mock_multi_region_scanner_restricted.scan_all_regions.assert_called_once()
+        mock_compliance_service.check_compliance.assert_not_called()
 
-        # Should return ComplianceResult (single-region)
-        assert isinstance(result, ComplianceResult)
+        # Should return MultiRegionComplianceResult with restricted regions
+        assert isinstance(result, MultiRegionComplianceResult)
+        assert len(result.region_metadata.successful_regions) == 2
+        assert "us-east-1" in result.region_metadata.successful_regions
+        assert "us-west-2" in result.region_metadata.successful_regions
 
     @pytest.mark.asyncio
     async def test_all_resource_type_uses_multi_region(

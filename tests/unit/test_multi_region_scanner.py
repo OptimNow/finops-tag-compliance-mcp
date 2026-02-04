@@ -1022,141 +1022,84 @@ class TestMultiRegionScanError:
         assert error.partial_results.compliance_score == 0.5
 
 
-class TestDisabledMode:
-    """Tests for multi-region disabled mode.
-    
-    When MULTI_REGION_ENABLED=False, the scanner should only scan the default
-    region and skip region discovery entirely.
-    
-    Validates: Requirements 7.1, 7.4
+class TestAllowedRegions:
+    """Tests for allowed_regions infrastructure setting.
+
+    The allowed_regions setting restricts which regions can be scanned.
+    Multi-region is always enabled; this setting just limits the scope.
     """
 
     @pytest.mark.asyncio
-    async def test_disabled_mode_scans_only_default_region(
+    async def test_allowed_regions_restricts_scanning(
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
-        """Test that disabled mode scans only the default region.
-        
-        Validates: Requirements 7.1, 7.4
-        """
+        """Test that allowed_regions restricts scanning to specified regions."""
+        mock_region_discovery.get_enabled_regions.return_value = [
+            "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"
+        ]
+
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=False,
+            allowed_regions=["us-east-1", "us-west-2"],  # Restrict to 2 regions
             default_region="us-east-1",
         )
-        
+
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
         )
-        
-        # Should only scan the default region
-        assert result.region_metadata.total_regions == 1
-        assert result.region_metadata.successful_regions == ["us-east-1"]
-        assert result.region_metadata.failed_regions == []
-        assert result.region_metadata.skipped_regions == []
+
+        # Should only scan the allowed regions
+        assert result.region_metadata.total_regions == 2
+        assert set(result.region_metadata.successful_regions) == {"us-east-1", "us-west-2"}
 
     @pytest.mark.asyncio
-    async def test_disabled_mode_skips_region_discovery(
+    async def test_allowed_regions_single_region(
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
-        """Test that disabled mode does not call region discovery.
-        
-        Validates: Requirements 7.1, 7.4
-        """
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=False,
-            default_region="us-west-2",
-        )
-        
-        await scanner.scan_all_regions(
-            resource_types=["ec2:instance"],
-        )
-        
-        # Region discovery should NOT be called when disabled
-        mock_region_discovery.get_enabled_regions.assert_not_called()
-
-    @pytest.mark.asyncio
-    async def test_disabled_mode_uses_custom_default_region(
-        self, mock_region_discovery, mock_client_factory, mock_compliance_service
-    ):
-        """Test that disabled mode uses the configured default region.
-        
-        Validates: Requirement 7.4
-        """
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=False,
-            default_region="eu-west-1",
-        )
-        
-        result = await scanner.scan_all_regions(
-            resource_types=["ec2:instance"],
-        )
-        
-        # Should scan the custom default region
-        assert result.region_metadata.successful_regions == ["eu-west-1"]
-        assert "eu-west-1" in result.regional_breakdown
-
-    @pytest.mark.asyncio
-    async def test_disabled_mode_ignores_region_filter(
-        self, mock_region_discovery, mock_client_factory, mock_compliance_service
-    ):
-        """Test that disabled mode ignores region filters.
-        
-        When multi-region is disabled, region filters should be ignored
-        and only the default region should be scanned.
-        
-        Validates: Requirements 7.1, 7.4
-        """
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=False,
-            default_region="us-east-1",
-        )
-        
-        # Even with a region filter, disabled mode should only scan default region
-        result = await scanner.scan_all_regions(
-            resource_types=["ec2:instance"],
-            filters={"regions": ["us-west-2", "eu-west-1"]},
-        )
-        
-        # Should still only scan the default region
-        assert result.region_metadata.total_regions == 1
-        assert result.region_metadata.successful_regions == ["us-east-1"]
-
-    @pytest.mark.asyncio
-    async def test_enabled_mode_scans_all_regions(
-        self, mock_region_discovery, mock_client_factory, mock_compliance_service
-    ):
-        """Test that enabled mode scans all discovered regions.
-        
-        Validates: Requirement 7.1 (contrast with disabled mode)
-        """
+        """Test allowed_regions with a single region."""
         mock_region_discovery.get_enabled_regions.return_value = [
             "us-east-1", "us-west-2", "eu-west-1"
         ]
-        
+
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=True,  # Explicitly enabled
+            allowed_regions=["us-east-1"],  # Single region
             default_region="us-east-1",
         )
-        
+
         result = await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
         )
-        
+
+        # Should only scan the single allowed region
+        assert result.region_metadata.total_regions == 1
+        assert result.region_metadata.successful_regions == ["us-east-1"]
+
+    @pytest.mark.asyncio
+    async def test_no_allowed_regions_scans_all(
+        self, mock_region_discovery, mock_client_factory, mock_compliance_service
+    ):
+        """Test that no allowed_regions (None) scans all enabled regions."""
+        mock_region_discovery.get_enabled_regions.return_value = [
+            "us-east-1", "us-west-2", "eu-west-1"
+        ]
+
+        scanner = MultiRegionScanner(
+            region_discovery=mock_region_discovery,
+            client_factory=mock_client_factory,
+            compliance_service_factory=lambda c: mock_compliance_service,
+            allowed_regions=None,  # No restriction
+            default_region="us-east-1",
+        )
+
+        result = await scanner.scan_all_regions(
+            resource_types=["ec2:instance"],
+        )
+
         # Should scan all discovered regions
         assert result.region_metadata.total_regions == 3
         assert set(result.region_metadata.successful_regions) == {
@@ -1164,73 +1107,99 @@ class TestDisabledMode:
         }
 
     @pytest.mark.asyncio
-    async def test_enabled_mode_calls_region_discovery(
+    async def test_user_filter_within_allowed_regions(
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
-        """Test that enabled mode calls region discovery.
-        
-        Validates: Requirement 7.1 (contrast with disabled mode)
-        """
+        """Test that user filter can narrow within allowed regions."""
+        mock_region_discovery.get_enabled_regions.return_value = [
+            "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"
+        ]
+
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=True,
+            allowed_regions=["us-east-1", "us-west-2", "eu-west-1"],  # 3 allowed
             default_region="us-east-1",
         )
-        
+
+        # User requests only 2 of the 3 allowed regions
+        result = await scanner.scan_all_regions(
+            resource_types=["ec2:instance"],
+            filters={"regions": ["us-east-1", "us-west-2"]},
+        )
+
+        # Should scan only what user requested (within allowed)
+        assert result.region_metadata.total_regions == 2
+        assert set(result.region_metadata.successful_regions) == {"us-east-1", "us-west-2"}
+
+    @pytest.mark.asyncio
+    async def test_always_calls_region_discovery(
+        self, mock_region_discovery, mock_client_factory, mock_compliance_service
+    ):
+        """Test that region discovery is always called (needed to validate regions)."""
+        scanner = MultiRegionScanner(
+            region_discovery=mock_region_discovery,
+            client_factory=mock_client_factory,
+            compliance_service_factory=lambda c: mock_compliance_service,
+            allowed_regions=["us-east-1"],
+            default_region="us-east-1",
+        )
+
         await scanner.scan_all_regions(
             resource_types=["ec2:instance"],
         )
-        
-        # Region discovery SHOULD be called when enabled
+
+        # Region discovery should always be called to validate allowed_regions
         mock_region_discovery.get_enabled_regions.assert_called_once()
 
-    def test_init_with_disabled_mode(
+    def test_init_defaults_to_all_regions(
         self, mock_region_discovery, mock_client_factory, compliance_service_factory
     ):
-        """Test scanner initializes correctly with disabled mode."""
+        """Test scanner defaults to scanning all regions (allowed_regions=None)."""
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=compliance_service_factory,
-            multi_region_enabled=False,
-            default_region="ap-southeast-1",
         )
-        
-        assert scanner.multi_region_enabled is False
-        assert scanner.default_region == "ap-southeast-1"
 
-    def test_init_defaults_to_enabled(
-        self, mock_region_discovery, mock_client_factory, compliance_service_factory
-    ):
-        """Test scanner defaults to multi-region enabled."""
-        scanner = MultiRegionScanner(
-            region_discovery=mock_region_discovery,
-            client_factory=mock_client_factory,
-            compliance_service_factory=compliance_service_factory,
-        )
-        
-        assert scanner.multi_region_enabled is True
+        assert scanner.allowed_regions is None
+        assert scanner.multi_region_enabled is True  # Always True now
         assert scanner.default_region == "us-east-1"
 
+    def test_init_with_allowed_regions(
+        self, mock_region_discovery, mock_client_factory, compliance_service_factory
+    ):
+        """Test scanner initializes correctly with allowed_regions."""
+        scanner = MultiRegionScanner(
+            region_discovery=mock_region_discovery,
+            client_factory=mock_client_factory,
+            compliance_service_factory=compliance_service_factory,
+            allowed_regions=["us-east-1", "eu-west-1"],
+            default_region="us-east-1",
+        )
+
+        assert scanner.allowed_regions == ["us-east-1", "eu-west-1"]
+        assert scanner.multi_region_enabled is True  # Always True
+
     @pytest.mark.asyncio
-    async def test_disabled_mode_handles_global_resources(
+    async def test_allowed_regions_with_global_resources(
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
-        """Test that disabled mode correctly handles global resources.
+        """Test that allowed_regions works correctly with global resources.
 
         Global resources are scanned via us-east-1 API but reported as "global" region.
-        Regional resources are scanned from the default region.
-        This results in 2 entries: "global" and the default regional region.
-
-        Validates: Requirements 7.1, 7.4
+        Regional resources are scanned from allowed regions only.
         """
+        mock_region_discovery.get_enabled_regions.return_value = [
+            "us-east-1", "us-west-2", "eu-west-1"
+        ]
+
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=lambda c: mock_compliance_service,
-            multi_region_enabled=False,
+            allowed_regions=["us-east-1"],  # Single region
             default_region="us-east-1",
         )
 
@@ -1246,34 +1215,33 @@ class TestDisabledMode:
         assert "us-east-1" in result.region_metadata.successful_regions
 
     @pytest.mark.asyncio
-    async def test_disabled_mode_with_scan_failure(
+    async def test_allowed_regions_with_scan_failure(
         self, mock_region_discovery, mock_client_factory
     ):
-        """Test that disabled mode handles scan failures correctly.
-        
-        Validates: Requirements 7.1, 7.4
-        """
+        """Test that allowed_regions handles scan failures correctly."""
+        mock_region_discovery.get_enabled_regions.return_value = ["us-east-1"]
+
         async def failing_check(*args, **kwargs):
             raise Exception("AccessDenied: Region not accessible")
-        
+
         mock_compliance = AsyncMock()
         mock_compliance.check_compliance = failing_check
-        
+
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
             client_factory=mock_client_factory,
             compliance_service_factory=lambda c: mock_compliance,
-            multi_region_enabled=False,
+            allowed_regions=["us-east-1"],
             default_region="us-east-1",
             max_retries=0,
         )
-        
+
         # When the only region fails, should raise MultiRegionScanError
         with pytest.raises(MultiRegionScanError) as exc_info:
             await scanner.scan_all_regions(
                 resource_types=["ec2:instance"],
             )
-        
+
         error = exc_info.value
         assert "us-east-1" in error.failed_regions
         assert error.partial_results is not None
