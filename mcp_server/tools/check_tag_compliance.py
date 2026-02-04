@@ -150,10 +150,29 @@ async def check_tag_compliance(
         valid_types = set(get_supported_resource_types())
         invalid_types = [rt for rt in resource_types if rt not in valid_types]
         if invalid_types:
-            raise ValueError(
-                f"Invalid resource types: {invalid_types}. "
-                f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
-            )
+            # Check if invalid types are free resources (excluded by design)
+            from ..utils.resource_type_config import get_resource_type_config
+            config = get_resource_type_config()
+            free_types = [rt for rt in invalid_types if config.is_free_resource(rt)]
+            unknown_types = [rt for rt in invalid_types if not config.is_free_resource(rt)]
+
+            if free_types and not unknown_types:
+                # All invalid types are free resources
+                raise ValueError(
+                    f"Resource types {free_types} are free resources (no direct cost) and are "
+                    f"excluded from compliance scans by default. Use ['all'] for comprehensive "
+                    f"scan or choose from cost-generating types: {sorted(list(valid_types)[:5])}..."
+                )
+            elif free_types:
+                raise ValueError(
+                    f"Invalid resource types: {unknown_types}. Free resources excluded: {free_types}. "
+                    f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
+                )
+            else:
+                raise ValueError(
+                    f"Invalid resource types: {invalid_types}. "
+                    f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
+                )
 
     # Validate severity parameter
     valid_severities = {"all", "errors_only", "warnings_only"}

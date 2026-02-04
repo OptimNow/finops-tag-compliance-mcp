@@ -81,6 +81,27 @@ async def check_tag_compliance(
         multi_region_scanner=_container.multi_region_scanner,
     )
 
+    # Try to get actual cost attribution gap from CostService
+    # The compliance service doesn't fetch cost data, so we need to call CostService separately
+    cost_attribution_gap = result.cost_attribution_gap
+    if _container.aws_client and _container.policy_service:
+        try:
+            from .services.cost_service import CostService
+
+            cost_service = CostService(
+                aws_client=_container.aws_client,
+                policy_service=_container.policy_service,
+                multi_region_scanner=_container.multi_region_scanner,
+            )
+            cost_result = await cost_service.calculate_attribution_gap(
+                resource_types=resource_types,
+                filters=filters,
+            )
+            cost_attribution_gap = cost_result.attribution_gap
+            logger.info(f"Cost attribution gap calculated: ${cost_attribution_gap:.2f}")
+        except Exception as e:
+            logger.warning(f"Failed to get cost attribution gap: {e}")
+
     # Build base response (common to both ComplianceResult and MultiRegionComplianceResult)
     response: dict[str, Any] = {
         "compliance_score": result.compliance_score,
@@ -100,7 +121,7 @@ async def check_tag_compliance(
             }
             for v in result.violations
         ],
-        "cost_attribution_gap": result.cost_attribution_gap,
+        "cost_attribution_gap": cost_attribution_gap,
         "scan_timestamp": result.scan_timestamp.isoformat(),
         "stored_in_history": store_snapshot,
     }

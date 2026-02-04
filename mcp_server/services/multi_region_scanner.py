@@ -40,9 +40,10 @@ DEFAULT_MAX_DELAY_SECONDS = 30.0
 
 # Resource type chunking configuration for "all" mode
 # When scanning "all" resource types, we chunk them to avoid overwhelming AWS APIs
-DEFAULT_RESOURCE_TYPE_CHUNK_SIZE = 10  # Scan 10 resource types at a time per region
+DEFAULT_RESOURCE_TYPE_CHUNK_SIZE = 15  # Scan 15 resource types at a time per region
 ALL_MODE_TIMEOUT_MULTIPLIER = 3  # 3x timeout when scanning "all" resource types
 ALL_MODE_DEFAULT_TIMEOUT_SECONDS = 180  # 3 minutes per region for "all" mode
+ALL_MODE_MAX_CONCURRENT_REGIONS = 8  # Increased concurrency for "all" mode
 
 # Transient error codes that should trigger retries
 TRANSIENT_ERROR_CODES = frozenset([
@@ -375,8 +376,13 @@ class MultiRegionScanner:
 
         Requirement: 3.2
         """
+        # Use higher concurrency for "all" mode (extended_timeout indicates this)
+        concurrency = (
+            ALL_MODE_MAX_CONCURRENT_REGIONS if extended_timeout
+            else self.max_concurrent_regions
+        )
         # Create semaphore for concurrency control
-        semaphore = asyncio.Semaphore(self.max_concurrent_regions)
+        semaphore = asyncio.Semaphore(concurrency)
 
         async def scan_with_semaphore(region: str) -> RegionalScanResult:
             async with semaphore:
@@ -423,7 +429,7 @@ class MultiRegionScanner:
 
         For "all" mode with 50+ resource types, this method:
         1. Splits resource types into chunks of `chunk_size`
-        2. Scans each chunk across all regions sequentially
+        2. Scans each chunk across all regions in parallel (with higher concurrency)
         3. Merges results for each region
 
         This prevents AWS API rate limiting and timeouts when scanning
@@ -449,7 +455,8 @@ class MultiRegionScanner:
         ]
         logger.info(
             f"Chunked {len(resource_types)} resource types into {len(chunks)} chunks "
-            f"of up to {chunk_size} types each. Using extended timeout ({ALL_MODE_DEFAULT_TIMEOUT_SECONDS}s)."
+            f"of up to {chunk_size} types each. Using extended timeout ({ALL_MODE_DEFAULT_TIMEOUT_SECONDS}s) "
+            f"and increased concurrency ({ALL_MODE_MAX_CONCURRENT_REGIONS} regions)."
         )
 
         # Initialize results dictionary keyed by region

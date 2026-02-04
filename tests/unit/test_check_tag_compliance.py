@@ -245,13 +245,16 @@ class TestCheckTagComplianceMultiRegion:
         assert isinstance(result, ComplianceResult)
 
     @pytest.mark.asyncio
-    async def test_all_resource_type_uses_single_region(
+    async def test_all_resource_type_uses_multi_region(
         self, mock_compliance_service, mock_multi_region_scanner
     ):
-        """Test that 'all' resource type uses single-region mode.
-        
-        The 'all' mode uses AWS Resource Groups Tagging API which handles
-        regions differently, so we don't use multi-region scanner for it.
+        """Test that 'all' resource type uses multi-region scanner.
+
+        The 'all' mode uses AWS Resource Groups Tagging API. When multi-region
+        scanning is enabled, the scanner handles calling the Tagging API in each
+        region separately for comprehensive scanning across all regions.
+
+        Requirements: 3.1, 17.7 - Multi-region scanner supports "all" mode
         """
         result = await check_tag_compliance(
             compliance_service=mock_compliance_service,
@@ -261,11 +264,15 @@ class TestCheckTagComplianceMultiRegion:
             multi_region_scanner=mock_multi_region_scanner,
         )
 
-        # Should use compliance_service for "all" mode
-        mock_compliance_service.check_compliance.assert_called_once()
-        mock_multi_region_scanner.scan_all_regions.assert_not_called()
+        # Should use multi_region_scanner for "all" mode when enabled
+        mock_multi_region_scanner.scan_all_regions.assert_called_once_with(
+            resource_types=["all"],
+            filters=None,
+            severity="all",
+        )
+        mock_compliance_service.check_compliance.assert_not_called()
 
-        assert isinstance(result, ComplianceResult)
+        assert isinstance(result, MultiRegionComplianceResult)
 
 
 class TestCheckTagComplianceValidation:
