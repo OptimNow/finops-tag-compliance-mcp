@@ -6,11 +6,15 @@
 
 import logging
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from ..clients.aws_client import AWSClient
 from ..models.cost_attribution import CostAttributionGapResult, CostBreakdown
 from ..services.cost_service import CostService
 from ..services.policy_service import PolicyService
+
+if TYPE_CHECKING:
+    from ..services.multi_region_scanner import MultiRegionScanner
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +27,7 @@ async def get_cost_attribution_gap(
     group_by: str | None = None,
     filters: dict | None = None,
     cost_service: CostService | None = None,
+    multi_region_scanner: "MultiRegionScanner | None" = None,
 ) -> CostAttributionGapResult:
     """
     Calculate the cost attribution gap - the financial impact of tagging gaps.
@@ -46,6 +51,9 @@ async def get_cost_attribution_gap(
         filters: Optional filters for region or account_id
         cost_service: Optional injected CostService instance. If not provided, one will
                      be created internally using aws_client and policy_service.
+        multi_region_scanner: Optional MultiRegionScanner for multi-region support.
+                             When provided and enabled, fetches resources from all
+                             enabled AWS regions.
 
     Returns:
         CostAttributionGapResult containing:
@@ -134,7 +142,11 @@ async def get_cost_attribution_gap(
     # Use injected service or create one
     service = cost_service
     if service is None:
-        service = CostService(aws_client=aws_client, policy_service=policy_service)
+        service = CostService(
+            aws_client=aws_client,
+            policy_service=policy_service,
+            multi_region_scanner=multi_region_scanner,
+        )
 
     result = await service.calculate_attribution_gap(
         resource_types=resource_types, time_period=time_period, group_by=group_by, filters=filters

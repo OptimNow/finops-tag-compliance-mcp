@@ -11,7 +11,7 @@ and monitoring purposes.
 Requirements: 15.2
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -154,11 +154,11 @@ class SessionMetrics(BaseModel):
 
     session_id: str = Field(..., description="Unique session identifier")
     created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when the session was created",
     )
     last_activity_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp of the last activity in this session",
     )
     tool_invocation_count: int = Field(
@@ -199,7 +199,7 @@ class GlobalMetrics(BaseModel):
 
     server_start_time: datetime = Field(..., description="Timestamp when the server started")
     current_time: datetime = Field(
-        default_factory=lambda: datetime.now(UTC), description="Current timestamp"
+        default_factory=lambda: datetime.now(timezone.utc), description="Current timestamp"
     )
     uptime_seconds: float = Field(default=0.0, ge=0.0, description="Server uptime in seconds")
     total_sessions: int = Field(default=0, ge=0, description="Total number of sessions created")

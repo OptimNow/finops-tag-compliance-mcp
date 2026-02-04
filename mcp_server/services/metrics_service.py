@@ -13,7 +13,7 @@ Requirements: 15.2
 
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from ..middleware.budget_middleware import BudgetTracker, get_budget_tracker
 from ..models.audit import AuditStatus
@@ -62,7 +62,7 @@ class MetricsService:
         self._audit_service = audit_service
         self._budget_tracker = budget_tracker or get_budget_tracker()
         self._loop_detector = loop_detector or get_loop_detector()
-        self._server_start_time = server_start_time or datetime.now(UTC)
+        self._server_start_time = server_start_time or datetime.now(timezone.utc)
 
         logger.info("MetricsService initialized")
 
@@ -328,8 +328,8 @@ class MetricsService:
             # No logs for this session, return empty metrics
             return SessionMetrics(
                 session_id=session_id,
-                created_at=datetime.now(UTC),
-                last_activity_at=datetime.now(UTC),
+                created_at=datetime.now(timezone.utc),
+                last_activity_at=datetime.now(timezone.utc),
             )
 
         # Calculate metrics from logs
@@ -383,7 +383,7 @@ class MetricsService:
         Returns:
             Global metrics
         """
-        current_time = datetime.now(UTC)
+        current_time = datetime.now(timezone.utc)
         uptime_seconds = (current_time - self._server_start_time).total_seconds()
 
         # Get all audit logs

@@ -4,7 +4,7 @@
 
 """Compliance result data model."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -46,7 +46,7 @@ class ComplianceResult(BaseModel):
         ge=0.0,
     )
     scan_timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when the scan was performed",
     )
 

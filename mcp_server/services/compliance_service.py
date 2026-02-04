@@ -14,7 +14,11 @@ from ..models.compliance import ComplianceResult
 from ..models.violations import Violation
 from ..services.policy_service import PolicyService
 from ..utils.resource_type_config import get_resource_type_config
-from ..utils.resource_utils import extract_account_from_arn, fetch_resources_by_type
+from ..utils.resource_utils import (
+    expand_all_to_supported_types,
+    extract_account_from_arn,
+    fetch_resources_by_type,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -49,21 +53,33 @@ class ComplianceService:
         self.cache_ttl = cache_ttl
 
     def _generate_cache_key(
-        self, resource_types: list[str], filters: dict | None = None, severity: str = "all"
+        self,
+        resource_types: list[str],
+        filters: dict | None = None,
+        severity: str = "all",
+        scanned_regions: list[str] | None = None,
     ) -> str:
         """
         Generate a deterministic cache key from query parameters.
 
-        Includes the AWS region from the client to prevent stale cache issues
-        when the region configuration changes.
+        Includes the AWS region from the client and optionally scanned regions
+        to prevent stale cache issues when the region configuration changes
+        or when multi-region scanning is used.
+
+        For multi-region scanning, the scanned_regions parameter ensures that
+        different region sets produce different cache keys, preventing cache
+        pollution when scanning different region combinations.
 
         Args:
             resource_types: List of resource types to check
             filters: Optional filters (region, account_id, etc.)
             severity: Severity filter
+            scanned_regions: Optional list of regions that were scanned (for multi-region)
 
         Returns:
             SHA256 hash of the normalized query parameters
+
+        Requirements: 8.1, 8.2 - Cache multi-region results with region-aware keys
         """
         # Normalize parameters for consistent hashing
         # Include AWS client region to prevent cross-region cache pollution
@@ -73,6 +89,11 @@ class ComplianceService:
             "filters": filters or {},
             "severity": severity,
         }
+
+        # Include scanned regions for multi-region cache key determinism
+        # Sort the regions to ensure same inputs always produce same key
+        if scanned_regions is not None:
+            normalized["scanned_regions"] = sorted(scanned_regions)
 
         # Create deterministic JSON string
         json_str = json.dumps(normalized, sort_keys=True)
@@ -202,10 +223,16 @@ class ComplianceService:
             f"Scanning resources: {resource_types}, filters: {filters}, severity: {severity}"
         )
 
+        # Expand "all" to the full list of supported resource types
+        # This ensures we scan each type individually to catch resources with zero tags
+        expanded_resource_types = expand_all_to_supported_types(resource_types)
+        if expanded_resource_types != resource_types:
+            logger.info(f"Expanded 'all' to {len(expanded_resource_types)} resource types")
+
         # Collect all resources across resource types
         all_resources = []
 
-        for resource_type in resource_types:
+        for resource_type in expanded_resource_types:
             try:
                 resources = await self._fetch_resources_by_type(resource_type, filters)
                 all_resources.extend(resources)

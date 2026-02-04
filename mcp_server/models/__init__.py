@@ -16,6 +16,14 @@ from .history import (
     GroupBy,
     TrendDirection,
 )
+from .multi_region import (
+    GLOBAL_RESOURCE_TYPES,
+    REGIONAL_RESOURCE_TYPES,
+    MultiRegionComplianceResult,
+    RegionalScanResult,
+    RegionalSummary,
+    RegionScanMetadata,
+)
 from .observability import (
     BudgetUtilizationMetrics,
     ErrorRateMetrics,
@@ -75,4 +83,11 @@ __all__ = [
     "LoopDetectionMetrics",
     "SessionMetrics",
     "GlobalMetrics",
+    # Multi-region models
+    "RegionalScanResult",
+    "RegionScanMetadata",
+    "MultiRegionComplianceResult",
+    "RegionalSummary",
+    "GLOBAL_RESOURCE_TYPES",
+    "REGIONAL_RESOURCE_TYPES",
 ]

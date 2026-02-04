@@ -11,7 +11,7 @@ and top violations ranked by count and cost impact. When recommendations are
 requested, actionable suggestions SHALL be included.
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -59,7 +59,7 @@ def compliance_result_strategy():
             compliant_resources=compliant,
             violations=violations,
             cost_attribution_gap=cost_gap,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         ),
         total=st.integers(min_value=0, max_value=1000),
         compliant=st.integers(min_value=0, max_value=1000),
@@ -135,7 +135,7 @@ class TestReportContentCompleteness:
             compliant_resources=compliant,
             violations=violations,
             cost_attribution_gap=cost_gap,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -179,7 +179,7 @@ class TestReportContentCompleteness:
             compliant_resources=compliant,
             violations=[],
             cost_attribution_gap=0.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -239,7 +239,7 @@ class TestReportContentCompleteness:
             compliant_resources=num_violations,
             violations=violations,
             cost_attribution_gap=1000.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -301,7 +301,7 @@ class TestReportContentCompleteness:
             compliant_resources=num_violations,
             violations=violations,
             cost_attribution_gap=5000.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -367,7 +367,7 @@ class TestReportContentCompleteness:
             compliant_resources=compliant,
             violations=violations,
             cost_attribution_gap=cost_gap,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -415,7 +415,7 @@ class TestReportContentCompleteness:
             compliant_resources=compliant,
             violations=[],
             cost_attribution_gap=0.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -461,7 +461,7 @@ class TestReportContentCompleteness:
             compliant_resources=50,
             violations=violations,
             cost_attribution_gap=1000.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()
@@ -507,7 +507,7 @@ class TestReportContentCompleteness:
             compliant_resources=50,
             violations=violations,
             cost_attribution_gap=1000.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
 
         service = ReportService()

@@ -6,7 +6,7 @@ for observability and monitoring.
 Requirements: 15.2
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -31,7 +31,7 @@ def mock_audit_service():
     sample_logs = [
         AuditLogEntry(
             id=1,
-            timestamp=datetime.now(UTC),
+            timestamp=datetime.now(timezone.utc),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["ec2"]},
             status=AuditStatus.SUCCESS,
@@ -42,7 +42,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=2,
-            timestamp=datetime.now(UTC),
+            timestamp=datetime.now(timezone.utc),
             tool_name="find_untagged_resources",
             parameters={"resource_types": ["s3"]},
             status=AuditStatus.SUCCESS,
@@ -53,7 +53,7 @@ def mock_audit_service():
         ),
         AuditLogEntry(
             id=3,
-            timestamp=datetime.now(UTC),
+            timestamp=datetime.now(timezone.utc),
             tool_name="check_tag_compliance",
             parameters={"resource_types": ["rds"]},
             status=AuditStatus.FAILURE,

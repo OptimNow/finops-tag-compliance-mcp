@@ -13,7 +13,7 @@ When an error occurs, the error message SHALL be included in the log entry.
 import os
 import re
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 from hypothesis import given, settings
@@ -132,7 +132,7 @@ class TestAuditLogCompleteness:
         try:
             service = AuditService(db_path=temp_db)
 
-            before_log = datetime.now(UTC)
+            before_log = datetime.now(timezone.utc)
 
             entry = service.log_invocation(
                 tool_name=tool_name,
@@ -140,7 +140,7 @@ class TestAuditLogCompleteness:
                 status=AuditStatus.SUCCESS,
             )
 
-            after_log = datetime.now(UTC)
+            after_log = datetime.now(timezone.utc)
 
             # Entry must have a timestamp
             assert entry.timestamp is not None, "Audit entry must have a timestamp"

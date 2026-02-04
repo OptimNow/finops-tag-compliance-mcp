@@ -1,6 +1,6 @@
 """Unit tests for AWS client wrapper."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, patch
 
 import boto3
@@ -689,7 +689,7 @@ async def test_get_opensearch_domains_with_tags():
                     "DomainStatus": {
                         "DomainName": "test-domain",
                         "ARN": "arn:aws:es:us-east-1:123456789012:domain/test-domain",
-                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
                     }
                 }
             elif call_count[0] == 3:  # list_tags
@@ -734,7 +734,7 @@ async def test_get_opensearch_domains_without_tags():
                     "DomainStatus": {
                         "DomainName": "test-domain",
                         "ARN": "arn:aws:es:us-east-1:123456789012:domain/test-domain",
-                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
                     }
                 }
             elif call_count[0] == 3:  # list_tags - raise error to simulate no tags
@@ -777,7 +777,7 @@ async def test_get_opensearch_domains_multiple():
                     "DomainStatus": {
                         "DomainName": domain_name,
                         "ARN": f"arn:aws:es:us-east-1:123456789012:domain/{domain_name}",
-                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
                     }
                 }
             elif call_count[0] in [3, 5, 7]:  # list_tags calls
@@ -814,7 +814,7 @@ async def test_get_opensearch_domains_describe_error():
                     "DomainStatus": {
                         "DomainName": "good-domain",
                         "ARN": "arn:aws:es:us-east-1:123456789012:domain/good-domain",
-                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=UTC),
+                        "Created": datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
                     }
                 }
             elif call_count[0] == 3:  # list_tags for good-domain

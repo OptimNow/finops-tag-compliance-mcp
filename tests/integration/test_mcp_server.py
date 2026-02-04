@@ -6,7 +6,7 @@ Requirements: 14.5
 """
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -53,7 +53,7 @@ def mock_policy_service():
 
     mock_policy = TagPolicy(
         version="1.0",
-        last_updated=datetime.now(UTC),
+        last_updated=datetime.now(timezone.utc),
         required_tags=[
             RequiredTag(
                 name="CostCenter",
@@ -131,7 +131,7 @@ def mock_compliance_service(mock_aws_client, mock_policy_service, mock_redis_cac
                 ),
             ],
             cost_attribution_gap=150.0,
-            scan_timestamp=datetime.now(UTC),
+            scan_timestamp=datetime.now(timezone.utc),
         )
     )
 

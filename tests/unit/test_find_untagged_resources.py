@@ -467,7 +467,7 @@ async def test_find_untagged_resources_all_no_validation_error():
 
 @pytest.mark.asyncio
 async def test_find_untagged_resources_age_days_none_when_no_created_at(mock_aws_client, mock_policy_service):
-    """Test that age_days is None when created_at is not available (e.g., from Tagging API)."""
+    """Test that age_days is 0 when created_at is not available (e.g., from Tagging API)."""
     # Mock resource without created_at (like from Resource Groups Tagging API)
     mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[
         {
@@ -488,8 +488,8 @@ async def test_find_untagged_resources_age_days_none_when_no_created_at(mock_aws
     
     assert result.total_untagged == 1
     resource = result.resources[0]
-    # age_days should be None when created_at is not available
-    assert resource.age_days is None
+    # age_days should be 0 when created_at is not available (model default)
+    assert resource.age_days == 0
     assert resource.created_at is None
 
 
@@ -519,3 +519,218 @@ async def test_find_untagged_resources_age_days_calculated_when_created_at_avail
     # age_days should be calculated when created_at is available
     assert resource.age_days == 45
     assert resource.created_at == created_at
+
+
+@pytest.fixture
+def mock_multi_region_scanner():
+    """Create a mock MultiRegionScanner."""
+    from mcp_server.services.multi_region_scanner import MultiRegionScanner
+    from mcp_server.services.region_discovery_service import RegionDiscoveryService
+    from mcp_server.clients.regional_client_factory import RegionalClientFactory
+    
+    scanner = MagicMock(spec=MultiRegionScanner)
+    scanner.multi_region_enabled = True
+    scanner.max_concurrent_regions = 5
+    
+    # Mock region discovery
+    scanner.region_discovery = MagicMock(spec=RegionDiscoveryService)
+    scanner.region_discovery.get_enabled_regions = AsyncMock(
+        return_value=["us-east-1", "us-west-2", "eu-west-1"]
+    )
+    
+    # Mock client factory
+    scanner.client_factory = MagicMock(spec=RegionalClientFactory)
+    
+    return scanner
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_multi_region_enabled(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test finding untagged resources with multi-region scanning enabled."""
+    # Create mock regional clients that return resources from different regions
+    mock_client_us_east = MagicMock()
+    mock_client_us_east.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-east-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},  # No tags
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-east-1",
+        }
+    ])
+    
+    mock_client_us_west = MagicMock()
+    mock_client_us_west.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-west-1",
+            "resource_type": "ec2:instance",
+            "region": "us-west-2",
+            "tags": {},  # No tags
+            "arn": "arn:aws:ec2:us-west-2:123456789012:instance/i-west-1",
+        }
+    ])
+    
+    mock_client_eu_west = MagicMock()
+    mock_client_eu_west.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-eu-1",
+            "resource_type": "ec2:instance",
+            "region": "eu-west-1",
+            "tags": {"Environment": "prod"},  # Has some tags but missing CostCenter
+            "arn": "arn:aws:ec2:eu-west-1:123456789012:instance/i-eu-1",
+        }
+    ])
+    
+    # Configure client factory to return different clients per region
+    def get_client_side_effect(region):
+        if region == "us-east-1":
+            return mock_client_us_east
+        elif region == "us-west-2":
+            return mock_client_us_west
+        elif region == "eu-west-1":
+            return mock_client_eu_west
+        return mock_aws_client
+    
+    mock_multi_region_scanner.client_factory.get_client = MagicMock(
+        side_effect=get_client_side_effect
+    )
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    # Should find resources from all 3 regions
+    assert result.total_untagged == 3
+    assert len(result.resources) == 3
+    
+    # Verify resources from different regions
+    regions_found = {r.region for r in result.resources}
+    assert "us-east-1" in regions_found
+    assert "us-west-2" in regions_found
+    assert "eu-west-1" in regions_found
+    
+    # Verify resource IDs
+    resource_ids = {r.resource_id for r in result.resources}
+    assert "i-east-1" in resource_ids
+    assert "i-west-1" in resource_ids
+    assert "i-eu-1" in resource_ids
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_multi_region_disabled(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test that multi-region is bypassed when disabled."""
+    # Disable multi-region
+    mock_multi_region_scanner.multi_region_enabled = False
+    
+    # Mock single-region client
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+        }
+    ])
+    
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    # Should use single-region mode (aws_client directly)
+    assert result.total_untagged == 1
+    assert result.resources[0].resource_id == "i-12345"
+    
+    # Verify multi-region scanner was NOT used
+    mock_multi_region_scanner.region_discovery.get_enabled_regions.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_multi_region_with_region_filter(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test multi-region scanning with region filter."""
+    # Create mock regional clients
+    mock_client_us_east = MagicMock()
+    mock_client_us_east.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-east-1",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-east-1",
+        }
+    ])
+    
+    mock_client_us_west = MagicMock()
+    mock_client_us_west.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-west-1",
+            "resource_type": "ec2:instance",
+            "region": "us-west-2",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-west-2:123456789012:instance/i-west-1",
+        }
+    ])
+    
+    def get_client_side_effect(region):
+        if region == "us-east-1":
+            return mock_client_us_east
+        elif region == "us-west-2":
+            return mock_client_us_west
+        return mock_aws_client
+    
+    mock_multi_region_scanner.client_factory.get_client = MagicMock(
+        side_effect=get_client_side_effect
+    )
+    
+    # Filter to only us-east-1
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"],
+        regions=["us-east-1"],  # Only scan us-east-1
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    # Should only find resources from us-east-1
+    assert result.total_untagged == 1
+    assert result.resources[0].resource_id == "i-east-1"
+    assert result.resources[0].region == "us-east-1"
+
+
+@pytest.mark.asyncio
+async def test_find_untagged_resources_multi_region_no_scanner_provided(
+    mock_aws_client, mock_policy_service
+):
+    """Test backward compatibility when no multi-region scanner is provided."""
+    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[
+        {
+            "resource_id": "i-12345",
+            "resource_type": "ec2:instance",
+            "region": "us-east-1",
+            "tags": {},
+            "arn": "arn:aws:ec2:us-east-1:123456789012:instance/i-12345",
+        }
+    ])
+    
+    # Call without multi_region_scanner (backward compatible)
+    result = await find_untagged_resources(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_types=["ec2:instance"],
+    )
+    
+    # Should work in single-region mode
+    assert result.total_untagged == 1
+    assert result.resources[0].resource_id == "i-12345"

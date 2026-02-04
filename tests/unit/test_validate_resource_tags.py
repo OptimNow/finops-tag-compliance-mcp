@@ -22,6 +22,8 @@ def mock_aws_client():
     """Create a mock AWS client."""
     client = MagicMock(spec=AWSClient)
     client.region = "us-east-1"
+    # Set up get_tags_for_arns as an AsyncMock that returns empty dict by default
+    client.get_tags_for_arns = AsyncMock(return_value={})
     return client
 
 
@@ -252,17 +254,10 @@ async def test_validate_resource_tags_missing_tags(mock_aws_client, mock_policy_
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
 
     # Mock AWS client to return resource with missing tags
-    mock_aws_client.get_ec2_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "i-12345",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": {},  # Missing CostCenter
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {},  # Missing CostCenter
+        }
     )
 
     result = await validate_resource_tags(
@@ -289,20 +284,13 @@ async def test_validate_resource_tags_invalid_value(mock_aws_client, mock_policy
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
 
     # Mock AWS client to return resource with invalid tag value
-    mock_aws_client.get_ec2_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "i-12345",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": {
-                    "CostCenter": "Engineering",
-                    "Environment": "invalid-env",  # Invalid value
-                },
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {
+                "CostCenter": "Engineering",
+                "Environment": "invalid-env",  # Invalid value
+            },
+        }
     )
 
     result = await validate_resource_tags(
@@ -330,17 +318,10 @@ async def test_validate_resource_tags_compliant_resource(mock_aws_client, mock_p
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
 
     # Mock AWS client to return compliant resource
-    mock_aws_client.get_ec2_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "i-12345",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": {"CostCenter": "Engineering", "Environment": "production"},
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering", "Environment": "production"},
+        }
     )
 
     result = await validate_resource_tags(
@@ -363,25 +344,11 @@ async def test_validate_resource_tags_multiple_resources(mock_aws_client, mock_p
     arn2 = "arn:aws:ec2:us-east-1:123456789012:instance/i-22222"
 
     # Mock AWS client to return multiple resources
-    mock_aws_client.get_ec2_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "i-11111",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": {"CostCenter": "Engineering", "Environment": "production"},
-                "created_at": None,
-                "arn": arn1,
-            },
-            {
-                "resource_id": "i-22222",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": {},  # Missing tags
-                "created_at": None,
-                "arn": arn2,
-            },
-        ]
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn1: {"CostCenter": "Engineering", "Environment": "production"},
+            arn2: {},  # Missing tags
+        }
     )
 
     result = await validate_resource_tags(
@@ -399,18 +366,11 @@ async def test_validate_resource_tags_s3_bucket(mock_aws_client, mock_policy_ser
     """Test validation of S3 bucket."""
     arn = "arn:aws:s3:::my-bucket"
 
-    # Mock AWS client to return S3 bucket
-    mock_aws_client.get_s3_buckets = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "my-bucket",
-                "resource_type": "s3:bucket",
-                "region": "global",
-                "tags": {"CostCenter": "Engineering"},
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    # Mock AWS client to return S3 bucket tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering"},
+        }
     )
 
     result = await validate_resource_tags(
@@ -428,18 +388,11 @@ async def test_validate_resource_tags_rds_database(mock_aws_client, mock_policy_
     """Test validation of RDS database."""
     arn = "arn:aws:rds:us-east-1:123456789012:db:mydb"
 
-    # Mock AWS client to return RDS instance
-    mock_aws_client.get_rds_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "mydb",
-                "resource_type": "rds:db",
-                "region": "us-east-1",
-                "tags": {"CostCenter": "Engineering", "Environment": "production"},
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    # Mock AWS client to return RDS instance tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering", "Environment": "production"},
+        }
     )
 
     result = await validate_resource_tags(
@@ -457,18 +410,11 @@ async def test_validate_resource_tags_lambda_function(mock_aws_client, mock_poli
     """Test validation of Lambda function."""
     arn = "arn:aws:lambda:us-east-1:123456789012:function:my-function"
 
-    # Mock AWS client to return Lambda function
-    mock_aws_client.get_lambda_functions = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "my-function",
-                "resource_type": "lambda:function",
-                "region": "us-east-1",
-                "tags": {"CostCenter": "Engineering"},
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    # Mock AWS client to return Lambda function tags
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering"},
+        }
     )
 
     result = await validate_resource_tags(
@@ -493,17 +439,10 @@ async def test_validate_resource_tags_current_tags_included(mock_aws_client, moc
     }
 
     # Mock AWS client to return resource with tags
-    mock_aws_client.get_ec2_instances = AsyncMock(
-        return_value=[
-            {
-                "resource_id": "i-12345",
-                "resource_type": "ec2:instance",
-                "region": "us-east-1",
-                "tags": current_tags,
-                "created_at": None,
-                "arn": arn,
-            }
-        ]
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: current_tags,
+        }
     )
 
     result = await validate_resource_tags(
@@ -522,8 +461,8 @@ async def test_validate_resource_tags_resource_not_found(
     """Test handling when resource is not found."""
     arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-nonexistent"
 
-    # Mock AWS client to return no resources
-    mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
+    # Mock AWS client to return no resources (ARN not in result)
+    mock_aws_client.get_tags_for_arns = AsyncMock(return_value={})
 
     result = await validate_resource_tags(
         aws_client=mock_aws_client, policy_service=mock_policy_service, resource_arns=[arn]
@@ -533,3 +472,216 @@ async def test_validate_resource_tags_resource_not_found(
     assert result.total_resources == 1
     resource_result = result.results[0]
     assert resource_result.current_tags == {}
+
+
+# Tests for multi-region support
+
+
+@pytest.fixture
+def mock_multi_region_scanner():
+    """Create a mock multi-region scanner with client factory."""
+    from mcp_server.clients.regional_client_factory import RegionalClientFactory
+    from mcp_server.services.multi_region_scanner import MultiRegionScanner
+    
+    scanner = MagicMock(spec=MultiRegionScanner)
+    scanner.default_region = "us-east-1"
+    
+    # Create a mock client factory
+    client_factory = MagicMock(spec=RegionalClientFactory)
+    scanner.client_factory = client_factory
+    
+    return scanner
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_multi_region_single_region(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test multi-region validation with ARNs from a single region."""
+    arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+    
+    # Create a mock regional client
+    regional_client = MagicMock()
+    regional_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering", "Environment": "production"},
+        }
+    )
+    
+    # Configure the client factory to return the regional client
+    mock_multi_region_scanner.client_factory.get_client.return_value = regional_client
+    
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    assert result.total_resources == 1
+    assert result.compliant_resources == 1
+    
+    # Verify the client factory was called with the correct region
+    mock_multi_region_scanner.client_factory.get_client.assert_called_once_with("us-east-1")
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_multi_region_multiple_regions(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test multi-region validation with ARNs from multiple regions."""
+    arn_us_east = "arn:aws:ec2:us-east-1:123456789012:instance/i-11111"
+    arn_eu_west = "arn:aws:ec2:eu-west-1:123456789012:instance/i-22222"
+    
+    # Create mock regional clients for each region
+    us_east_client = MagicMock()
+    us_east_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn_us_east: {"CostCenter": "Engineering", "Environment": "production"},
+        }
+    )
+    
+    eu_west_client = MagicMock()
+    eu_west_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn_eu_west: {},  # Missing CostCenter - will be non-compliant
+        }
+    )
+    
+    # Configure the client factory to return different clients per region
+    def get_client_side_effect(region):
+        if region == "us-east-1":
+            return us_east_client
+        elif region == "eu-west-1":
+            return eu_west_client
+        raise ValueError(f"Unknown region: {region}")
+    
+    mock_multi_region_scanner.client_factory.get_client.side_effect = get_client_side_effect
+    
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn_us_east, arn_eu_west],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    assert result.total_resources == 2
+    # One compliant (us-east-1 has CostCenter), one non-compliant (eu-west-1 missing CostCenter)
+    assert result.compliant_resources == 1
+    assert result.non_compliant_resources == 1
+    
+    # Verify both regions were queried
+    assert mock_multi_region_scanner.client_factory.get_client.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_multi_region_global_resource(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test multi-region validation with global resources (S3)."""
+    arn = "arn:aws:s3:::my-bucket"
+    
+    # Create a mock regional client for the default region
+    regional_client = MagicMock()
+    regional_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering"},
+        }
+    )
+    
+    mock_multi_region_scanner.client_factory.get_client.return_value = regional_client
+    
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    assert result.total_resources == 1
+    resource_result = result.results[0]
+    assert resource_result.resource_type == "s3:bucket"
+    assert resource_result.region == "global"
+    
+    # Global resources should use the default region for API calls
+    mock_multi_region_scanner.client_factory.get_client.assert_called_once_with("us-east-1")
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_multi_region_partial_failure(
+    mock_aws_client, mock_policy_service, mock_multi_region_scanner
+):
+    """Test multi-region validation handles partial failures gracefully."""
+    arn_us_east = "arn:aws:ec2:us-east-1:123456789012:instance/i-11111"
+    arn_eu_west = "arn:aws:ec2:eu-west-1:123456789012:instance/i-22222"
+    
+    # Create mock regional clients
+    us_east_client = MagicMock()
+    us_east_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn_us_east: {"CostCenter": "Engineering", "Environment": "production"},
+        }
+    )
+    
+    eu_west_client = MagicMock()
+    # Simulate a failure in eu-west-1
+    eu_west_client.get_tags_for_arns = AsyncMock(
+        side_effect=Exception("Region unavailable")
+    )
+    
+    def get_client_side_effect(region):
+        if region == "us-east-1":
+            return us_east_client
+        elif region == "eu-west-1":
+            return eu_west_client
+        raise ValueError(f"Unknown region: {region}")
+    
+    mock_multi_region_scanner.client_factory.get_client.side_effect = get_client_side_effect
+    
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn_us_east, arn_eu_west],
+        multi_region_scanner=mock_multi_region_scanner,
+    )
+    
+    # Should still return results for both ARNs
+    assert result.total_resources == 2
+    
+    # us-east-1 should be compliant
+    us_east_result = next(r for r in result.results if r.resource_arn == arn_us_east)
+    assert us_east_result.is_compliant is True
+    assert us_east_result.current_tags == {"CostCenter": "Engineering", "Environment": "production"}
+    
+    # eu-west-1 should have empty tags due to failure
+    eu_west_result = next(r for r in result.results if r.resource_arn == arn_eu_west)
+    assert eu_west_result.current_tags == {}
+
+
+@pytest.mark.asyncio
+async def test_validate_resource_tags_backward_compatible_without_scanner(
+    mock_aws_client, mock_policy_service
+):
+    """Test that validation works without multi_region_scanner (backward compatible)."""
+    arn = "arn:aws:ec2:us-east-1:123456789012:instance/i-12345"
+    
+    # Mock the aws_client's get_tags_for_arns method
+    mock_aws_client.get_tags_for_arns = AsyncMock(
+        return_value={
+            arn: {"CostCenter": "Engineering", "Environment": "production"},
+        }
+    )
+    
+    # Call without multi_region_scanner
+    result = await validate_resource_tags(
+        aws_client=mock_aws_client,
+        policy_service=mock_policy_service,
+        resource_arns=[arn],
+        # multi_region_scanner is None by default
+    )
+    
+    assert result.total_resources == 1
+    assert result.compliant_resources == 1
+    
+    # Verify the aws_client was used directly
+    mock_aws_client.get_tags_for_arns.assert_called_once_with([arn])

@@ -35,6 +35,7 @@ from .services import (
     PolicyService,
     get_security_service,
 )
+from .services.multi_region_scanner import MultiRegionScanner
 from .tools import (
     check_tag_compliance,
     find_untagged_resources,
@@ -95,6 +96,7 @@ class MCPHandler:
         redis_cache: RedisCache | None = None,
         audit_service: AuditService | None = None,
         history_service: Optional["HistoryService"] = None,
+        multi_region_scanner: Optional["MultiRegionScanner"] = None,
     ):
         """
         Initialize the MCP handler with required services.
@@ -106,6 +108,7 @@ class MCPHandler:
             redis_cache: RedisCache for caching
             audit_service: AuditService for audit logging
             history_service: HistoryService for storing compliance history
+            multi_region_scanner: MultiRegionScanner for multi-region scanning
         """
         self.aws_client = aws_client
         self.policy_service = policy_service
@@ -113,6 +116,7 @@ class MCPHandler:
         self.redis_cache = redis_cache
         self.audit_service = audit_service
         self.history_service = history_service
+        self.multi_region_scanner = multi_region_scanner
 
         # Register all tools
         self._tools: dict[str, Callable] = {}
@@ -1234,9 +1238,11 @@ class MCPHandler:
             history_service=self.history_service,
             store_snapshot=store_snapshot,
             force_refresh=force_refresh,
+            multi_region_scanner=self.multi_region_scanner,
         )
 
-        return {
+        # Build response - handle both single-region and multi-region results
+        response = {
             "compliance_score": result.compliance_score,
             "total_resources": result.total_resources,
             "compliant_resources": result.compliant_resources,
@@ -1258,6 +1264,29 @@ class MCPHandler:
             "scan_timestamp": result.scan_timestamp.isoformat(),
             "stored_in_history": store_snapshot,
         }
+
+        # Add multi-region metadata if available
+        if hasattr(result, "region_metadata") and result.region_metadata:
+            response["region_metadata"] = {
+                "total_regions": result.region_metadata.total_regions,
+                "successful_regions": result.region_metadata.successful_regions,
+                "failed_regions": result.region_metadata.failed_regions,
+                "skipped_regions": result.region_metadata.skipped_regions,
+            }
+            # regional_breakdown is a dict keyed by region code
+            response["regional_breakdown"] = [
+                {
+                    "region": rb.region,
+                    "compliance_score": rb.compliance_score,
+                    "total_resources": rb.total_resources,
+                    "compliant_resources": rb.compliant_resources,
+                    "violation_count": rb.violation_count,
+                    "cost_attribution_gap": rb.cost_attribution_gap,
+                }
+                for rb in result.regional_breakdown.values()
+            ]
+
+        return response
 
     async def _handle_find_untagged_resources(self, arguments: dict) -> dict:
         """Handle find_untagged_resources tool invocation."""

@@ -58,10 +58,15 @@ async def check_tag_compliance(
     Scans specified resource types and validates them against the
     organization's tagging policy. Returns a compliance score along
     with detailed violation information.
-    Use 'all' to scan all tagged resources including Bedrock, OpenSearch, etc.
+
+    IMPORTANT: The 'all' mode scans 42 resource types across all AWS regions,
+    which may take several minutes. For faster results, specify resource types
+    explicitly: ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"]
 
     Args:
-        resource_types: List of resource types to check (e.g. ["ec2:instance", "s3:bucket"] or ["all"])
+        resource_types: List of resource types to check. Examples:
+            - ["ec2:instance", "s3:bucket"] - specific types (faster)
+            - ["all"] - comprehensive scan (slower, may timeout)
         filters: Optional filters for region or account_id
         severity: Filter results by severity: "all", "errors_only", or "warnings_only"
         store_snapshot: If true, store result in history for trend tracking
@@ -70,41 +75,102 @@ async def check_tag_compliance(
     _ensure_initialized()
     from .tools import check_tag_compliance as _check
 
-    result = await _check(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        filters=filters,
-        severity=severity,
-        history_service=_container.history_service,
-        store_snapshot=store_snapshot,
-        force_refresh=force_refresh,
-    )
+    try:
+        result = await _check(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            filters=filters,
+            severity=severity,
+            history_service=_container.history_service,
+            store_snapshot=store_snapshot,
+            force_refresh=force_refresh,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during compliance check: {error_msg}")
+        # Return helpful error with suggestion
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try scanning specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during compliance check: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
-    return json.dumps(
-        {
-            "compliance_score": result.compliance_score,
-            "total_resources": result.total_resources,
-            "compliant_resources": result.compliant_resources,
-            "violations": [
-                {
-                    "resource_id": v.resource_id,
-                    "resource_type": v.resource_type,
-                    "region": v.region,
-                    "violation_type": v.violation_type.value,
-                    "tag_name": v.tag_name,
-                    "severity": v.severity.value,
-                    "current_value": v.current_value,
-                    "allowed_values": v.allowed_values,
-                    "cost_impact_monthly": v.cost_impact_monthly,
-                }
-                for v in result.violations
-            ],
-            "cost_attribution_gap": result.cost_attribution_gap,
-            "scan_timestamp": result.scan_timestamp.isoformat(),
-            "stored_in_history": store_snapshot,
-        },
-        default=str,
-    )
+    # Try to get actual cost attribution gap from CostService
+    # The compliance service doesn't fetch cost data, so we need to call CostService separately
+    cost_attribution_gap = result.cost_attribution_gap
+    if _container.aws_client and _container.policy_service:
+        try:
+            from .services.cost_service import CostService
+
+            cost_service = CostService(
+                aws_client=_container.aws_client,
+                policy_service=_container.policy_service,
+                multi_region_scanner=_container.multi_region_scanner,
+            )
+            cost_result = await cost_service.calculate_attribution_gap(
+                resource_types=resource_types,
+                filters=filters,
+            )
+            cost_attribution_gap = cost_result.attribution_gap
+            logger.info(f"Cost attribution gap calculated: ${cost_attribution_gap:.2f}")
+        except Exception as e:
+            logger.warning(f"Failed to get cost attribution gap: {e}")
+
+    # Build base response (common to both ComplianceResult and MultiRegionComplianceResult)
+    response: dict[str, Any] = {
+        "compliance_score": result.compliance_score,
+        "total_resources": result.total_resources,
+        "compliant_resources": result.compliant_resources,
+        "violations": [
+            {
+                "resource_id": v.resource_id,
+                "resource_type": v.resource_type,
+                "region": v.region,
+                "violation_type": v.violation_type.value,
+                "tag_name": v.tag_name,
+                "severity": v.severity.value,
+                "current_value": v.current_value,
+                "allowed_values": v.allowed_values,
+                "cost_impact_monthly": v.cost_impact_monthly,
+            }
+            for v in result.violations
+        ],
+        "cost_attribution_gap": cost_attribution_gap,
+        "scan_timestamp": result.scan_timestamp.isoformat(),
+        "stored_in_history": store_snapshot,
+    }
+
+    # Add multi-region fields if this is a MultiRegionComplianceResult
+    if hasattr(result, "region_metadata"):
+        response["region_metadata"] = {
+            "total_regions": result.region_metadata.total_regions,
+            "successful_regions": result.region_metadata.successful_regions,
+            "failed_regions": result.region_metadata.failed_regions,
+            "skipped_regions": result.region_metadata.skipped_regions,
+        }
+        response["regional_breakdown"] = [
+            {
+                "region": summary.region,
+                "compliance_score": summary.compliance_score,
+                "total_resources": summary.total_resources,
+                "compliant_resources": summary.compliant_resources,
+                "violation_count": summary.violation_count,
+                "cost_attribution_gap": summary.cost_attribution_gap,
+            }
+            for region, summary in result.regional_breakdown.items()
+        ]
+
+    return json.dumps(response, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +204,7 @@ async def find_untagged_resources(
         regions=regions,
         min_cost_threshold=min_cost_threshold,
         include_costs=include_costs,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     resources = []
@@ -192,6 +259,7 @@ async def validate_resource_tags(
         aws_client=_container.aws_client,
         policy_service=_container.policy_service,
         resource_arns=resource_arns,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     return json.dumps(
@@ -258,6 +326,7 @@ async def get_cost_attribution_gap(
         time_period=time_period,
         group_by=group_by,
         filters=filters,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     breakdown = None
@@ -307,6 +376,7 @@ async def suggest_tags(
         aws_client=_container.aws_client,
         policy_service=_container.policy_service,
         resource_arn=resource_arn,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     return json.dumps(result.model_dump(mode="json"), default=str)
@@ -360,6 +430,7 @@ async def generate_compliance_report(
         resource_types=resource_types,
         severity="all",
         history_service=_container.history_service,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     # Try to get actual cost attribution gap

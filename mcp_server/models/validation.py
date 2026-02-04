@@ -4,7 +4,7 @@
 
 """Resource validation result data model."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,6 +67,6 @@ class ValidateResourceTagsResult(BaseModel):
         default_factory=list, description="Validation results for each resource"
     )
     validation_timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when the validation was performed",
     )

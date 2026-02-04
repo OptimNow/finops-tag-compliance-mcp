@@ -4,7 +4,7 @@
 
 """Health check data models."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -78,7 +78,7 @@ class HealthStatus(BaseModel):
     )
     version: str = Field(..., description="Version of the MCP server", examples=["0.1.0"])
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when health check was performed",
     )
     cloud_providers: list[str] = Field(
