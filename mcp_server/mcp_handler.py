@@ -1268,11 +1268,12 @@ class MCPHandler:
         # Add multi-region metadata if available
         if hasattr(result, "region_metadata") and result.region_metadata:
             response["region_metadata"] = {
+                "total_regions": result.region_metadata.total_regions,
                 "successful_regions": result.region_metadata.successful_regions,
                 "failed_regions": result.region_metadata.failed_regions,
                 "skipped_regions": result.region_metadata.skipped_regions,
-                "total_scan_time_seconds": result.region_metadata.total_scan_time_seconds,
             }
+            # regional_breakdown is a dict keyed by region code
             response["regional_breakdown"] = [
                 {
                     "region": rb.region,
@@ -1282,7 +1283,7 @@ class MCPHandler:
                     "violation_count": rb.violation_count,
                     "cost_attribution_gap": rb.cost_attribution_gap,
                 }
-                for rb in result.regional_breakdown
+                for rb in result.regional_breakdown.values()
             ]
 
         return response
