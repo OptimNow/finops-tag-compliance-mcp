@@ -385,6 +385,7 @@ async def generate_compliance_report(
         resource_types=resource_types,
         severity="all",
         history_service=_container.history_service,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     # Try to get actual cost attribution gap
