@@ -709,7 +709,8 @@ class InputValidator:
             )
 
         # Validate allowed filter keys
-        allowed_keys = {"region", "account_id"}
+        # Note: 'regions' (plural) is an alias for 'region' supported by the scanner
+        allowed_keys = {"region", "regions", "account_id"}
         invalid_keys = set(filters.keys()) - allowed_keys
         if invalid_keys:
             raise ValidationError(
