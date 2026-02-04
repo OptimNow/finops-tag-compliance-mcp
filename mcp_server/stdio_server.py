@@ -58,10 +58,15 @@ async def check_tag_compliance(
     Scans specified resource types and validates them against the
     organization's tagging policy. Returns a compliance score along
     with detailed violation information.
-    Use 'all' to scan all tagged resources including Bedrock, OpenSearch, etc.
+
+    IMPORTANT: The 'all' mode scans 42 resource types across all AWS regions,
+    which may take several minutes. For faster results, specify resource types
+    explicitly: ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"]
 
     Args:
-        resource_types: List of resource types to check (e.g. ["ec2:instance", "s3:bucket"] or ["all"])
+        resource_types: List of resource types to check. Examples:
+            - ["ec2:instance", "s3:bucket"] - specific types (faster)
+            - ["all"] - comprehensive scan (slower, may timeout)
         filters: Optional filters for region or account_id
         severity: Filter results by severity: "all", "errors_only", or "warnings_only"
         store_snapshot: If true, store result in history for trend tracking
@@ -70,16 +75,35 @@ async def check_tag_compliance(
     _ensure_initialized()
     from .tools import check_tag_compliance as _check
 
-    result = await _check(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        filters=filters,
-        severity=severity,
-        history_service=_container.history_service,
-        store_snapshot=store_snapshot,
-        force_refresh=force_refresh,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _check(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            filters=filters,
+            severity=severity,
+            history_service=_container.history_service,
+            store_snapshot=store_snapshot,
+            force_refresh=force_refresh,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during compliance check: {error_msg}")
+        # Return helpful error with suggestion
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try scanning specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during compliance check: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     # Try to get actual cost attribution gap from CostService
     # The compliance service doesn't fetch cost data, so we need to call CostService separately
@@ -134,17 +158,17 @@ async def check_tag_compliance(
             "failed_regions": result.region_metadata.failed_regions,
             "skipped_regions": result.region_metadata.skipped_regions,
         }
-        response["regional_breakdown"] = {
-            region: {
+        response["regional_breakdown"] = [
+            {
                 "region": summary.region,
+                "compliance_score": summary.compliance_score,
                 "total_resources": summary.total_resources,
                 "compliant_resources": summary.compliant_resources,
-                "compliance_score": summary.compliance_score,
                 "violation_count": summary.violation_count,
                 "cost_attribution_gap": summary.cost_attribution_gap,
             }
             for region, summary in result.regional_breakdown.items()
-        }
+        ]
 
     return json.dumps(response, default=str)
 
