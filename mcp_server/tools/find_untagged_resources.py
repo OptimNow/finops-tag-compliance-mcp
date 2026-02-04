@@ -145,10 +145,10 @@ async def find_untagged_resources(
 
     # Determine whether to use multi-region scanning
     # Requirements 3.1: Use multi-region scanner when provided and enabled
+    # Multi-region scanning works with both specific resource types AND "all" mode
     use_multi_region = (
         multi_region_scanner is not None
         and multi_region_scanner.multi_region_enabled
-        and not use_tagging_api  # "all" mode uses tagging API which handles regions differently
     )
 
     logger.info(
