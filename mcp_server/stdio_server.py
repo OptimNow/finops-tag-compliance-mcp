@@ -214,6 +214,7 @@ async def validate_resource_tags(
         aws_client=_container.aws_client,
         policy_service=_container.policy_service,
         resource_arns=resource_arns,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     return json.dumps(
@@ -280,6 +281,7 @@ async def get_cost_attribution_gap(
         time_period=time_period,
         group_by=group_by,
         filters=filters,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     breakdown = None
@@ -329,6 +331,7 @@ async def suggest_tags(
         aws_client=_container.aws_client,
         policy_service=_container.policy_service,
         resource_arn=resource_arn,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     return json.dumps(result.model_dump(mode="json"), default=str)

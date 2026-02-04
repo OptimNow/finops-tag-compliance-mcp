@@ -4,8 +4,10 @@
 
 """Cost attribution service for calculating tagging gaps."""
 
+import asyncio
 import logging
 from datetime import datetime, timedelta
+from typing import TYPE_CHECKING
 
 from ..clients.aws_client import AWSClient
 from ..services.policy_service import PolicyService
@@ -15,6 +17,9 @@ from ..utils.resource_utils import (
     extract_account_from_arn,
     fetch_resources_by_type,
 )
+
+if TYPE_CHECKING:
+    from .multi_region_scanner import MultiRegionScanner
 
 logger = logging.getLogger(__name__)
 
@@ -76,16 +81,24 @@ class CostService:
     Requirements: 4.1, 4.2, 4.3
     """
 
-    def __init__(self, aws_client: AWSClient, policy_service: PolicyService):
+    def __init__(
+        self,
+        aws_client: AWSClient,
+        policy_service: PolicyService,
+        multi_region_scanner: "MultiRegionScanner | None" = None,
+    ):
         """
         Initialize cost service.
 
         Args:
             aws_client: AWS client for fetching resources and cost data
             policy_service: Policy service for tag validation
+            multi_region_scanner: Optional multi-region scanner for fetching
+                                 resources across all enabled regions
         """
         self.aws_client = aws_client
         self.policy_service = policy_service
+        self.multi_region_scanner = multi_region_scanner
 
     async def calculate_attribution_gap(
         self,
@@ -1005,6 +1018,10 @@ class CostService:
         """
         Fetch resources of a specific type from AWS.
 
+        When multi_region_scanner is available and enabled, fetches resources
+        from all enabled regions in parallel. Otherwise, falls back to
+        single-region fetching using aws_client.
+
         Args:
             resource_type: Type of resource (e.g., "ec2:instance", "rds:db")
             filters: Optional filters for the query
@@ -1012,4 +1029,70 @@ class CostService:
         Returns:
             List of resource dictionaries with tags
         """
+        # Use multi-region scanning when available and enabled
+        if (
+            self.multi_region_scanner is not None
+            and self.multi_region_scanner.multi_region_enabled
+        ):
+            return await self._fetch_resources_multi_region(resource_type, filters)
+
+        # Fall back to single-region
         return await fetch_resources_by_type(self.aws_client, resource_type, filters)
+
+    async def _fetch_resources_multi_region(
+        self, resource_type: str, filters: dict | None
+    ) -> list[dict]:
+        """
+        Fetch resources from all enabled regions using multi-region scanner.
+
+        Args:
+            resource_type: Type of resource to fetch
+            filters: Optional filters (region filter is respected if present)
+
+        Returns:
+            List of resources from all enabled regions
+        """
+        # Get enabled regions
+        enabled_regions = await self.multi_region_scanner.region_discovery.get_enabled_regions()
+
+        # Apply region filter if provided
+        if filters and (filters.get("region") or filters.get("regions")):
+            region_filter = filters.get("region") or filters.get("regions")
+            if isinstance(region_filter, str):
+                region_filter = [region_filter]
+            regions_to_scan = [r for r in region_filter if r in enabled_regions]
+        else:
+            regions_to_scan = enabled_regions
+
+        logger.info(f"Fetching {resource_type} from {len(regions_to_scan)} regions")
+
+        # Create semaphore for concurrency control
+        semaphore = asyncio.Semaphore(self.multi_region_scanner.max_concurrent_regions)
+
+        async def fetch_from_region(region: str) -> list[dict]:
+            async with semaphore:
+                try:
+                    client = self.multi_region_scanner.client_factory.get_client(region)
+                    resources = await fetch_resources_by_type(client, resource_type, {})
+                    # Ensure region is set on each resource
+                    for resource in resources:
+                        resource["region"] = region
+                    return resources
+                except Exception as e:
+                    logger.warning(f"Failed to fetch {resource_type} from {region}: {e}")
+                    return []
+
+        # Fetch from all regions in parallel
+        tasks = [fetch_from_region(region) for region in regions_to_scan]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Aggregate results
+        all_resources = []
+        for i, result in enumerate(results):
+            if isinstance(result, Exception):
+                logger.warning(f"Region {regions_to_scan[i]} failed: {result}")
+            elif isinstance(result, list):
+                all_resources.extend(result)
+
+        logger.info(f"Fetched {len(all_resources)} {resource_type} resources from {len(regions_to_scan)} regions")
+        return all_resources

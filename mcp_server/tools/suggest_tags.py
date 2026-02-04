@@ -5,6 +5,7 @@
 """MCP tool for suggesting tags for AWS resources."""
 
 import logging
+from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +14,9 @@ from ..models.suggestions import TagSuggestion
 from ..services.policy_service import PolicyService
 from ..services.suggestion_service import SuggestionService
 from ..utils.arn_utils import is_valid_arn, parse_arn
+
+if TYPE_CHECKING:
+    from ..services.multi_region_scanner import MultiRegionScanner
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +44,7 @@ async def suggest_tags(
     policy_service: PolicyService,
     resource_arn: str,
     suggestion_service: SuggestionService | None = None,
+    multi_region_scanner: "MultiRegionScanner | None" = None,
 ) -> SuggestTagsResult:
     """
     Suggest appropriate tags for an AWS resource.
@@ -55,6 +60,9 @@ async def suggest_tags(
                      (e.g., "arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0")
         suggestion_service: Optional injected SuggestionService instance. If not provided,
                            one will be created internally using policy_service.
+        multi_region_scanner: Optional MultiRegionScanner for multi-region support.
+                             When provided, uses the correct regional client based on
+                             the region in the resource ARN.
 
     Returns:
         SuggestTagsResult containing:
@@ -98,8 +106,21 @@ async def suggest_tags(
     resource_id = parsed["resource_id"]
     region = parsed["region"]
 
+    # Use the correct regional client if multi-region scanner is available
+    # This ensures we can fetch tags for resources in any region
+    if (
+        multi_region_scanner is not None
+        and multi_region_scanner.multi_region_enabled
+        and region
+        and region != aws_client.region
+    ):
+        logger.info(f"Using regional client for {region} (resource region differs from default)")
+        regional_client = multi_region_scanner.client_factory.get_client(region)
+    else:
+        regional_client = aws_client
+
     # Fetch the resource's current tags efficiently using Resource Groups Tagging API
-    tags_by_arn = await aws_client.get_tags_for_arns([resource_arn])
+    tags_by_arn = await regional_client.get_tags_for_arns([resource_arn])
     current_tags = tags_by_arn.get(resource_arn, {})
 
     # Get resource name from tags or use resource_id
@@ -107,14 +128,14 @@ async def suggest_tags(
 
     # Fetch additional metadata (VPC, IAM role) if needed
     resource_data = await _fetch_resource_metadata(
-        aws_client, resource_arn, resource_type, resource_id
+        regional_client, resource_arn, resource_type, resource_id
     )
     vpc_name = resource_data.get("vpc_name")
     iam_role = resource_data.get("iam_role")
 
     # Fetch similar resources for pattern analysis
     similar_resources = await _fetch_similar_resources(
-        aws_client, resource_type, region, resource_id
+        regional_client, resource_type, region, resource_id
     )
 
     # Use injected service or create one
