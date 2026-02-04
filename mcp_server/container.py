@@ -178,14 +178,24 @@ class ServiceContainer:
                     cache_ttl=s.region_cache_ttl_seconds,
                 )
                 regional_client_factory = RegionalClientFactory()
+                
+                # Factory function to create ComplianceService for a regional client
+                # Captures policy_service and redis_cache from container scope
+                def make_compliance_service(aws_client: AWSClient) -> ComplianceService:
+                    return ComplianceService(
+                        aws_client=aws_client,
+                        policy_service=self._policy_service,
+                        cache=self._redis_cache,
+                    )
+                
                 self._multi_region_scanner = MultiRegionScanner(
-                    region_discovery_service=region_discovery,
-                    regional_client_factory=regional_client_factory,
-                    policy_service=self._policy_service,
-                    cache=self._redis_cache,
+                    region_discovery=region_discovery,
+                    client_factory=regional_client_factory,
+                    compliance_service_factory=make_compliance_service,
                     max_concurrent_regions=s.max_concurrent_regions,
                     region_timeout_seconds=s.region_scan_timeout_seconds,
                     multi_region_enabled=s.multi_region_enabled,
+                    default_region=s.aws_region,
                 )
                 logger.info(
                     f"ServiceContainer: multi-region scanner initialized "
