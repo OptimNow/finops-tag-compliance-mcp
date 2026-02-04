@@ -121,6 +121,7 @@ async def lifespan(app: FastAPI):
         redis_cache=_container.redis_cache,
         audit_service=_container.audit_service,
         history_service=_container.history_service,
+        multi_region_scanner=_container.multi_region_scanner,
     )
     logger.info("MCP handler initialized with 8 tools")
 

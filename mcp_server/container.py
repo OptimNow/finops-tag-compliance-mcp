@@ -19,12 +19,15 @@ from typing import Optional
 
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
+from .clients.regional_client_factory import RegionalClientFactory
 from .config import CoreSettings, Settings, settings as get_default_settings
 from .middleware.budget_middleware import BudgetTracker
 from .services.audit_service import AuditService
 from .services.compliance_service import ComplianceService
 from .services.history_service import HistoryService
+from .services.multi_region_scanner import MultiRegionScanner
 from .services.policy_service import PolicyService
+from .services.region_discovery_service import RegionDiscoveryService
 from .services.security_service import (
     SecurityService,
     configure_security_logging,
@@ -85,6 +88,7 @@ class ServiceContainer:
         self._security_service: Optional[SecurityService] = None
         self._budget_tracker: Optional[BudgetTracker] = None
         self._loop_detector: Optional[LoopDetector] = None
+        self._multi_region_scanner: Optional[MultiRegionScanner] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -163,6 +167,40 @@ class ServiceContainer:
                     f"ServiceContainer: failed to initialize compliance service: {e}"
                 )
                 self._compliance_service = None
+
+        # 6b. Multi-region scanner (depends on AWS + policy + compliance + cache)
+        # Requirements: 7.1, 7.2, 7.3
+        if s.multi_region_enabled and self._aws_client and self._policy_service:
+            try:
+                region_discovery = RegionDiscoveryService(
+                    aws_client=self._aws_client,
+                    cache=self._redis_cache,
+                    cache_ttl_seconds=s.region_cache_ttl_seconds,
+                )
+                regional_client_factory = RegionalClientFactory()
+                self._multi_region_scanner = MultiRegionScanner(
+                    region_discovery_service=region_discovery,
+                    regional_client_factory=regional_client_factory,
+                    policy_service=self._policy_service,
+                    cache=self._redis_cache,
+                    max_concurrent_regions=s.max_concurrent_regions,
+                    region_timeout_seconds=s.region_scan_timeout_seconds,
+                    multi_region_enabled=s.multi_region_enabled,
+                )
+                logger.info(
+                    f"ServiceContainer: multi-region scanner initialized "
+                    f"(max_concurrent={s.max_concurrent_regions}, "
+                    f"timeout={s.region_scan_timeout_seconds}s)"
+                )
+            except Exception as e:
+                logger.warning(
+                    f"ServiceContainer: failed to initialize multi-region scanner: {e}"
+                )
+                self._multi_region_scanner = None
+        else:
+            if not s.multi_region_enabled:
+                logger.info("ServiceContainer: multi-region scanning is disabled")
+            self._multi_region_scanner = None
 
         # 7. Budget tracker (Requirements: 15.3)
         if s.budget_tracking_enabled:
@@ -287,3 +325,7 @@ class ServiceContainer:
     @property
     def loop_detector(self) -> Optional[LoopDetector]:
         return self._loop_detector
+
+    @property
+    def multi_region_scanner(self) -> Optional[MultiRegionScanner]:
+        return self._multi_region_scanner
