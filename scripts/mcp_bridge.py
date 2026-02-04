@@ -74,7 +74,8 @@ from typing import Any
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080")
 MCP_API_KEY = os.getenv("MCP_API_KEY", "")  # Requirement 22.2
 MCP_VERIFY_TLS = os.getenv("MCP_VERIFY_TLS", "true").lower() != "false"  # Requirement 22.5
-TIMEOUT = 30
+# Timeout increased to 120s to support multi-region scans which can take 50-60s
+TIMEOUT = int(os.getenv("MCP_TIMEOUT", "120"))
 
 
 def log(msg: str) -> None:
