@@ -2352,3 +2352,104 @@ During development, discovered `from datetime import UTC` is Python 3.11+ only. 
 - Regional breakdown included in compliance results
 - All changes committed and pushed to feat/multi-region-scanning branch
 
+---
+
+## February 4, 2026: Multi-Region Code Review Fixes & Production Bug Fix
+
+### Day 66: Code Review Implementation + Critical Input Validation Fix
+
+**Context:**
+Received 5 code review findings for the multi-region scanning feature. Implemented all fixes, then discovered a critical production bug when testing through Claude Desktop.
+
+**Code Review Fixes Implemented:**
+
+1. **Fix `validate_resource_tags` parallel execution** (`mcp_server/tools/validate_resource_tags.py`)
+   - Changed from sequential loops to true parallel execution using `asyncio.gather()`
+   - Added `_fetch_tags_for_region()` helper function for cleaner async pattern
+   - Now fetches tags for multiple ARNs in parallel across regions
+
+2. **Add region validation to `suggest_tags`** (`mcp_server/tools/suggest_tags.py`)
+   - Added `InvalidRegionError` exception
+   - Validates that the region extracted from ARN is in the list of enabled regions
+   - Provides clear error message with list of valid regions
+
+3. **Fix regional client factory config consistency** (`mcp_server/clients/regional_client_factory.py`)
+   - Now passes `boto_config` to `AWSClient` constructor
+   - Ensures regional clients have the same retry/timeout configuration as the main client
+
+4. **Surface region discovery fallback in metadata** (`mcp_server/services/region_discovery_service.py`, `mcp_server/models/multi_region.py`)
+   - Added `RegionDiscoveryResult` dataclass with `discovery_failed` and `discovery_error` fields
+   - Added `get_enabled_regions_with_status()` method
+   - `RegionScanMetadata` now includes these fields so callers know if discovery fell back
+
+5. **Document global resources behavior** (`CLAUDE.md`)
+   - Explained difference between global resources (S3, IAM, CloudFront, Route53) and regional resources
+   - Documented that global resources ignore region filters and appear as region="global"
+   - Added region discovery fallback documentation
+
+**Critical Production Bug Found & Fixed:**
+
+While testing via Claude Desktop after deploying the code review fixes, the tools were failing with:
+```
+"Invalid filter keys: {'regions'}. Allowed keys: ['account_id', 'region']"
+```
+
+**Root Cause:** `mcp_server/utils/input_validation.py` line 712 only allowed `region` (singular) as a filter key, but the MCP tools were passing `regions` (plural).
+
+**Fix:** Added `"regions"` to the allowed_keys set:
+```python
+# Before
+allowed_keys = {"region", "account_id"}
+
+# After
+allowed_keys = {"region", "regions", "account_id"}
+```
+
+**Verification:**
+
+Tested via curl to remote server (`https://mcp.optimnow.io`):
+
+1. **Multi-region EC2 scan (no filter):**
+   - Scanned 17 regions successfully
+   - Found 7 EC2 instances (2 in eu-west-3, 5 in us-east-1)
+   - Regional breakdown included
+
+2. **Full "all" mode scan:**
+   - Scanned 18 regions (17 regional + "global")
+   - Found 52 resources total
+   - 21% compliance score
+   - Regional breakdown: eu-west-3 (2), us-east-1 (30), global (20)
+
+**Commits:**
+
+1. `c9b2df5` - fix: multi-region scanning improvements from code review
+2. `3ba3162` - fix: allow 'regions' (plural) as valid filter key in input validation
+
+**Files Modified:**
+- `mcp_server/tools/validate_resource_tags.py` - Parallel execution
+- `mcp_server/tools/suggest_tags.py` - Region validation
+- `mcp_server/clients/aws_client.py` - boto_config parameter
+- `mcp_server/clients/regional_client_factory.py` - Pass boto_config
+- `mcp_server/models/multi_region.py` - discovery_failed fields
+- `mcp_server/services/region_discovery_service.py` - RegionDiscoveryResult class
+- `mcp_server/services/multi_region_scanner.py` - Use new discovery method
+- `mcp_server/utils/input_validation.py` - Allow "regions" filter key
+- `tests/unit/test_multi_region_scanner.py` - Updated mocks
+- `CLAUDE.md` - Documentation updates
+
+**What I Learned:**
+
+1. **Input validation can be too strict**: The validation layer rejected a valid alias (`regions`) that the business logic supported. Always ensure validation and implementation are in sync.
+
+2. **Test through the full stack**: Unit tests passed, but the production bug was in a different layer (input validation). End-to-end testing through the actual MCP endpoint caught it.
+
+3. **Code review finds real issues**: All 5 code review findings were legitimate improvements that made the code more robust.
+
+4. **Fallback transparency matters**: Surfacing `discovery_failed` and `discovery_error` helps users understand when results may be incomplete.
+
+**Current Status:**
+- All code review fixes implemented
+- Input validation bug fixed
+- Multi-region scanning verified working on production server
+- Ready to merge to main
+
