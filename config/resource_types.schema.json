@@ -1,0 +1,60 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AWS Resource Types Configuration",
+  "description": "Configuration for AWS resource types used in FinOps Tag Compliance scanning",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "_description": {
+      "type": "string"
+    },
+    "_last_updated": {
+      "type": "string"
+    },
+    "_documentation": {
+      "type": "string"
+    },
+    "cost_generating_resources": {
+      "type": "object",
+      "description": "Resources that generate direct costs - scanned for compliance",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+:[a-z0-9-]+$"
+        }
+      }
+    },
+    "free_resources": {
+      "type": "object",
+      "description": "Taggable resources with no direct cost - excluded from compliance by default",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string",
+          "pattern": "^[a-z0-9-]+:[a-z0-9-]+$"
+        }
+      }
+    },
+    "unattributable_services": {
+      "type": "object",
+      "description": "Services with costs but no taggable resources",
+      "additionalProperties": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      }
+    },
+    "service_name_mapping": {
+      "type": "object",
+      "description": "Mapping from resource type to Cost Explorer service name",
+      "additionalProperties": {
+        "type": "string"
+      }
+    }
+  },
+  "required": ["cost_generating_resources", "free_resources", "service_name_mapping"]
+}

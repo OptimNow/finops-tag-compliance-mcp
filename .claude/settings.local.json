@@ -8,7 +8,15 @@
       "Bash(git push:*)",
       "Bash(git rebase:*)",
       "Bash(ls:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git merge:*)",
+      "Bash(git checkout:*)",
+      "Bash(python -m pytest:*)",
+      "Bash(python -c:*)",
+      "Bash(git reset:*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\jlati\\Documents\\GitHub\\finops-tag-compliance-mcp\\docs\\business"
     ]
   }
 }
