@@ -472,10 +472,16 @@ class MultiRegionScanner:
         # Create compliance service for this region
         compliance_service = self.compliance_service_factory(client)
         
+        # Strip region filter from filters before passing to regional compliance service
+        # The region is already determined by which regional client we're using.
+        # Passing the region filter would cause the AWS client to return empty results
+        # when the filter region doesn't match the client's region.
+        regional_filters = self._strip_region_filter(filters)
+        
         # Execute compliance check
         compliance_result = await compliance_service.check_compliance(
             resource_types=resource_types,
-            filters=filters,
+            filters=regional_filters,
             severity=severity,
             force_refresh=True,  # Always fresh scan for multi-region
         )
@@ -756,3 +762,31 @@ class MultiRegionScanner:
         jitter = random.uniform(0, delay * 0.25)
         
         return delay + jitter
+
+    def _strip_region_filter(self, filters: dict | None) -> dict | None:
+        """
+        Strip region-related filters from the filters dict.
+        
+        When scanning a specific region with a regional client, we don't want
+        to pass region filters to the compliance service because:
+        1. The region is already determined by which regional client we're using
+        2. The AWS client returns empty results if the filter region doesn't match
+           its configured region
+        
+        This method removes 'region' and 'regions' keys from the filters dict
+        while preserving other filters like 'account_id'.
+        
+        Args:
+            filters: Original filters dict (may be None)
+            
+        Returns:
+            New filters dict without region keys, or None if empty/None
+        """
+        if not filters:
+            return None
+        
+        # Create a copy without region-related keys
+        stripped = {k: v for k, v in filters.items() if k not in ("region", "regions")}
+        
+        # Return None if the stripped dict is empty
+        return stripped if stripped else None

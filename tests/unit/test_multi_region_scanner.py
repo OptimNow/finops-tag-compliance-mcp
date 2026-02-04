@@ -290,6 +290,81 @@ class TestApplyRegionFilter:
         assert result == enabled
 
 
+class TestStripRegionFilter:
+    """Tests for _strip_region_filter method.
+    
+    This method removes region-related keys from filters before passing
+    to regional compliance services, since the region is already determined
+    by which regional client is being used.
+    """
+
+    def test_strip_region_key(self, scanner):
+        """Test that 'region' key is stripped from filters."""
+        filters = {"region": "eu-west-3", "account_id": "123456789012"}
+        result = scanner._strip_region_filter(filters)
+        assert result == {"account_id": "123456789012"}
+        assert "region" not in result
+
+    def test_strip_regions_key(self, scanner):
+        """Test that 'regions' key is stripped from filters."""
+        filters = {"regions": ["us-east-1", "eu-west-3"], "account_id": "123456789012"}
+        result = scanner._strip_region_filter(filters)
+        assert result == {"account_id": "123456789012"}
+        assert "regions" not in result
+
+    def test_strip_both_region_keys(self, scanner):
+        """Test that both 'region' and 'regions' keys are stripped."""
+        filters = {
+            "region": "eu-west-3",
+            "regions": ["us-east-1"],
+            "account_id": "123456789012"
+        }
+        result = scanner._strip_region_filter(filters)
+        assert result == {"account_id": "123456789012"}
+        assert "region" not in result
+        assert "regions" not in result
+
+    def test_strip_returns_none_for_none_input(self, scanner):
+        """Test that None input returns None."""
+        result = scanner._strip_region_filter(None)
+        assert result is None
+
+    def test_strip_returns_none_for_empty_dict(self, scanner):
+        """Test that empty dict returns None."""
+        result = scanner._strip_region_filter({})
+        assert result is None
+
+    def test_strip_returns_none_when_only_region_keys(self, scanner):
+        """Test that filters with only region keys returns None."""
+        filters = {"region": "eu-west-3"}
+        result = scanner._strip_region_filter(filters)
+        assert result is None
+
+        filters = {"regions": ["us-east-1", "eu-west-3"]}
+        result = scanner._strip_region_filter(filters)
+        assert result is None
+
+    def test_strip_preserves_other_filters(self, scanner):
+        """Test that non-region filters are preserved."""
+        filters = {
+            "region": "eu-west-3",
+            "account_id": "123456789012",
+            "tag_filters": {"Environment": "prod"},
+        }
+        result = scanner._strip_region_filter(filters)
+        assert result == {
+            "account_id": "123456789012",
+            "tag_filters": {"Environment": "prod"},
+        }
+
+    def test_strip_does_not_modify_original(self, scanner):
+        """Test that original filters dict is not modified."""
+        filters = {"region": "eu-west-3", "account_id": "123456789012"}
+        original_filters = filters.copy()
+        scanner._strip_region_filter(filters)
+        assert filters == original_filters
+
+
 class TestInvalidRegionFilterError:
     """Tests for InvalidRegionFilterError exception."""
 
