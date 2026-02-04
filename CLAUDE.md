@@ -361,9 +361,11 @@ Middleware is applied in this order (from `main.py`):
 - CloudWatch metrics for CORS violations
 - Default permissive (`*`) for backward compatibility
 
-**Bridge Authentication** (`scripts/mcp_bridge.py`):
-- `MCP_API_KEY` environment variable support
-- HTTPS/TLS configuration via `MCP_VERIFY_TLS`
+**Bridge Configuration** (`scripts/mcp_bridge.py`):
+- `MCP_SERVER_URL` - URL of the MCP server (default: `http://localhost:8080`)
+- `MCP_API_KEY` - API key for authentication (optional)
+- `MCP_VERIFY_TLS` - Enable TLS certificate verification (default: `true`)
+- `MCP_TIMEOUT` - Request timeout in seconds (default: `120`, increased for multi-region scans)
 - Proper error handling for 401/403 responses
 
 ### Error Handling

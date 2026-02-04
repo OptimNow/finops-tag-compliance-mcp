@@ -479,7 +479,18 @@ python scripts\mcp_bridge.py
 
 ### 4.4 Configuration
 
-#### Environment Variables
+#### Bridge Environment Variables (mcp_bridge.py)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `MCP_SERVER_URL` | URL of the MCP server | `http://localhost:8080` |
+| `MCP_API_KEY` | API key for authentication | (none) |
+| `MCP_VERIFY_TLS` | Enable TLS certificate verification | `true` |
+| `MCP_TIMEOUT` | Request timeout in seconds | `120` |
+
+> **Note:** Multi-region scans can take 50-60 seconds. The default timeout of 120s accommodates this. Reduce for faster failure detection if not using multi-region scanning.
+
+#### Server Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -490,6 +501,8 @@ python scripts\mcp_bridge.py
 | `AUTH_ENABLED` | Enable API key auth | `false` |
 | `API_KEYS` | Comma-separated API keys | - |
 | `CORS_ALLOWED_ORIGINS` | Allowed CORS origins | `*` |
+| `ALLOWED_REGIONS` | Restrict scanning to specific regions (comma-separated) | (all enabled) |
+| `MAX_CONCURRENT_REGIONS` | Max regions to scan in parallel | `5` |
 
 #### Tagging Policy
 
