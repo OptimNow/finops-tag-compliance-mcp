@@ -161,6 +161,33 @@ class CoreSettings(BaseSettings):
         validation_alias="SECURITY_MONITORING_ENABLED",
     )
 
+    # Multi-Region Scanning Configuration (Requirements: 7.1, 7.2, 7.3)
+    multi_region_enabled: bool = Field(
+        default=True,
+        description="Enable multi-region scanning",
+        validation_alias="MULTI_REGION_ENABLED",
+    )
+    max_concurrent_regions: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Maximum regions to scan in parallel",
+        validation_alias="MAX_CONCURRENT_REGIONS",
+    )
+    region_scan_timeout_seconds: int = Field(
+        default=60,
+        ge=10,
+        le=300,
+        description="Timeout for scanning a single region",
+        validation_alias="REGION_SCAN_TIMEOUT_SECONDS",
+    )
+    region_cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        description="TTL for caching enabled regions list",
+        validation_alias="REGION_CACHE_TTL_SECONDS",
+    )
+
     # Timeout Configuration (Requirements: 16.1, 16.2)
     tool_execution_timeout_seconds: int = Field(
         default=30,

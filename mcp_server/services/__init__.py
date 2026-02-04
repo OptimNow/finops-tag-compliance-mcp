@@ -5,7 +5,13 @@ from .compliance_service import ComplianceService
 from .cost_service import CostAttributionResult, CostService
 from .history_service import HistoryService
 from .metrics_service import MetricsService
+from .multi_region_scanner import MultiRegionScanner, MultiRegionScanError
 from .policy_service import PolicyService
+from .region_discovery_service import (
+    RegionDiscoveryError,
+    RegionDiscoveryService,
+    filter_regions_by_opt_in_status,
+)
 from .report_service import ReportService
 from .security_service import (
     SecurityEvent,
@@ -31,4 +37,9 @@ __all__ = [
     "set_security_service",
     "configure_security_logging",
     "MetricsService",
+    "RegionDiscoveryService",
+    "RegionDiscoveryError",
+    "filter_regions_by_opt_in_status",
+    "MultiRegionScanner",
+    "MultiRegionScanError",
 ]

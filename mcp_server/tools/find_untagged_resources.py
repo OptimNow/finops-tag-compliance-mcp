@@ -2,14 +2,26 @@
 # Licensed under the Proprietary Software License.
 # See LICENSE file in the project root for full license information.
 
-"""MCP tool for finding untagged resources."""
+"""MCP tool for finding untagged resources.
 
+This module provides the find_untagged_resources tool for discovering AWS resources
+that are missing required tags according to the organization's tagging policy.
+
+Supports both single-region and multi-region scanning modes:
+- Single-region: Uses AWSClient directly (backward compatible)
+- Multi-region: Uses MultiRegionScanner for parallel scanning across regions
+
+Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 17.3, 17.4
+"""
+
+import asyncio
 import logging
 from datetime import datetime
 
 from ..clients.aws_client import AWSClient
 from ..models.policy import TagPolicy
 from ..models.untagged import UntaggedResource, UntaggedResourcesResult
+from ..services.multi_region_scanner import MultiRegionScanner
 from ..services.policy_service import PolicyService
 from ..utils.resource_utils import (
     fetch_resources_by_type,
@@ -26,6 +38,7 @@ async def find_untagged_resources(
     regions: list[str] | None = None,
     min_cost_threshold: float | None = None,
     include_costs: bool = False,
+    multi_region_scanner: MultiRegionScanner | None = None,
 ) -> UntaggedResourcesResult:
     """
     Find resources with no tags or missing required tags.
@@ -33,15 +46,25 @@ async def find_untagged_resources(
     This tool searches for resources that are completely untagged or missing
     critical required tags. It includes resource age to help prioritize remediation.
 
+    Supports two scanning modes:
+    - **Single-region mode** (default): Uses AWSClient directly to scan
+      resources in the configured AWS region. This is the backward-compatible
+      behavior when multi_region_scanner is not provided.
+    - **Multi-region mode**: When multi_region_scanner is provided and multi-region
+      scanning is enabled, scans resources across all enabled AWS regions in parallel.
+      Resources from all regions are aggregated into a single result.
+
     Args:
-        aws_client: AWSClient instance for fetching resources
+        aws_client: AWSClient instance for fetching resources (used in single-region mode)
         policy_service: PolicyService for determining required tags
         resource_types: List of resource types to search (e.g., ["ec2:instance", "rds:db"])
                        Supported types: ec2:instance, rds:db, s3:bucket,
                        lambda:function, ecs:service, opensearch:domain
                        Special value: ["all"] - scan ALL taggable resources (50+ types)
                        using AWS Resource Groups Tagging API
-        regions: Optional list of AWS regions to search. If None, searches current region.
+        regions: Optional list of AWS regions to search. If None, searches current region
+                 (single-region mode) or all enabled regions (multi-region mode).
+                 In multi-region mode, this acts as a filter for which regions to scan.
         min_cost_threshold: Optional minimum monthly cost threshold in USD.
                            Only return resources with estimated cost >= this value.
                            Implies include_costs=True.
@@ -49,6 +72,12 @@ async def find_untagged_resources(
                       Set to True only when user explicitly asks about costs.
                       Note: EC2/RDS have accurate per-resource costs from Cost Explorer.
                       S3/Lambda/ECS costs are rough estimates (service total / resource count).
+        multi_region_scanner: Optional MultiRegionScanner for multi-region scanning.
+                             When provided and multi-region is enabled, scans resources
+                             across all enabled AWS regions in parallel.
+                             When None or multi-region is disabled, falls back to
+                             single-region scanning using aws_client.
+                             Requirements: 3.1
 
     Returns:
         UntaggedResourcesResult containing:
@@ -60,7 +89,7 @@ async def find_untagged_resources(
     Raises:
         ValueError: If resource_types is empty or contains invalid types
 
-    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 17.3, 17.4
+    Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 17.3, 17.4
 
     Example:
         >>> result = await find_untagged_resources(
@@ -78,6 +107,15 @@ async def find_untagged_resources(
         ...     resource_types=["all"]
         ... )
         >>> print(f"Found {result.total_untagged} untagged resources across all services")
+
+        # Multi-region scan across all enabled regions:
+        >>> result = await find_untagged_resources(
+        ...     aws_client=client,
+        ...     policy_service=policy,
+        ...     resource_types=["ec2:instance"],
+        ...     multi_region_scanner=scanner,
+        ... )
+        >>> print(f"Found {result.total_untagged} untagged resources across all regions")
 
         # With costs (only when user asks about cost impact):
         >>> result = await find_untagged_resources(
@@ -105,9 +143,18 @@ async def find_untagged_resources(
                 f"Valid types are: {sorted(valid_types)} or use ['all'] for comprehensive scan."
             )
 
+    # Determine whether to use multi-region scanning
+    # Requirements 3.1: Use multi-region scanner when provided and enabled
+    use_multi_region = (
+        multi_region_scanner is not None
+        and multi_region_scanner.multi_region_enabled
+        and not use_tagging_api  # "all" mode uses tagging API which handles regions differently
+    )
+
     logger.info(
         f"Finding untagged resources for types={resource_types}, "
-        f"regions={regions}, min_cost={min_cost_threshold}, include_costs={include_costs}"
+        f"regions={regions}, min_cost={min_cost_threshold}, include_costs={include_costs}, "
+        f"multi_region={'enabled' if use_multi_region else 'disabled'}"
     )
 
     # If min_cost_threshold is set, we need costs to filter
@@ -123,23 +170,40 @@ async def find_untagged_resources(
     # Determine which resource types to scan
     types_to_scan = ["all"] if use_tagging_api else resource_types
 
-    for resource_type in types_to_scan:
-        try:
-            # Fetch resources using shared utility
-            filters = {}
-            if regions:
-                # For now, we only support the current region
-                # Multi-region support would require creating multiple AWS clients
-                filters["region"] = regions[0] if regions else None
+    if use_multi_region:
+        # Multi-region scanning mode
+        # Use the scanner's client factory to fetch resources from all enabled regions
+        logger.info("Using multi-region scanner for resource discovery")
+        all_resources = await _fetch_resources_multi_region(
+            multi_region_scanner=multi_region_scanner,
+            resource_types=types_to_scan,
+            regions=regions,
+        )
+    else:
+        # Single-region scanning mode (backward compatible)
+        if multi_region_scanner is not None and not multi_region_scanner.multi_region_enabled:
+            logger.info(
+                "Multi-region scanner provided but multi-region is disabled. "
+                "Falling back to single-region mode."
+            )
+        
+        for resource_type in types_to_scan:
+            try:
+                # Fetch resources using shared utility
+                filters = {}
+                if regions:
+                    # For now, we only support the current region
+                    # Multi-region support would require creating multiple AWS clients
+                    filters["region"] = regions[0] if regions else None
 
-            resources = await fetch_resources_by_type(aws_client, resource_type, filters)
-            all_resources.extend(resources)
-            logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
+                resources = await fetch_resources_by_type(aws_client, resource_type, filters)
+                all_resources.extend(resources)
+                logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
 
-        except Exception as e:
-            logger.error(f"Failed to fetch resources of type {resource_type}: {str(e)}")
-            # Continue with other resource types even if one fails
-            continue
+            except Exception as e:
+                logger.error(f"Failed to fetch resources of type {resource_type}: {str(e)}")
+                # Continue with other resource types even if one fails
+                continue
 
     logger.info(f"Total resources fetched: {len(all_resources)}")
 
@@ -181,7 +245,7 @@ async def find_untagged_resources(
         if missing_tags:
             # Calculate resource age (only if created_at is available)
             created_at = resource.get("created_at")
-            age_days = _calculate_age_days(created_at) if created_at else None
+            age_days = _calculate_age_days(created_at) if created_at else 0
             
             # Get cost estimate and source (only if costs requested)
             monthly_cost = cost_data.get(resource_id, None) if include_costs else None
@@ -420,3 +484,101 @@ def _calculate_age_days(created_at: datetime | None) -> int:
     age = now - created_at
 
     return age.days
+
+
+async def _fetch_resources_multi_region(
+    multi_region_scanner: MultiRegionScanner,
+    resource_types: list[str],
+    regions: list[str] | None = None,
+) -> list[dict]:
+    """
+    Fetch resources from multiple regions using the multi-region scanner.
+
+    Uses the scanner's region discovery and client factory to fetch resources
+    from all enabled regions in parallel.
+
+    Args:
+        multi_region_scanner: MultiRegionScanner instance with region discovery
+                             and client factory
+        resource_types: List of resource types to fetch
+        regions: Optional list of regions to filter (if None, scans all enabled)
+
+    Returns:
+        List of resource dictionaries from all regions, each with a 'region' attribute
+
+    Requirements: 3.1
+    """
+    # Get enabled regions from the scanner's region discovery service
+    enabled_regions = await multi_region_scanner.region_discovery.get_enabled_regions()
+    
+    # Apply region filter if provided
+    if regions:
+        # Filter to only requested regions that are enabled
+        regions_to_scan = [r for r in regions if r in enabled_regions]
+        if not regions_to_scan:
+            logger.warning(
+                f"No valid regions to scan. Requested: {regions}, Enabled: {enabled_regions}"
+            )
+            return []
+    else:
+        regions_to_scan = enabled_regions
+    
+    logger.info(f"Fetching resources from {len(regions_to_scan)} regions: {regions_to_scan}")
+    
+    # Create semaphore for concurrency control
+    semaphore = asyncio.Semaphore(multi_region_scanner.max_concurrent_regions)
+    
+    async def fetch_from_region(region: str) -> list[dict]:
+        """Fetch resources from a single region with concurrency control."""
+        async with semaphore:
+            try:
+                # Get regional client from the factory
+                client = multi_region_scanner.client_factory.get_client(region)
+                
+                # Fetch resources for each type
+                region_resources = []
+                for resource_type in resource_types:
+                    try:
+                        resources = await fetch_resources_by_type(client, resource_type, {})
+                        # Ensure each resource has the region attribute
+                        for resource in resources:
+                            resource["region"] = region
+                        region_resources.extend(resources)
+                        logger.debug(
+                            f"Fetched {len(resources)} {resource_type} resources from {region}"
+                        )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to fetch {resource_type} from {region}: {str(e)}"
+                        )
+                        # Continue with other resource types
+                        continue
+                
+                logger.info(
+                    f"Fetched {len(region_resources)} total resources from region {region}"
+                )
+                return region_resources
+                
+            except Exception as e:
+                logger.error(f"Failed to fetch resources from region {region}: {str(e)}")
+                return []
+    
+    # Fetch from all regions in parallel
+    tasks = [fetch_from_region(region) for region in regions_to_scan]
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    
+    # Aggregate results, handling any exceptions
+    all_resources = []
+    for i, result in enumerate(results):
+        region = regions_to_scan[i]
+        if isinstance(result, Exception):
+            logger.error(f"Region {region} fetch failed with exception: {result}")
+        elif isinstance(result, list):
+            all_resources.extend(result)
+    
+    logger.info(
+        f"Multi-region fetch complete: {len(all_resources)} resources "
+        f"from {len(regions_to_scan)} regions"
+    )
+    
+    return all_resources

@@ -31,6 +31,9 @@ def mock_aws_client():
     """Create a mock AWS client."""
     client = MagicMock(spec=AWSClient)
 
+    # Set the region attribute (required for cache key generation)
+    client.region = "us-east-1"
+
     # Default: return empty lists for all resource types
     client.get_ec2_instances = AsyncMock(return_value=[])
     client.get_rds_instances = AsyncMock(return_value=[])

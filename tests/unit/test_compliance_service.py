@@ -110,6 +110,128 @@ class TestCacheKeyGeneration:
 
         assert key1 != key2
 
+    def test_generate_cache_key_with_scanned_regions(self, compliance_service):
+        """Test cache key generation with scanned regions for multi-region support.
+
+        Requirements: 8.1, 8.2 - Cache multi-region results with region-aware keys
+        """
+        key = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2", "eu-west-1"],
+        )
+
+        assert key.startswith("compliance:")
+        assert len(key) > len("compliance:")
+
+    def test_generate_cache_key_scanned_regions_deterministic(self, compliance_service):
+        """Test that same scanned regions produce same cache key.
+
+        Requirements: 8.2 - Ensure cache key determinism
+        """
+        key1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2"],
+        )
+
+        key2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2"],
+        )
+
+        assert key1 == key2
+
+    def test_generate_cache_key_scanned_regions_order_independent(self, compliance_service):
+        """Test that scanned region order doesn't affect cache key.
+
+        Requirements: 8.2 - Ensure cache key determinism (same inputs = same key)
+        """
+        key1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2", "eu-west-1"],
+        )
+
+        key2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["eu-west-1", "us-east-1", "us-west-2"],
+        )
+
+        assert key1 == key2
+
+    def test_generate_cache_key_different_scanned_regions(self, compliance_service):
+        """Test that different scanned regions produce different cache keys.
+
+        Requirements: 8.1 - Cache key includes list of scanned regions
+        """
+        key1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2"],
+        )
+
+        key2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "eu-west-1"],
+        )
+
+        assert key1 != key2
+
+    def test_generate_cache_key_with_vs_without_scanned_regions(self, compliance_service):
+        """Test that cache key differs when scanned_regions is provided vs not.
+
+        Requirements: 8.1 - Differentiate full scans from filtered scans
+        """
+        key_without = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=None,
+        )
+
+        key_with = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1"],
+        )
+
+        assert key_without != key_with
+
+    def test_generate_cache_key_empty_scanned_regions(self, compliance_service):
+        """Test cache key generation with empty scanned regions list."""
+        key = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=[],
+        )
+
+        assert key.startswith("compliance:")
+
+    def test_generate_cache_key_scanned_regions_with_filters(self, compliance_service):
+        """Test cache key generation with both scanned regions and filters."""
+        key = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance", "rds:db"],
+            filters={"account_id": "123456789012"},
+            severity="errors_only",
+            scanned_regions=["us-east-1", "us-west-2"],
+        )
+
+        assert key.startswith("compliance:")
+        assert len(key) > len("compliance:")
+
 
 class TestCacheRetrieval:
     """Test cache retrieval logic."""
@@ -928,3 +1050,520 @@ class TestAllResourceTypeSupport:
         # VPC, Subnet, Security Group should be filtered out
         assert result.total_resources == 2
         assert result.compliant_resources == 2
+
+
+class TestMultiRegionCacheBehavior:
+    """Test cache behavior with multi-region scanning support.
+
+    These tests verify that the caching mechanism works correctly when
+    scanning resources across multiple AWS regions, ensuring:
+    - Cache hits return cached results without re-scanning
+    - Cache misses trigger new scans
+    - force_refresh bypasses cache even with cached multi-region results
+    - Cache invalidation clears multi-region cached results
+    - scanned_regions parameter affects cache key generation
+
+    Requirements: 8.1, 8.3, 8.4
+    """
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_with_multi_region_results(self, compliance_service, mock_cache):
+        """Test that cache hit returns cached multi-region result without scanning.
+
+        When a cached result exists for a multi-region scan, the service should
+        return the cached result without making any AWS API calls.
+
+        Requirements: 8.1 - Cache multi-region results
+        """
+        # Setup cached multi-region data
+        cached_data = {
+            "compliance_score": 0.85,
+            "total_resources": 50,
+            "compliant_resources": 42,
+            "violations": [
+                {
+                    "resource_id": "i-123",
+                    "resource_type": "ec2:instance",
+                    "region": "us-west-2",
+                    "violation_type": "missing_required_tag",
+                    "tag_name": "CostCenter",
+                    "severity": "error",
+                    "cost_impact_monthly": 100.0,
+                }
+            ],
+            "cost_attribution_gap": 800.0,
+            "scan_timestamp": datetime.now(UTC).isoformat(),
+        }
+        mock_cache.get.return_value = cached_data
+
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance", "rds:db"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify cached result was returned
+        assert result.compliance_score == 0.85
+        assert result.total_resources == 50
+        assert result.compliant_resources == 42
+        assert len(result.violations) == 1
+        assert result.cost_attribution_gap == 800.0
+
+        # Verify cache was checked
+        mock_cache.get.assert_called_once()
+        # Verify no new cache entry was created (cache hit)
+        mock_cache.set.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_cache_miss_triggers_scan_for_multi_region(
+        self, compliance_service, mock_cache, mock_aws_client, mock_policy_service
+    ):
+        """Test that cache miss triggers actual scan and caches result.
+
+        When no cached result exists, the service should perform a full scan
+        and cache the results for future requests.
+
+        Requirements: 8.1 - Cache multi-region results after scan
+        """
+        # Setup cache miss
+        mock_cache.get.return_value = None
+
+        # Setup mock resources from multiple regions
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+            },
+            {
+                "resource_id": "i-456",
+                "resource_type": "ec2:instance",
+                "region": "us-west-2",
+                "tags": {"CostCenter": "Marketing"},
+                "cost_impact": 150.0,
+            },
+        ]
+
+        mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+        mock_policy_service.validate_resource_tags.return_value = []
+
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify scan was performed
+        assert isinstance(result, ComplianceResult)
+        assert result.total_resources == 2
+        assert result.compliance_score == 1.0
+
+        # Verify cache was checked and result was cached
+        mock_cache.get.assert_called_once()
+        mock_cache.set.assert_called_once()
+
+        # Verify cached data structure
+        cached_call = mock_cache.set.call_args
+        assert cached_call[0][0].startswith("compliance:")
+        assert cached_call[1]["ttl"] == 3600
+
+    @pytest.mark.asyncio
+    async def test_force_refresh_bypasses_multi_region_cache(
+        self, compliance_service, mock_cache, mock_aws_client, mock_policy_service
+    ):
+        """Test that force_refresh=True bypasses cache even with cached multi-region results.
+
+        When force_refresh is True, the service should ignore any cached results
+        and perform a fresh scan, then update the cache with new results.
+
+        Requirements: 8.3 - force_refresh bypasses cache
+        """
+        # Setup cached data that should be ignored
+        cached_data = {
+            "compliance_score": 0.5,
+            "total_resources": 100,
+            "compliant_resources": 50,
+            "violations": [],
+            "cost_attribution_gap": 5000.0,
+            "scan_timestamp": datetime.now(UTC).isoformat(),
+        }
+        mock_cache.get.return_value = cached_data
+
+        # Setup fresh scan results (different from cached)
+        mock_resources = [
+            {
+                "resource_id": "i-new-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 200.0,
+            },
+        ]
+
+        mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+        mock_policy_service.validate_resource_tags.return_value = []
+
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            force_refresh=True,
+        )
+
+        # Verify fresh scan result (not cached data)
+        assert result.total_resources == 1  # Fresh scan has 1 resource, not 100
+        assert result.compliance_score == 1.0  # Fresh scan is fully compliant
+
+        # Verify cache.get was NOT called (force_refresh bypasses cache check)
+        mock_cache.get.assert_not_called()
+
+        # Verify new result was cached
+        mock_cache.set.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidation_clears_multi_region_results(
+        self, compliance_service, mock_cache
+    ):
+        """Test that cache invalidation clears all cached multi-region results.
+
+        When invalidate_cache is called without parameters, all compliance
+        cache entries should be cleared, including multi-region results.
+
+        Requirements: 8.4 - Cache invalidation clears cached results
+        """
+        result = await compliance_service.invalidate_cache()
+
+        assert result is True
+        mock_cache.clear.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_cache_invalidation_specific_multi_region_entry(
+        self, compliance_service, mock_cache
+    ):
+        """Test invalidating a specific multi-region cache entry.
+
+        When invalidate_cache is called with specific resource types and filters,
+        only the matching cache entry should be invalidated.
+
+        Requirements: 8.4 - Cache invalidation for specific entries
+        """
+        result = await compliance_service.invalidate_cache(
+            resource_types=["ec2:instance", "rds:db"],
+            filters={"region": ["us-east-1", "us-west-2"]},
+        )
+
+        assert result is True
+        mock_cache.delete.assert_called_once()
+
+        # Verify the cache key was generated correctly
+        deleted_key = mock_cache.delete.call_args[0][0]
+        assert deleted_key.startswith("compliance:")
+
+    @pytest.mark.asyncio
+    async def test_scanned_regions_affects_cache_key(self, compliance_service, mock_cache):
+        """Test that scanned_regions parameter creates different cache keys.
+
+        Different sets of scanned regions should produce different cache keys
+        to prevent cache pollution between different region combinations.
+
+        Requirements: 8.1, 8.2 - Cache key includes scanned regions
+        """
+        # Generate cache keys with different scanned regions
+        key_regions_1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2"],
+        )
+
+        key_regions_2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "eu-west-1"],
+        )
+
+        key_no_regions = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=None,
+        )
+
+        # All keys should be different
+        assert key_regions_1 != key_regions_2
+        assert key_regions_1 != key_no_regions
+        assert key_regions_2 != key_no_regions
+
+    @pytest.mark.asyncio
+    async def test_cache_key_deterministic_with_scanned_regions(self, compliance_service):
+        """Test that same scanned regions always produce same cache key.
+
+        Cache key generation must be deterministic - same inputs should
+        always produce the same key regardless of call order.
+
+        Requirements: 8.2 - Deterministic cache key generation
+        """
+        scanned_regions = ["us-east-1", "us-west-2", "eu-west-1"]
+
+        key1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=scanned_regions,
+        )
+
+        key2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=scanned_regions,
+        )
+
+        assert key1 == key2
+
+    @pytest.mark.asyncio
+    async def test_cache_key_order_independent_for_scanned_regions(self, compliance_service):
+        """Test that scanned region order doesn't affect cache key.
+
+        The cache key should be the same regardless of the order in which
+        scanned regions are provided.
+
+        Requirements: 8.2 - Deterministic cache key (order independent)
+        """
+        key1 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1", "us-west-2", "eu-west-1"],
+        )
+
+        key2 = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["eu-west-1", "us-east-1", "us-west-2"],
+        )
+
+        assert key1 == key2
+
+    @pytest.mark.asyncio
+    async def test_cache_stores_multi_region_violations(
+        self, compliance_service, mock_cache, mock_aws_client, mock_policy_service
+    ):
+        """Test that cached results preserve violations from multiple regions.
+
+        When caching multi-region results, violations from all regions should
+        be preserved and retrievable from cache.
+
+        Requirements: 8.1 - Cache multi-region results with all violations
+        """
+        mock_cache.get.return_value = None
+
+        # Setup resources from multiple regions with violations
+        mock_resources = [
+            {
+                "resource_id": "i-east-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {},  # Missing tags - will have violation
+                "cost_impact": 100.0,
+            },
+            {
+                "resource_id": "i-west-456",
+                "resource_type": "ec2:instance",
+                "region": "us-west-2",
+                "tags": {},  # Missing tags - will have violation
+                "cost_impact": 150.0,
+            },
+        ]
+
+        mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+
+        # Create violations for each resource
+        def create_violation(resource_id, resource_type, region, tags, cost_impact):
+            return [
+                Violation(
+                    resource_id=resource_id,
+                    resource_type=resource_type,
+                    region=region,
+                    violation_type=ViolationType.MISSING_REQUIRED_TAG,
+                    tag_name="CostCenter",
+                    severity=Severity.ERROR,
+                    cost_impact_monthly=cost_impact,
+                )
+            ]
+
+        mock_policy_service.validate_resource_tags.side_effect = create_violation
+
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify violations from both regions
+        assert len(result.violations) == 2
+        violation_regions = {v.region for v in result.violations}
+        assert "us-east-1" in violation_regions
+        assert "us-west-2" in violation_regions
+
+        # Verify result was cached
+        mock_cache.set.assert_called_once()
+
+        # Verify cached data includes all violations
+        cached_data = mock_cache.set.call_args[0][1]
+        assert len(cached_data["violations"]) == 2
+
+    @pytest.mark.asyncio
+    async def test_cache_ttl_applied_to_multi_region_results(
+        self, compliance_service, mock_cache, mock_aws_client, mock_policy_service
+    ):
+        """Test that cache TTL is correctly applied to multi-region results.
+
+        The configured cache TTL should be applied when caching multi-region
+        scan results.
+
+        Requirements: 8.1 - Cache with configurable TTL
+        """
+        mock_cache.get.return_value = None
+        mock_aws_client.get_ec2_instances = AsyncMock(return_value=[])
+        mock_policy_service.validate_resource_tags.return_value = []
+
+        await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify TTL was applied
+        mock_cache.set.assert_called_once()
+        call_kwargs = mock_cache.set.call_args[1]
+        assert call_kwargs["ttl"] == 3600  # Default TTL from fixture
+
+    @pytest.mark.asyncio
+    async def test_cache_hit_preserves_cost_attribution_gap(self, compliance_service, mock_cache):
+        """Test that cached results preserve cost attribution gap from all regions.
+
+        The cost_attribution_gap should be correctly preserved and returned
+        from cached multi-region results.
+
+        Requirements: 8.1 - Cache preserves aggregated cost data
+        """
+        # Setup cached data with cost attribution gap from multiple regions
+        cached_data = {
+            "compliance_score": 0.75,
+            "total_resources": 40,
+            "compliant_resources": 30,
+            "violations": [
+                {
+                    "resource_id": "i-east-123",
+                    "resource_type": "ec2:instance",
+                    "region": "us-east-1",
+                    "violation_type": "missing_required_tag",
+                    "tag_name": "CostCenter",
+                    "severity": "error",
+                    "cost_impact_monthly": 500.0,
+                },
+                {
+                    "resource_id": "i-west-456",
+                    "resource_type": "ec2:instance",
+                    "region": "us-west-2",
+                    "violation_type": "missing_required_tag",
+                    "tag_name": "Environment",
+                    "severity": "error",
+                    "cost_impact_monthly": 300.0,
+                },
+            ],
+            "cost_attribution_gap": 800.0,  # Sum of all regional cost gaps
+            "scan_timestamp": datetime.now(UTC).isoformat(),
+        }
+        mock_cache.get.return_value = cached_data
+
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify cost attribution gap is preserved
+        assert result.cost_attribution_gap == 800.0
+
+    @pytest.mark.asyncio
+    async def test_different_severity_filters_produce_different_cache_keys(
+        self, compliance_service
+    ):
+        """Test that different severity filters produce different cache keys.
+
+        Cache keys should differentiate between scans with different severity
+        filters to prevent returning incorrect cached results.
+
+        Requirements: 8.2 - Cache key includes all query parameters
+        """
+        key_all = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+            scanned_regions=["us-east-1"],
+        )
+
+        key_errors = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="errors_only",
+            scanned_regions=["us-east-1"],
+        )
+
+        key_warnings = compliance_service._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="warnings_only",
+            scanned_regions=["us-east-1"],
+        )
+
+        # All keys should be different
+        assert key_all != key_errors
+        assert key_all != key_warnings
+        assert key_errors != key_warnings
+
+    @pytest.mark.asyncio
+    async def test_cache_failure_does_not_break_multi_region_scan(
+        self, compliance_service, mock_cache, mock_aws_client, mock_policy_service
+    ):
+        """Test that cache failures don't break multi-region scanning.
+
+        If caching fails (e.g., Redis unavailable), the scan should still
+        complete successfully and return results.
+
+        Requirements: 8.1 - Graceful degradation on cache failure
+        """
+        # Setup cache to fail
+        mock_cache.get.return_value = None
+        mock_cache.set.side_effect = Exception("Redis connection failed")
+
+        mock_resources = [
+            {
+                "resource_id": "i-123",
+                "resource_type": "ec2:instance",
+                "region": "us-east-1",
+                "tags": {"CostCenter": "Engineering"},
+                "cost_impact": 100.0,
+            },
+        ]
+
+        mock_aws_client.get_ec2_instances = AsyncMock(return_value=mock_resources)
+        mock_policy_service.validate_resource_tags.return_value = []
+
+        # Should not raise exception despite cache failure
+        result = await compliance_service.check_compliance(
+            resource_types=["ec2:instance"],
+            filters=None,
+            severity="all",
+        )
+
+        # Verify scan completed successfully
+        assert isinstance(result, ComplianceResult)
+        assert result.total_resources == 1
+        assert result.compliance_score == 1.0
