@@ -697,60 +697,59 @@ class TestAggregateResults:
 
     def test_aggregates_compliance_score(self, scanner):
         """Test compliance score is calculated correctly across regions."""
+        # Create results with proper non_compliant_count for accurate resource counting
         results = [
             RegionalScanResult(
                 region="us-east-1",
                 success=True,
                 resources=[],
-                violations=[],
+                violations=[
+                    Violation(
+                        resource_id="arn:aws:ec2:us-east-1:123:instance/i-1",
+                        resource_type="ec2:instance",
+                        region="us-east-1",
+                        tag_name="Environment",
+                        violation_type="missing_required_tag",
+                        severity=Severity.ERROR,
+                        cost_impact_monthly=50.0,
+                    ),
+                    Violation(
+                        resource_id="arn:aws:ec2:us-east-1:123:instance/i-2",
+                        resource_type="ec2:instance",
+                        region="us-east-1",
+                        tag_name="Environment",
+                        violation_type="missing_required_tag",
+                        severity=Severity.ERROR,
+                        cost_impact_monthly=50.0,
+                    ),
+                ],
                 compliant_count=8,
+                non_compliant_count=2,  # 2 unique resources with violations
             ),
             RegionalScanResult(
                 region="us-west-2",
                 success=True,
                 resources=[],
-                violations=[],
+                violations=[
+                    Violation(
+                        resource_id="arn:aws:ec2:us-west-2:123:instance/i-3",
+                        resource_type="ec2:instance",
+                        region="us-west-2",
+                        tag_name="Environment",
+                        violation_type="missing_required_tag",
+                        severity=Severity.ERROR,
+                        cost_impact_monthly=100.0,
+                    ),
+                ],
                 compliant_count=6,
+                non_compliant_count=1,  # 1 unique resource with violations
             ),
         ]
-        
-        # Add violations to make total resources = compliant + violations
-        results[0].violations = [
-            Violation(
-                resource_id="arn:aws:ec2:us-east-1:123:instance/i-1",
-                resource_type="ec2:instance",
-                region="us-east-1",
-                tag_name="Environment",
-                violation_type="missing_required_tag",
-                severity=Severity.ERROR,
-                cost_impact_monthly=50.0,
-            ),
-            Violation(
-                resource_id="arn:aws:ec2:us-east-1:123:instance/i-2",
-                resource_type="ec2:instance",
-                region="us-east-1",
-                tag_name="Environment",
-                violation_type="missing_required_tag",
-                severity=Severity.ERROR,
-                cost_impact_monthly=50.0,
-            ),
-        ]
-        results[1].violations = [
-            Violation(
-                resource_id="arn:aws:ec2:us-west-2:123:instance/i-3",
-                resource_type="ec2:instance",
-                region="us-west-2",
-                tag_name="Environment",
-                violation_type="missing_required_tag",
-                severity=Severity.ERROR,
-                cost_impact_monthly=100.0,
-            ),
-        ]
-        
+
         aggregated = scanner._aggregate_results(results)
-        
-        # Total: 8 + 2 + 6 + 1 = 17 resources, 14 compliant
-        # Score = 14/17 ≈ 0.824
+
+        # Total: (8 compliant + 2 non-compliant) + (6 compliant + 1 non-compliant) = 17 resources
+        # 14 compliant out of 17 = 82.35%
         assert aggregated.total_resources == 17
         assert aggregated.compliant_resources == 14
         assert 0.82 <= aggregated.compliance_score <= 0.83
@@ -847,6 +846,7 @@ class TestAggregateResults:
                 resources=[],
                 violations=[],
                 compliant_count=10,
+                non_compliant_count=0,
             ),
             RegionalScanResult(
                 region="us-west-2",
@@ -864,20 +864,21 @@ class TestAggregateResults:
                     ),
                 ],
                 compliant_count=5,
+                non_compliant_count=1,  # 1 unique resource with violations
             ),
         ]
-        
+
         aggregated = scanner._aggregate_results(results)
-        
+
         assert "us-east-1" in aggregated.regional_breakdown
         assert "us-west-2" in aggregated.regional_breakdown
-        
+
         us_east = aggregated.regional_breakdown["us-east-1"]
         assert us_east.total_resources == 10
         assert us_east.compliance_score == 1.0
-        
+
         us_west = aggregated.regional_breakdown["us-west-2"]
-        assert us_west.total_resources == 6
+        assert us_west.total_resources == 6  # 5 compliant + 1 non-compliant
         assert us_west.violation_count == 1
 
 
@@ -1218,9 +1219,11 @@ class TestDisabledMode:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that disabled mode correctly handles global resources.
-        
-        Global resources should still be scanned from the default region.
-        
+
+        Global resources are scanned via us-east-1 API but reported as "global" region.
+        Regional resources are scanned from the default region.
+        This results in 2 entries: "global" and the default regional region.
+
         Validates: Requirements 7.1, 7.4
         """
         scanner = MultiRegionScanner(
@@ -1230,15 +1233,17 @@ class TestDisabledMode:
             multi_region_enabled=False,
             default_region="us-east-1",
         )
-        
+
         # Scan both global and regional resource types
         result = await scanner.scan_all_regions(
             resource_types=["s3:bucket", "ec2:instance"],
         )
-        
-        # Should still only scan from default region
-        assert result.region_metadata.total_regions == 1
-        assert result.region_metadata.successful_regions == ["us-east-1"]
+
+        # Global resources appear as "global" region, regional as "us-east-1"
+        # So total_regions is 2 (global + us-east-1)
+        assert result.region_metadata.total_regions == 2
+        assert "global" in result.region_metadata.successful_regions
+        assert "us-east-1" in result.region_metadata.successful_regions
 
     @pytest.mark.asyncio
     async def test_disabled_mode_with_scan_failure(

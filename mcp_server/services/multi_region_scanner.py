@@ -42,6 +42,7 @@ DEFAULT_MAX_DELAY_SECONDS = 30.0
 # When scanning "all" resource types, we chunk them to avoid overwhelming AWS APIs
 DEFAULT_RESOURCE_TYPE_CHUNK_SIZE = 10  # Scan 10 resource types at a time per region
 ALL_MODE_TIMEOUT_MULTIPLIER = 3  # 3x timeout when scanning "all" resource types
+ALL_MODE_DEFAULT_TIMEOUT_SECONDS = 180  # 3 minutes per region for "all" mode
 
 # Transient error codes that should trigger retries
 TRANSIENT_ERROR_CODES = frozenset([
@@ -245,20 +246,39 @@ class MultiRegionScanner:
             skipped_regions = [r for r in enabled_regions if r not in regions_to_scan]
         
         # Scan global resources once (Requirement 5.1)
+        # Global resources (S3, IAM, CloudFront, Route53) are not region-specific.
+        # We use us-east-1 as the API endpoint but report them as "global" region.
         global_result: RegionalScanResult | None = None
         if global_types:
-            # Use the first region (or default) for global resources
-            global_region = regions_to_scan[0] if regions_to_scan else self.default_region
-            logger.info(f"Scanning global resources from region: {global_region}")
+            # Always use us-east-1 for global resource API calls (standard AWS practice)
+            global_api_region = "us-east-1"
+            logger.info(f"Scanning global resources via {global_api_region} API (will be reported as 'global')")
             global_result = await self._scan_region(
-                region=global_region,
+                region=global_api_region,
                 resource_types=global_types,
                 filters=filters,
                 severity=severity,
+                extended_timeout=is_all_mode,  # Use extended timeout for "all" mode
             )
-            # Mark global resources with their actual region attribute
+            # Override the region to "global" for proper attribution
+            # Global resources don't belong to any specific region
+            global_result = RegionalScanResult(
+                region="global",  # Report as "global", not the API region
+                success=global_result.success,
+                resources=global_result.resources,
+                violations=global_result.violations,
+                compliant_count=global_result.compliant_count,
+                non_compliant_count=global_result.non_compliant_count,
+                error_message=global_result.error_message,
+                scan_duration_ms=global_result.scan_duration_ms,
+            )
+            # Mark resources as global
             for resource in global_result.resources:
                 resource["is_global"] = True
+                resource["region"] = "global"
+            # Update violation regions to "global" as well
+            for violation in global_result.violations:
+                violation.region = "global"
         
         # Scan regional resources in parallel (Requirement 3.2)
         # For "all" mode, chunk resource types to avoid overwhelming AWS APIs
@@ -279,36 +299,21 @@ class MultiRegionScanner:
                     resource_types=regional_types,
                     filters=filters,
                     severity=severity,
+                    extended_timeout=is_all_mode,  # Use extended timeout for "all" mode
                 )
         
         # Combine global and regional results
-        # Only add global_result if its region is not already in regional_results
-        # This prevents double-counting when scanning both global and regional resources
+        # Global resources are always added as a separate "global" region entry
+        # since they don't belong to any specific AWS region
         all_results = regional_results.copy()
         if global_result:
-            # Check if the global region is already represented in regional results
-            regional_regions = {r.region for r in regional_results}
-            if global_result.region not in regional_regions:
-                # Add global result as a separate region entry
-                all_results.append(global_result)
-            else:
-                # Merge global result into the existing regional result for that region
-                for i, result in enumerate(all_results):
-                    if result.region == global_result.region:
-                        # Merge resources and violations from global scan
-                        merged_resources = result.resources + global_result.resources
-                        merged_violations = result.violations + global_result.violations
-                        merged_compliant = result.compliant_count + global_result.compliant_count
-                        all_results[i] = RegionalScanResult(
-                            region=result.region,
-                            success=result.success and global_result.success,
-                            resources=merged_resources,
-                            violations=merged_violations,
-                            compliant_count=merged_compliant,
-                            error_message=result.error_message or global_result.error_message,
-                            scan_duration_ms=result.scan_duration_ms + global_result.scan_duration_ms,
-                        )
-                        break
+            # Global result has region="global", so it will always be separate
+            # from regional results (which have regions like "us-east-1")
+            all_results.append(global_result)
+            logger.info(
+                f"Added global resources: {global_result.compliant_count} compliant, "
+                f"{global_result.non_compliant_count} non-compliant"
+            )
         
         # Aggregate results (Requirements 4.1-4.5)
         aggregated = self._aggregate_results(
@@ -322,8 +327,16 @@ class MultiRegionScanner:
             aggregated.region_metadata.total_regions > 0
             and len(aggregated.region_metadata.successful_regions) == 0
         ):
+            # Provide helpful error message
+            error_msg = "All regions failed to scan"
+            if is_all_mode:
+                error_msg += (
+                    ". The 'all' resource type scan timed out across all regions. "
+                    "Try scanning specific resource types instead: "
+                    "['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db', 'dynamodb:table']"
+                )
             raise MultiRegionScanError(
-                message="All regions failed to scan",
+                message=error_msg,
                 failed_regions=aggregated.region_metadata.failed_regions,
                 partial_results=aggregated,
             )
@@ -343,37 +356,41 @@ class MultiRegionScanner:
         resource_types: list[str],
         filters: dict | None,
         severity: str,
+        extended_timeout: bool = False,
     ) -> list[RegionalScanResult]:
         """
         Scan multiple regions in parallel with concurrency control.
-        
+
         Uses asyncio.Semaphore to limit concurrent scans.
-        
+
         Args:
             regions: List of regions to scan
             resource_types: Resource types to scan
             filters: Optional filters
             severity: Severity filter
-            
+            extended_timeout: Use extended timeout for "all" mode scanning
+
         Returns:
             List of regional scan results
-            
+
         Requirement: 3.2
         """
         # Create semaphore for concurrency control
         semaphore = asyncio.Semaphore(self.max_concurrent_regions)
-        
+
         async def scan_with_semaphore(region: str) -> RegionalScanResult:
             async with semaphore:
-                return await self._scan_region(region, resource_types, filters, severity)
-        
+                return await self._scan_region(
+                    region, resource_types, filters, severity, extended_timeout
+                )
+
         # Create tasks for all regions
         tasks = [scan_with_semaphore(region) for region in regions]
-        
+
         # Execute all tasks in parallel, collecting results even if some fail
         # return_exceptions=True ensures we get results from all tasks
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Process results, converting exceptions to failed RegionalScanResult
         processed_results: list[RegionalScanResult] = []
         for i, result in enumerate(results):
@@ -390,7 +407,7 @@ class MultiRegionScanner:
                 )
             else:
                 processed_results.append(result)
-        
+
         return processed_results
 
     async def _scan_regions_chunked(
@@ -412,6 +429,9 @@ class MultiRegionScanner:
         This prevents AWS API rate limiting and timeouts when scanning
         many resource types across many regions.
 
+        Note: This method always uses extended timeout since it's only called
+        for "all" mode scanning with many resource types.
+
         Args:
             regions: List of regions to scan
             resource_types: Resource types to scan (may be 50+)
@@ -429,7 +449,7 @@ class MultiRegionScanner:
         ]
         logger.info(
             f"Chunked {len(resource_types)} resource types into {len(chunks)} chunks "
-            f"of up to {chunk_size} types each"
+            f"of up to {chunk_size} types each. Using extended timeout ({ALL_MODE_DEFAULT_TIMEOUT_SECONDS}s)."
         )
 
         # Initialize results dictionary keyed by region
@@ -443,11 +463,13 @@ class MultiRegionScanner:
             )
 
             # Scan this chunk across all regions in parallel
+            # Use extended timeout since this is "all" mode
             chunk_results = await self._scan_regions_parallel(
                 regions=regions,
                 resource_types=chunk,
                 filters=filters,
                 severity=severity,
+                extended_timeout=True,
             )
 
             # Merge chunk results into accumulated results
@@ -482,45 +504,59 @@ class MultiRegionScanner:
         resource_types: list[str],
         filters: dict | None,
         severity: str,
+        extended_timeout: bool = False,
     ) -> RegionalScanResult:
         """
         Scan a single region with retry logic.
-        
+
         Implements exponential backoff with jitter for transient errors.
         Returns result or error information on failure.
-        
+
         Args:
             region: AWS region code to scan
             resource_types: Resource types to scan
             filters: Optional filters
             severity: Severity filter
-            
+            extended_timeout: Use extended timeout for "all" mode scanning
+
         Returns:
             RegionalScanResult with success status and data or error
-            
+
         Requirements: 3.3, 3.4
         """
         start_time = time.time()
         last_error: Exception | None = None
-        
+
+        # Use extended timeout for "all" mode to handle many resource types
+        timeout_seconds = (
+            ALL_MODE_DEFAULT_TIMEOUT_SECONDS if extended_timeout
+            else self.region_timeout_seconds
+        )
+
         for attempt in range(self.max_retries + 1):
             try:
                 # Apply timeout to the scan operation
                 result = await asyncio.wait_for(
                     self._execute_region_scan(region, resource_types, filters, severity),
-                    timeout=self.region_timeout_seconds,
+                    timeout=timeout_seconds,
                 )
-                
+
                 # Calculate duration
                 duration_ms = int((time.time() - start_time) * 1000)
                 result.scan_duration_ms = duration_ms
-                
+
                 return result
-                
+
             except asyncio.TimeoutError:
-                last_error = asyncio.TimeoutError(
-                    f"Region {region} scan timed out after {self.region_timeout_seconds}s"
-                )
+                # Provide helpful error message with suggestion
+                timeout_msg = f"Region {region} scan timed out after {timeout_seconds}s"
+                if extended_timeout:
+                    timeout_msg += (
+                        ". The 'all' resource type scan is taking too long. "
+                        "Try scanning specific resource types instead: "
+                        "['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']"
+                    )
+                last_error = asyncio.TimeoutError(timeout_msg)
                 logger.warning(f"Region {region} scan timed out (attempt {attempt + 1})")
                 
             except Exception as e:
