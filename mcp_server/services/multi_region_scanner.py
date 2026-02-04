@@ -27,6 +27,7 @@ from ..models.multi_region import (
     RegionScanMetadata,
 )
 from ..models.violations import Violation
+from ..utils.resource_utils import expand_all_to_supported_types
 from .compliance_service import ComplianceService
 from .region_discovery_service import RegionDiscoveryService
 
@@ -36,6 +37,11 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BASE_DELAY_SECONDS = 1.0
 DEFAULT_MAX_DELAY_SECONDS = 30.0
+
+# Resource type chunking configuration for "all" mode
+# When scanning "all" resource types, we chunk them to avoid overwhelming AWS APIs
+DEFAULT_RESOURCE_TYPE_CHUNK_SIZE = 10  # Scan 10 resource types at a time per region
+ALL_MODE_TIMEOUT_MULTIPLIER = 3  # 3x timeout when scanning "all" resource types
 
 # Transient error codes that should trigger retries
 TRANSIENT_ERROR_CODES = frozenset([
@@ -199,11 +205,22 @@ class MultiRegionScanner:
             f"Starting multi-region scan: resource_types={resource_types}, "
             f"filters={filters}, severity={severity}, multi_region_enabled={self.multi_region_enabled}"
         )
-        
+
+        # Check if this is an "all" mode scan - expand and handle specially
+        is_all_mode = "all" in resource_types
+        if is_all_mode:
+            # Expand "all" to supported types BEFORE separating global/regional
+            expanded_types = expand_all_to_supported_types(resource_types)
+            logger.info(
+                f"'all' mode detected: expanded to {len(expanded_types)} resource types. "
+                f"Using extended timeout ({ALL_MODE_TIMEOUT_MULTIPLIER}x) and chunking."
+            )
+            resource_types = expanded_types
+
         # Separate global and regional resource types (Requirement 5.2)
         global_types = [rt for rt in resource_types if self._is_global_resource_type(rt)]
         regional_types = [rt for rt in resource_types if not self._is_global_resource_type(rt)]
-        
+
         logger.info(f"Global resource types: {global_types}, Regional types: {regional_types}")
         
         # Determine regions to scan based on multi_region_enabled setting
@@ -244,14 +261,25 @@ class MultiRegionScanner:
                 resource["is_global"] = True
         
         # Scan regional resources in parallel (Requirement 3.2)
+        # For "all" mode, chunk resource types to avoid overwhelming AWS APIs
         regional_results: list[RegionalScanResult] = []
         if regional_types and regions_to_scan:
-            regional_results = await self._scan_regions_parallel(
-                regions=regions_to_scan,
-                resource_types=regional_types,
-                filters=filters,
-                severity=severity,
-            )
+            if is_all_mode and len(regional_types) > DEFAULT_RESOURCE_TYPE_CHUNK_SIZE:
+                # Chunk resource types for "all" mode
+                regional_results = await self._scan_regions_chunked(
+                    regions=regions_to_scan,
+                    resource_types=regional_types,
+                    filters=filters,
+                    severity=severity,
+                    chunk_size=DEFAULT_RESOURCE_TYPE_CHUNK_SIZE,
+                )
+            else:
+                regional_results = await self._scan_regions_parallel(
+                    regions=regions_to_scan,
+                    resource_types=regional_types,
+                    filters=filters,
+                    severity=severity,
+                )
         
         # Combine global and regional results
         # Only add global_result if its region is not already in regional_results
@@ -364,6 +392,89 @@ class MultiRegionScanner:
                 processed_results.append(result)
         
         return processed_results
+
+    async def _scan_regions_chunked(
+        self,
+        regions: list[str],
+        resource_types: list[str],
+        filters: dict | None,
+        severity: str,
+        chunk_size: int = DEFAULT_RESOURCE_TYPE_CHUNK_SIZE,
+    ) -> list[RegionalScanResult]:
+        """
+        Scan regions with resource types chunked to avoid overwhelming AWS APIs.
+
+        For "all" mode with 50+ resource types, this method:
+        1. Splits resource types into chunks of `chunk_size`
+        2. Scans each chunk across all regions sequentially
+        3. Merges results for each region
+
+        This prevents AWS API rate limiting and timeouts when scanning
+        many resource types across many regions.
+
+        Args:
+            regions: List of regions to scan
+            resource_types: Resource types to scan (may be 50+)
+            filters: Optional filters
+            severity: Severity filter
+            chunk_size: Number of resource types per chunk
+
+        Returns:
+            List of merged regional scan results
+        """
+        # Split resource types into chunks
+        chunks = [
+            resource_types[i : i + chunk_size]
+            for i in range(0, len(resource_types), chunk_size)
+        ]
+        logger.info(
+            f"Chunked {len(resource_types)} resource types into {len(chunks)} chunks "
+            f"of up to {chunk_size} types each"
+        )
+
+        # Initialize results dictionary keyed by region
+        merged_results: dict[str, RegionalScanResult] = {}
+
+        # Process each chunk sequentially to avoid overwhelming AWS
+        for chunk_idx, chunk in enumerate(chunks):
+            logger.info(
+                f"Processing chunk {chunk_idx + 1}/{len(chunks)}: "
+                f"{len(chunk)} resource types ({chunk[:3]}...)"
+            )
+
+            # Scan this chunk across all regions in parallel
+            chunk_results = await self._scan_regions_parallel(
+                regions=regions,
+                resource_types=chunk,
+                filters=filters,
+                severity=severity,
+            )
+
+            # Merge chunk results into accumulated results
+            for result in chunk_results:
+                if result.region not in merged_results:
+                    # First chunk for this region - use result directly
+                    merged_results[result.region] = result
+                else:
+                    # Merge with existing result for this region
+                    existing = merged_results[result.region]
+                    merged_results[result.region] = RegionalScanResult(
+                        region=result.region,
+                        success=existing.success and result.success,
+                        resources=existing.resources + result.resources,
+                        violations=existing.violations + result.violations,
+                        compliant_count=existing.compliant_count + result.compliant_count,
+                        non_compliant_count=existing.non_compliant_count + result.non_compliant_count,
+                        error_message=existing.error_message or result.error_message,
+                        scan_duration_ms=existing.scan_duration_ms + result.scan_duration_ms,
+                    )
+
+            # Small delay between chunks to be nice to AWS APIs
+            if chunk_idx < len(chunks) - 1:
+                await asyncio.sleep(0.5)
+
+        logger.info(f"Chunked scan complete: merged results for {len(merged_results)} regions")
+        return list(merged_results.values())
 
     async def _scan_region(
         self,
