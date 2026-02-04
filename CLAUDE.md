@@ -218,6 +218,27 @@ The server supports scanning AWS resources across all enabled regions in paralle
 2. `ALLOWED_REGIONS` infrastructure restriction (limits available regions)
 3. User query filter (further narrows within allowed regions)
 
+**Global vs Regional Resources:**
+
+AWS has two categories of resources:
+- **Global resources** (S3 buckets, IAM roles/users/policies, CloudFront distributions, Route53 hosted zones): These exist at the account level, not in specific regions. They are **always scanned regardless of region filters** and reported as region="global" in results.
+- **Regional resources** (EC2 instances, RDS databases, Lambda functions, etc.): These exist in specific AWS regions and respect region filters.
+
+Example: If you filter to `regions=["us-east-1"]`, you will get:
+- All S3 buckets (global resources, ignore the filter)
+- Only EC2 instances in us-east-1 (regional resources, respect the filter)
+
+This behavior is intentional - global resources have no region, so filtering them by region would cause them to be missed entirely.
+
+**Region Discovery Fallback:**
+
+If the EC2 DescribeRegions API call fails (e.g., due to permissions or network issues), the scanner falls back to scanning only the default region (us-east-1). When this happens:
+- `region_metadata.discovery_failed` will be `true`
+- `region_metadata.discovery_error` will contain the error message
+- Results may be incomplete (only default region scanned)
+
+Check these fields to detect when discovery fell back silently.
+
 **Response Format (Multi-Region):**
 ```json
 {
@@ -225,13 +246,16 @@ The server supports scanning AWS resources across all enabled regions in paralle
   "total_resources": 150,
   "region_metadata": {
     "total_regions": 5,
-    "successful_regions": 5,
-    "failed_regions": 0,
-    "skipped_regions": 0
+    "successful_regions": ["us-east-1", "us-west-2", "eu-west-1", "eu-west-3", "global"],
+    "failed_regions": [],
+    "skipped_regions": [],
+    "discovery_failed": false,
+    "discovery_error": null
   },
   "regional_breakdown": {
     "us-east-1": { "total_resources": 50, "compliance_score": 0.80 },
-    "eu-west-3": { "total_resources": 30, "compliance_score": 0.70 }
+    "eu-west-3": { "total_resources": 30, "compliance_score": 0.70 },
+    "global": { "total_resources": 20, "compliance_score": 0.65 }
   }
 }
 ```

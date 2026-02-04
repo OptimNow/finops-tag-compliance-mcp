@@ -66,32 +66,36 @@ class RegionalClientFactory:
     def get_client(self, region: str) -> AWSClient:
         """
         Get or create an AWS client for the specified region.
-        
+
         Reuses existing clients for the same region (object identity).
         Applies consistent boto3 configuration across all clients.
-        
+
         Args:
             region: AWS region code (e.g., "us-east-1", "eu-west-1")
-            
+
         Returns:
             AWSClient configured for the specified region
-            
+
         Note:
             Calling this method multiple times with the same region
             will return the exact same AWSClient instance (object identity).
+
+            The boto_config provided to the factory constructor is passed
+            to each AWSClient, ensuring consistent retry/timeout behavior
+            across all regional clients.
         """
         # Check if we already have a client for this region
         if region in self._clients:
             logger.debug(f"Reusing cached client for region {region}")
             return self._clients[region]
-        
-        # Create a new client for this region
+
+        # Create a new client for this region with consistent config
         logger.info(f"Creating new AWS client for region {region}")
-        client = AWSClient(region=region)
-        
+        client = AWSClient(region=region, boto_config=self._boto_config)
+
         # Cache the client for reuse
         self._clients[region] = client
-        
+
         return client
     
     def clear_clients(self) -> None:

@@ -29,18 +29,27 @@ class AWSClient:
     Implements exponential backoff for rate limit errors.
     """
 
-    def __init__(self, region: str = "us-east-1"):
+    def __init__(self, region: str = "us-east-1", boto_config: Config | None = None):
         """
         Initialize AWS clients.
 
         Args:
             region: AWS region to use for regional services
+            boto_config: Optional botocore Config to use for all clients.
+                        If not provided, a default config with adaptive retries is used.
+                        This ensures consistent retry/timeout behavior when creating
+                        clients for multiple regions via RegionalClientFactory.
         """
-        # Configure boto3 with retries
-        config = Config(region_name=region, retries={"max_attempts": 3, "mode": "adaptive"})
+        # Use provided config or create default with retries
+        if boto_config is not None:
+            # Merge region into provided config
+            config = boto_config.merge(Config(region_name=region))
+        else:
+            config = Config(region_name=region, retries={"max_attempts": 3, "mode": "adaptive"})
 
         # Initialize clients - uses IAM instance profile automatically
         self.region = region
+        self._boto_config = config  # Store for introspection
         self.ec2 = boto3.client("ec2", config=config)
         self.rds = boto3.client("rds", config=config)
         self.s3 = boto3.client("s3", config=config)

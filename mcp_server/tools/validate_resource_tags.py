@@ -22,26 +22,63 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+async def _fetch_tags_for_region(
+    region: str,
+    region_arns: list[str],
+    multi_region_scanner: MultiRegionScanner,
+) -> tuple[str, dict[str, dict[str, str]]]:
+    """
+    Fetch tags for ARNs from a single region.
+
+    This is a helper function designed to be run in parallel with asyncio.gather.
+
+    Args:
+        region: AWS region code
+        region_arns: List of AWS ARNs in this region
+        multi_region_scanner: MultiRegionScanner with client_factory for regional clients
+
+    Returns:
+        Tuple of (region, tags_dict) for merging results
+    """
+    try:
+        # Get regional client from the scanner's client factory
+        regional_client = multi_region_scanner.client_factory.get_client(region)
+
+        # Fetch tags for ARNs in this region
+        region_tags = await regional_client.get_tags_for_arns(region_arns)
+
+        logger.debug(f"Fetched tags for {len(region_tags)} resources from region {region}")
+        return (region, region_tags)
+
+    except Exception as e:
+        logger.error(f"Failed to fetch tags from region {region}: {e}")
+        # Return empty dict - partial results are better than none
+        return (region, {})
+
+
 async def _fetch_tags_multi_region(
     resource_arns: list[str],
     multi_region_scanner: MultiRegionScanner,
 ) -> dict[str, dict[str, str]]:
     """
-    Fetch tags for ARNs from multiple regions.
-    
+    Fetch tags for ARNs from multiple regions in parallel.
+
     Groups ARNs by region and fetches tags from each region using
-    the appropriate regional client.
-    
+    the appropriate regional client. Regions are fetched in parallel
+    using asyncio.gather for better performance.
+
     Args:
         resource_arns: List of AWS ARNs to fetch tags for
         multi_region_scanner: MultiRegionScanner with client_factory for regional clients
-        
+
     Returns:
         Dictionary mapping ARN to tag dictionary
     """
+    import asyncio
+
     # Group ARNs by region
     arns_by_region: dict[str, list[str]] = defaultdict(list)
-    
+
     for arn in resource_arns:
         try:
             parsed = parse_arn(arn)
@@ -54,28 +91,27 @@ async def _fetch_tags_multi_region(
             # Invalid ARN - will be handled later in validation
             logger.warning(f"Could not parse region from ARN: {arn}")
             continue
-    
-    logger.info(f"Fetching tags from {len(arns_by_region)} regions: {list(arns_by_region.keys())}")
-    
-    # Fetch tags from each region
+
+    logger.info(f"Fetching tags from {len(arns_by_region)} regions in parallel: {list(arns_by_region.keys())}")
+
+    # Fetch tags from all regions in parallel using asyncio.gather
+    fetch_tasks = [
+        _fetch_tags_for_region(region, region_arns, multi_region_scanner)
+        for region, region_arns in arns_by_region.items()
+    ]
+
+    results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
+
+    # Merge results from all regions
     all_tags: dict[str, dict[str, str]] = {}
-    
-    for region, region_arns in arns_by_region.items():
-        try:
-            # Get regional client from the scanner's client factory
-            regional_client = multi_region_scanner.client_factory.get_client(region)
-            
-            # Fetch tags for ARNs in this region
-            region_tags = await regional_client.get_tags_for_arns(region_arns)
-            all_tags.update(region_tags)
-            
-            logger.debug(f"Fetched tags for {len(region_tags)} resources from region {region}")
-            
-        except Exception as e:
-            logger.error(f"Failed to fetch tags from region {region}: {e}")
-            # Continue with other regions - partial results are better than none
+
+    for result in results:
+        if isinstance(result, Exception):
+            logger.error(f"Unexpected error fetching tags: {result}")
             continue
-    
+        region, region_tags = result
+        all_tags.update(region_tags)
+
     return all_tags
 
 

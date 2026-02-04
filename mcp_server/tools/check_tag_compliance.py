@@ -71,6 +71,10 @@ async def check_tag_compliance(
                 - region: AWS region(s) to scan (string or list)
                 - regions: AWS region(s) to scan (string or list) - alias for region
                 - account_id: AWS account ID(s) to scan (string or list)
+                Note: Global resources (S3 buckets, IAM roles/users/policies, CloudFront,
+                Route53) are always scanned regardless of region filters and are reported
+                with region="global" in results. Only regional resources (EC2, RDS, etc.)
+                respect region filters.
         severity: Filter results by severity level:
                  - "all" (default): Return all violations
                  - "errors_only": Return only error-level violations
@@ -99,7 +103,10 @@ async def check_tag_compliance(
         
         Multi-region results additionally include:
         - region_metadata: Information about which regions were scanned
-        - regional_breakdown: Per-region compliance summaries
+          - discovery_failed: True if region discovery failed and fell back to default
+          - discovery_error: Error message if region discovery failed
+        - regional_breakdown: Per-region compliance summaries (includes "global" for
+          global resources like S3, IAM, CloudFront, Route53)
 
     Raises:
         ValueError: If resource_types is empty or contains invalid types

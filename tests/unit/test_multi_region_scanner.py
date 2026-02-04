@@ -34,14 +34,24 @@ from mcp_server.services.multi_region_scanner import (
     MultiRegionScanError,
     InvalidRegionFilterError,
 )
-from mcp_server.services.region_discovery_service import RegionDiscoveryService
+from mcp_server.services.region_discovery_service import (
+    RegionDiscoveryService,
+    RegionDiscoveryResult,
+)
+
+
+def _create_discovery_result(regions: list[str]) -> RegionDiscoveryResult:
+    """Helper to create a RegionDiscoveryResult for testing."""
+    return RegionDiscoveryResult(regions=regions, discovery_failed=False, discovery_error=None)
 
 
 @pytest.fixture
 def mock_region_discovery():
     """Create a mock RegionDiscoveryService."""
     mock = AsyncMock(spec=RegionDiscoveryService)
-    mock.get_enabled_regions.return_value = ["us-east-1", "us-west-2", "eu-west-1"]
+    default_regions = ["us-east-1", "us-west-2", "eu-west-1"]
+    mock.get_enabled_regions.return_value = default_regions
+    mock.get_enabled_regions_with_status.return_value = _create_discovery_result(default_regions)
     return mock
 
 
@@ -453,9 +463,9 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that all enabled regions are scanned."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         def factory(client):
             return mock_compliance_service
@@ -483,7 +493,9 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory
     ):
         """Test that regions with zero resources are marked as successful."""
-        mock_region_discovery.get_enabled_regions.return_value = ["us-east-1"]
+        regions = ["us-east-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         # Return empty compliance result
         mock_compliance = AsyncMock()
@@ -514,9 +526,9 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory
     ):
         """Test that scanning continues when some regions fail."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         call_count = 0
         
@@ -556,9 +568,9 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that region filter limits which regions are scanned."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -580,12 +592,12 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that invalid region in filter raises InvalidRegionFilterError.
-        
+
         Validates: Requirement 6.3
         """
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -608,12 +620,12 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that disabled region in filter raises InvalidRegionFilterError.
-        
+
         Validates: Requirement 6.3
         """
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2"
-        ]
+        regions = ["us-east-1", "us-west-2"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -637,12 +649,12 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that skipped regions are tracked in metadata.
-        
+
         Validates: Requirements 6.1, 6.2
         """
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -665,12 +677,12 @@ class TestScanAllRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that no filter scans all enabled regions.
-        
+
         Validates: Requirement 6.4
         """
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
         
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1034,9 +1046,9 @@ class TestAllowedRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that allowed_regions restricts scanning to specified regions."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1059,9 +1071,9 @@ class TestAllowedRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test allowed_regions with a single region."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1084,9 +1096,9 @@ class TestAllowedRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that no allowed_regions (None) scans all enabled regions."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1111,9 +1123,9 @@ class TestAllowedRegions:
         self, mock_region_discovery, mock_client_factory, mock_compliance_service
     ):
         """Test that user filter can narrow within allowed regions."""
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1", "ap-southeast-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1151,7 +1163,7 @@ class TestAllowedRegions:
         )
 
         # Region discovery should always be called to validate allowed_regions
-        mock_region_discovery.get_enabled_regions.assert_called_once()
+        mock_region_discovery.get_enabled_regions_with_status.assert_called_once()
 
     def test_init_defaults_to_all_regions(
         self, mock_region_discovery, mock_client_factory, compliance_service_factory
@@ -1191,9 +1203,9 @@ class TestAllowedRegions:
         Global resources are scanned via us-east-1 API but reported as "global" region.
         Regional resources are scanned from allowed regions only.
         """
-        mock_region_discovery.get_enabled_regions.return_value = [
-            "us-east-1", "us-west-2", "eu-west-1"
-        ]
+        regions = ["us-east-1", "us-west-2", "eu-west-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         scanner = MultiRegionScanner(
             region_discovery=mock_region_discovery,
@@ -1219,7 +1231,9 @@ class TestAllowedRegions:
         self, mock_region_discovery, mock_client_factory
     ):
         """Test that allowed_regions handles scan failures correctly."""
-        mock_region_discovery.get_enabled_regions.return_value = ["us-east-1"]
+        regions = ["us-east-1"]
+        mock_region_discovery.get_enabled_regions.return_value = regions
+        mock_region_discovery.get_enabled_regions_with_status.return_value = _create_discovery_result(regions)
 
         async def failing_check(*args, **kwargs):
             raise Exception("AccessDenied: Region not accessible")

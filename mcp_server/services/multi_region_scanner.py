@@ -238,9 +238,17 @@ class MultiRegionScanner:
         logger.info(f"Global resource types: {global_types}, Regional types: {regional_types}")
 
         # Determine regions to scan
-        # Step 1: Get enabled regions from AWS
-        enabled_regions = await self.region_discovery.get_enabled_regions()
-        logger.info(f"Discovered {len(enabled_regions)} enabled regions in account")
+        # Step 1: Get enabled regions from AWS (with status to detect fallback)
+        discovery_result = await self.region_discovery.get_enabled_regions_with_status()
+        enabled_regions = discovery_result.regions
+
+        if discovery_result.discovery_failed:
+            logger.warning(
+                f"Region discovery failed and fell back to default region. "
+                f"Results may be incomplete. Error: {discovery_result.discovery_error}"
+            )
+        else:
+            logger.info(f"Discovered {len(enabled_regions)} enabled regions in account")
 
         # Step 2: Apply infrastructure restriction (allowed_regions setting)
         if self.allowed_regions:
@@ -338,6 +346,8 @@ class MultiRegionScanner:
             regional_results=all_results,
             skipped_regions=skipped_regions,
             global_result=global_result,
+            discovery_failed=discovery_result.discovery_failed,
+            discovery_error=discovery_result.discovery_error,
         )
         
         # Check if all regions failed
@@ -695,21 +705,25 @@ class MultiRegionScanner:
         regional_results: list[RegionalScanResult],
         skipped_regions: list[str] | None = None,
         global_result: RegionalScanResult | None = None,
+        discovery_failed: bool = False,
+        discovery_error: str | None = None,
     ) -> MultiRegionComplianceResult:
         """
         Aggregate results from multiple regions.
-        
+
         Combines resources, violations, and calculates overall score.
         Ensures global resources appear exactly once (Requirement 5.3).
-        
+
         Args:
             regional_results: List of results from regional scans
             skipped_regions: Regions that were skipped (filtered out)
             global_result: Result from global resource scan (if any)
-            
+            discovery_failed: True if region discovery failed and fell back to default
+            discovery_error: Error message if region discovery failed
+
         Returns:
             Aggregated compliance result
-            
+
         Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 5.3
         """
         skipped_regions = skipped_regions or []
@@ -803,6 +817,8 @@ class MultiRegionScanner:
             successful_regions=[r.region for r in successful_results],
             failed_regions=[r.region for r in failed_results],
             skipped_regions=skipped_regions,
+            discovery_failed=discovery_failed,
+            discovery_error=discovery_error,
         )
         
         return MultiRegionComplianceResult(

@@ -21,6 +21,12 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+class InvalidRegionError(ValueError):
+    """Raised when a resource ARN references a region that is not enabled or allowed."""
+
+    pass
+
+
 class SuggestTagsResult(BaseModel):
     """Result from the suggest_tags tool."""
 
@@ -114,6 +120,31 @@ async def suggest_tags(
         and region
         and region != aws_client.region
     ):
+        # Validate that the region is enabled and allowed before creating a client
+        # This prevents cryptic boto3 errors when accessing disabled regions
+        try:
+            enabled_regions = await multi_region_scanner.region_discovery.get_enabled_regions()
+
+            # Check against allowed_regions if set
+            if multi_region_scanner.allowed_regions:
+                available_regions = [
+                    r for r in multi_region_scanner.allowed_regions if r in enabled_regions
+                ]
+            else:
+                available_regions = enabled_regions
+
+            if region not in available_regions:
+                raise InvalidRegionError(
+                    f"Region '{region}' from ARN is not available. "
+                    f"Available regions: {available_regions}. "
+                    f"The region may be disabled in your AWS account or "
+                    f"restricted by the ALLOWED_REGIONS configuration."
+                )
+        except InvalidRegionError:
+            raise
+        except Exception as e:
+            logger.warning(f"Could not validate region availability: {e}. Proceeding with caution.")
+
         logger.info(f"Using regional client for {region} (resource region differs from default)")
         regional_client = multi_region_scanner.client_factory.get_client(region)
     else:

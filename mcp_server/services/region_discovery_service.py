@@ -13,6 +13,7 @@ Requirements: 1.1, 1.2, 1.3, 1.4
 
 import asyncio
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -27,6 +28,24 @@ ENABLED_REGIONS_CACHE_KEY = "enabled_regions"
 
 # Valid opt-in statuses for enabled regions
 VALID_OPT_IN_STATUSES = frozenset(["opt-in-not-required", "opted-in"])
+
+
+@dataclass
+class RegionDiscoveryResult:
+    """Result from region discovery operation.
+
+    Contains the list of enabled regions along with metadata about
+    whether discovery succeeded or fell back to the default region.
+
+    Attributes:
+        regions: List of region codes (may be just default if fallback occurred)
+        discovery_failed: True if API discovery failed and fell back to default
+        discovery_error: Error message if discovery failed, None otherwise
+    """
+
+    regions: list[str]
+    discovery_failed: bool = False
+    discovery_error: str | None = None
 
 
 class RegionDiscoveryError(Exception):
@@ -88,11 +107,33 @@ class RegionDiscoveryService:
 
         Requirements: 1.1, 1.2, 1.3, 1.4
         """
+        result = await self.get_enabled_regions_with_status()
+        return result.regions
+
+    async def get_enabled_regions_with_status(self) -> RegionDiscoveryResult:
+        """
+        Get list of all enabled AWS regions with discovery status.
+
+        This method is similar to get_enabled_regions() but returns
+        additional metadata about whether discovery succeeded or
+        fell back to the default region.
+
+        Use this method when you need to know if region discovery
+        failed and the results may be incomplete.
+
+        Returns:
+            RegionDiscoveryResult containing:
+            - regions: List of region codes
+            - discovery_failed: True if API call failed and fell back
+            - discovery_error: Error message if discovery failed
+
+        Requirements: 1.1, 1.2, 1.3, 1.4
+        """
         # Try to get from cache first (Requirement 1.4)
         cached_regions = await self._get_from_cache()
         if cached_regions is not None:
             logger.info(f"Returning {len(cached_regions)} cached enabled regions")
-            return cached_regions
+            return RegionDiscoveryResult(regions=cached_regions)
 
         # Cache miss - call EC2 DescribeRegions API (Requirement 1.1)
         try:
@@ -102,15 +143,20 @@ class RegionDiscoveryService:
             await self._cache_regions(regions)
 
             logger.info(f"Discovered {len(regions)} enabled regions")
-            return regions
+            return RegionDiscoveryResult(regions=regions)
 
         except Exception as e:
             # Fall back to default region on failure (Requirement 1.3)
+            error_msg = str(e)
             logger.warning(
-                f"Region discovery failed: {str(e)}. "
+                f"Region discovery failed: {error_msg}. "
                 f"Falling back to default region: {self.default_region}"
             )
-            return [self.default_region]
+            return RegionDiscoveryResult(
+                regions=[self.default_region],
+                discovery_failed=True,
+                discovery_error=error_msg,
+            )
 
     async def _discover_regions(self) -> list[str]:
         """

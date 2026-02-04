@@ -110,23 +110,34 @@ class RegionalScanResult(BaseModel):
 
 class RegionScanMetadata(BaseModel):
     """Metadata about which regions were scanned.
-    
+
     Provides information about the regions that were attempted during a
     multi-region scan, including which succeeded, failed, or were skipped.
     """
-    
+
     total_regions: int = Field(..., ge=0, description="Total regions attempted")
     successful_regions: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="Regions scanned successfully"
     )
     failed_regions: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="Regions that failed to scan"
     )
     skipped_regions: list[str] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="Regions skipped (disabled/filtered)"
+    )
+    discovery_failed: bool = Field(
+        default=False,
+        description=(
+            "True if region discovery failed and fell back to default region. "
+            "When True, results may be incomplete as only the default region was scanned."
+        )
+    )
+    discovery_error: str | None = Field(
+        default=None,
+        description="Error message if region discovery failed"
     )
 
 
