@@ -1,7 +1,7 @@
 """Unit tests for generate_compliance_report tool."""
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 import pytest
 
@@ -62,7 +62,7 @@ def sample_compliance_result():
         compliant_resources=13,
         violations=violations,
         cost_attribution_gap=total_cost_gap,
-        scan_timestamp=datetime.now(UTC),
+        scan_timestamp=datetime.now(timezone.utc),
     )
 
 
@@ -357,7 +357,7 @@ def zero_cost_compliance_result():
         compliant_resources=39,
         violations=violations,
         cost_attribution_gap=15.40,  # Cost attribution gap is still calculated separately
-        scan_timestamp=datetime.now(UTC),
+        scan_timestamp=datetime.now(timezone.utc),
     )
 
 

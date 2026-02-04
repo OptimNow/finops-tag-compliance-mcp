@@ -4,7 +4,7 @@
 
 """Tagging policy data models."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -98,7 +98,7 @@ class TagPolicy(BaseModel):
 
     version: str = Field(..., description="Version of the policy")
     last_updated: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when policy was last updated",
     )
     required_tags: list[RequiredTag] = Field(

@@ -6,7 +6,7 @@
 
 import json
 import sqlite3
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from ..models.audit import AuditLogEntry, AuditStatus
 from ..utils.correlation import get_correlation_id
@@ -85,7 +85,7 @@ class AuditService:
         Returns:
             AuditLogEntry with the logged data including generated ID
         """
-        timestamp = datetime.now(UTC)
+        timestamp = datetime.now(timezone.utc)
 
         # Capture correlation ID from context if not explicitly provided
         if correlation_id is None:

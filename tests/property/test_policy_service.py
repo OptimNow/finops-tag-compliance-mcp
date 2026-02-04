@@ -22,7 +22,7 @@ Each tag with value restrictions SHALL include:
 
 import json
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -174,7 +174,7 @@ def valid_policy_strategy(draw):
 
     return {
         "version": version,
-        "last_updated": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        "last_updated": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "required_tags": required_tags,
         "optional_tags": optional_tags,
         "tag_naming_rules": naming_rules,

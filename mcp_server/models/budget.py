@@ -10,7 +10,7 @@ and graceful degradation responses.
 Requirements: 15.3, 15.5
 """
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, Field
 
@@ -48,7 +48,7 @@ class BudgetExhaustedResponse(BaseModel):
     current_usage: int = Field(..., ge=0, description="Current number of tool calls made")
     limit: int = Field(..., ge=0, description="Maximum tool calls allowed per session")
     timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when budget exhaustion occurred",
     )
     suggestion: str = Field(

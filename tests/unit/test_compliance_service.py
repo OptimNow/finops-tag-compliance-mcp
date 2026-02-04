@@ -1,6 +1,6 @@
 """Unit tests for ComplianceService caching logic."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -246,7 +246,7 @@ class TestCacheRetrieval:
             "compliant_resources": 75,
             "violations": [],
             "cost_attribution_gap": 1000.0,
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 
@@ -355,7 +355,7 @@ class TestCheckCompliance:
             "compliant_resources": 9,
             "violations": [],
             "cost_attribution_gap": 50.0,
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 
@@ -393,7 +393,7 @@ class TestCheckCompliance:
             "compliant_resources": 50,
             "violations": [],
             "cost_attribution_gap": 1000.0,
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 
@@ -1092,7 +1092,7 @@ class TestMultiRegionCacheBehavior:
                 }
             ],
             "cost_attribution_gap": 800.0,
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 
@@ -1187,7 +1187,7 @@ class TestMultiRegionCacheBehavior:
             "compliant_resources": 50,
             "violations": [],
             "cost_attribution_gap": 5000.0,
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 
@@ -1478,7 +1478,7 @@ class TestMultiRegionCacheBehavior:
                 },
             ],
             "cost_attribution_gap": 800.0,  # Sum of all regional cost gaps
-            "scan_timestamp": datetime.now(UTC).isoformat(),
+            "scan_timestamp": datetime.now(timezone.utc).isoformat(),
         }
         mock_cache.get.return_value = cached_data
 

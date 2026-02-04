@@ -57,7 +57,7 @@ def mock_cache():
 @pytest.fixture
 def mock_policy_service():
     """Create a mock policy service."""
-    from datetime import UTC
+    from datetime import timezone
     
     from mcp_server.models.policy import OptionalTag, RequiredTag, TagNamingRules, TagPolicy
 
@@ -67,7 +67,7 @@ def mock_policy_service():
     # Mock get_policy to return a valid policy object
     mock_policy = TagPolicy(
         version="1.0",
-        last_updated=datetime.now(UTC),
+        last_updated=datetime.now(timezone.utc),
         required_tags=[
             RequiredTag(
                 name="CostCenter",

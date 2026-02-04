@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 
 from ..clients.aws_client import AWSClient
@@ -247,5 +247,5 @@ async def validate_resource_tags(
         compliant_resources=compliant_count,
         non_compliant_resources=non_compliant_count,
         results=results,
-        validation_timestamp=datetime.now(UTC),
+        validation_timestamp=datetime.now(timezone.utc),
     )

@@ -4,7 +4,7 @@
 
 """Report data models."""
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from enum import Enum
 
 from pydantic import BaseModel, Field
@@ -69,7 +69,7 @@ class ComplianceReport(BaseModel):
 
     # Metadata
     report_timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(UTC),
+        default_factory=lambda: datetime.now(timezone.utc),
         description="Timestamp when the report was generated",
     )
     scan_timestamp: datetime = Field(

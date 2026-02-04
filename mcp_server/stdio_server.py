@@ -78,33 +78,54 @@ async def check_tag_compliance(
         history_service=_container.history_service,
         store_snapshot=store_snapshot,
         force_refresh=force_refresh,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
-    return json.dumps(
-        {
-            "compliance_score": result.compliance_score,
-            "total_resources": result.total_resources,
-            "compliant_resources": result.compliant_resources,
-            "violations": [
-                {
-                    "resource_id": v.resource_id,
-                    "resource_type": v.resource_type,
-                    "region": v.region,
-                    "violation_type": v.violation_type.value,
-                    "tag_name": v.tag_name,
-                    "severity": v.severity.value,
-                    "current_value": v.current_value,
-                    "allowed_values": v.allowed_values,
-                    "cost_impact_monthly": v.cost_impact_monthly,
-                }
-                for v in result.violations
-            ],
-            "cost_attribution_gap": result.cost_attribution_gap,
-            "scan_timestamp": result.scan_timestamp.isoformat(),
-            "stored_in_history": store_snapshot,
-        },
-        default=str,
-    )
+    # Build base response (common to both ComplianceResult and MultiRegionComplianceResult)
+    response: dict[str, Any] = {
+        "compliance_score": result.compliance_score,
+        "total_resources": result.total_resources,
+        "compliant_resources": result.compliant_resources,
+        "violations": [
+            {
+                "resource_id": v.resource_id,
+                "resource_type": v.resource_type,
+                "region": v.region,
+                "violation_type": v.violation_type.value,
+                "tag_name": v.tag_name,
+                "severity": v.severity.value,
+                "current_value": v.current_value,
+                "allowed_values": v.allowed_values,
+                "cost_impact_monthly": v.cost_impact_monthly,
+            }
+            for v in result.violations
+        ],
+        "cost_attribution_gap": result.cost_attribution_gap,
+        "scan_timestamp": result.scan_timestamp.isoformat(),
+        "stored_in_history": store_snapshot,
+    }
+
+    # Add multi-region fields if this is a MultiRegionComplianceResult
+    if hasattr(result, "region_metadata"):
+        response["region_metadata"] = {
+            "total_regions": result.region_metadata.total_regions,
+            "successful_regions": result.region_metadata.successful_regions,
+            "failed_regions": result.region_metadata.failed_regions,
+            "skipped_regions": result.region_metadata.skipped_regions,
+        }
+        response["regional_breakdown"] = {
+            region: {
+                "region": summary.region,
+                "total_resources": summary.total_resources,
+                "compliant_resources": summary.compliant_resources,
+                "compliance_score": summary.compliance_score,
+                "violation_count": summary.violation_count,
+                "cost_attribution_gap": summary.cost_attribution_gap,
+            }
+            for region, summary in result.regional_breakdown.items()
+        }
+
+    return json.dumps(response, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +159,7 @@ async def find_untagged_resources(
         regions=regions,
         min_cost_threshold=min_cost_threshold,
         include_costs=include_costs,
+        multi_region_scanner=_container.multi_region_scanner,
     )
 
     resources = []

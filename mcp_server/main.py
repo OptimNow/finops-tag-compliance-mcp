@@ -13,7 +13,7 @@ Requirements: 14.2, 14.5
 
 import logging
 from contextlib import asynccontextmanager
-from datetime import UTC
+from datetime import timezone
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -636,7 +636,7 @@ async def metrics_endpoint() -> Response:
             lines.append(f'mcp_errors_by_tool{{tool="{tool_name}"}} {count}')
 
     # Add timestamp
-    lines.append(f"# Generated at {datetime.now(UTC).isoformat()}")
+    lines.append(f"# Generated at {datetime.now(timezone.utc).isoformat()}")
 
     return Response(content="\n".join(lines) + "\n", media_type="text/plain; charset=utf-8")
 
