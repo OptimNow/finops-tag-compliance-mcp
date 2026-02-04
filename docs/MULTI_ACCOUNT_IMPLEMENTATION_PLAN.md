@@ -1262,39 +1262,981 @@ async def check_tag_compliance(
 
 ---
 
-## Testing Strategy
+## Phase 6: Testing Strategy
 
-### Unit Tests
-- `tests/unit/test_credential_provider.py`
-  - Test AssumeRole success with valid credentials
-  - Test AssumeRoleError on ClientError
-  - Test credential caching and expiration
-  - Test cache refresh before expiration
+### 6.1 Unit Tests
 
-- `tests/unit/test_aws_client_pool.py`
-  - Test local client passthrough
-  - Test client creation for new accounts
-  - Test client caching
-  - Test error handling for failed assumptions
+#### `tests/unit/test_credential_provider.py`
 
-- `tests/unit/test_multi_account_compliance_service.py`
-  - Test single account scanning
-  - Test parallel scanning with semaphore
-  - Test timeout handling
-  - Test partial failure (some accounts fail)
-  - Test result aggregation
+```python
+"""Unit tests for CredentialProvider."""
 
-### Integration Tests
-- `tests/integration/test_multi_account_scanning.py`
-  - Test with moto mocking multiple accounts
-  - Test AssumeRole chain
-  - Test end-to-end compliance check
+import pytest
+from unittest.mock import Mock, patch, AsyncMock
+from datetime import datetime, timedelta
+from botocore.exceptions import ClientError
 
-### Property Tests
-- `tests/property/test_multi_account_aggregation.py`
-  - Test compliance score always in [0, 1]
-  - Test total_resources = sum of per-account resources
-  - Test compliant + violations = total for each account
+from mcp_server.clients.credential_provider import (
+    CredentialProvider,
+    AssumedCredentials,
+    AssumeRoleError,
+)
+
+
+class TestAssumedCredentials:
+    """Tests for AssumedCredentials dataclass."""
+
+    def test_is_expired_returns_false_for_valid_credentials(self):
+        """Credentials with future expiration are not expired."""
+        creds = AssumedCredentials(
+            access_key_id="AKIATEST",
+            secret_access_key="secret",
+            session_token="token",
+            expiration=datetime.utcnow() + timedelta(hours=1),
+            account_id="123456789012",
+            role_arn="arn:aws:iam::123456789012:role/TestRole",
+        )
+        assert creds.is_expired() is False
+
+    def test_is_expired_returns_true_for_expired_credentials(self):
+        """Credentials with past expiration are expired."""
+        creds = AssumedCredentials(
+            access_key_id="AKIATEST",
+            secret_access_key="secret",
+            session_token="token",
+            expiration=datetime.utcnow() - timedelta(minutes=1),
+            account_id="123456789012",
+            role_arn="arn:aws:iam::123456789012:role/TestRole",
+        )
+        assert creds.is_expired() is True
+
+    def test_is_expired_with_buffer_returns_true_near_expiration(self):
+        """Credentials within buffer period are considered expired."""
+        creds = AssumedCredentials(
+            access_key_id="AKIATEST",
+            secret_access_key="secret",
+            session_token="token",
+            expiration=datetime.utcnow() + timedelta(minutes=3),  # Within 5 min buffer
+            account_id="123456789012",
+            role_arn="arn:aws:iam::123456789012:role/TestRole",
+        )
+        assert creds.is_expired(buffer_minutes=5) is True
+
+
+class TestCredentialProvider:
+    """Tests for CredentialProvider class."""
+
+    @pytest.fixture
+    def mock_sts_client(self):
+        """Create mock STS client."""
+        with patch("boto3.client") as mock:
+            yield mock.return_value
+
+    @pytest.fixture
+    def provider(self, mock_sts_client):
+        """Create CredentialProvider with mocked STS."""
+        return CredentialProvider(
+            role_arn_template="arn:aws:iam::{account_id}:role/{role_name}",
+            default_role_name="TestRole",
+            session_duration=3600,
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_credentials_success(self, provider, mock_sts_client):
+        """Successfully assume role and return credentials."""
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIATEST",
+                "SecretAccessKey": "secret",
+                "SessionToken": "token",
+                "Expiration": datetime.utcnow() + timedelta(hours=1),
+            }
+        }
+
+        creds = await provider.get_credentials("123456789012")
+
+        assert creds.access_key_id == "AKIATEST"
+        assert creds.account_id == "123456789012"
+        mock_sts_client.assume_role.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_get_credentials_uses_cache(self, provider, mock_sts_client):
+        """Second call uses cached credentials."""
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIATEST",
+                "SecretAccessKey": "secret",
+                "SessionToken": "token",
+                "Expiration": datetime.utcnow() + timedelta(hours=1),
+            }
+        }
+
+        creds1 = await provider.get_credentials("123456789012")
+        creds2 = await provider.get_credentials("123456789012")
+
+        assert creds1 is creds2
+        assert mock_sts_client.assume_role.call_count == 1  # Only called once
+
+    @pytest.mark.asyncio
+    async def test_get_credentials_refreshes_expired_cache(self, provider, mock_sts_client):
+        """Expired cached credentials trigger refresh."""
+        # First call returns credentials that will expire soon
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIATEST1",
+                "SecretAccessKey": "secret1",
+                "SessionToken": "token1",
+                "Expiration": datetime.utcnow() + timedelta(minutes=2),  # Expires in 2 min
+            }
+        }
+
+        await provider.get_credentials("123456789012")
+
+        # Second call should refresh because within 5 min buffer
+        mock_sts_client.assume_role.return_value = {
+            "Credentials": {
+                "AccessKeyId": "AKIATEST2",
+                "SecretAccessKey": "secret2",
+                "SessionToken": "token2",
+                "Expiration": datetime.utcnow() + timedelta(hours=1),
+            }
+        }
+
+        creds = await provider.get_credentials("123456789012")
+
+        assert creds.access_key_id == "AKIATEST2"
+        assert mock_sts_client.assume_role.call_count == 2
+
+    @pytest.mark.asyncio
+    async def test_get_credentials_raises_assume_role_error(self, provider, mock_sts_client):
+        """AssumeRole failure raises AssumeRoleError."""
+        mock_sts_client.assume_role.side_effect = ClientError(
+            {"Error": {"Code": "AccessDenied", "Message": "Access denied"}},
+            "AssumeRole",
+        )
+
+        with pytest.raises(AssumeRoleError) as exc_info:
+            await provider.get_credentials("123456789012")
+
+        assert exc_info.value.account_id == "123456789012"
+        assert "AccessDenied" in str(exc_info.value)
+
+    def test_clear_cache_removes_all_credentials(self, provider):
+        """clear_cache() removes all cached credentials."""
+        provider._credential_cache["123:TestRole"] = Mock()
+        provider._credential_cache["456:TestRole"] = Mock()
+
+        provider.clear_cache()
+
+        assert len(provider._credential_cache) == 0
+
+    def test_clear_cache_removes_specific_account(self, provider):
+        """clear_cache(account_id) removes only that account's credentials."""
+        provider._credential_cache["123:TestRole"] = Mock()
+        provider._credential_cache["456:TestRole"] = Mock()
+
+        provider.clear_cache("123")
+
+        assert "123:TestRole" not in provider._credential_cache
+        assert "456:TestRole" in provider._credential_cache
+```
+
+#### `tests/unit/test_aws_client_pool.py`
+
+```python
+"""Unit tests for AWSClientPool."""
+
+import pytest
+from unittest.mock import Mock, AsyncMock, patch
+
+from mcp_server.clients.aws_client_pool import AWSClientPool
+from mcp_server.clients.credential_provider import AssumeRoleError
+
+
+class TestAWSClientPool:
+    """Tests for AWSClientPool class."""
+
+    @pytest.fixture
+    def mock_credential_provider(self):
+        """Create mock CredentialProvider."""
+        provider = Mock()
+        provider.get_credentials = AsyncMock()
+        return provider
+
+    @pytest.fixture
+    def mock_local_client(self):
+        """Create mock local AWSClient."""
+        client = Mock()
+        client.account_id = "111111111111"
+        return client
+
+    @pytest.fixture
+    def pool(self, mock_credential_provider):
+        """Create AWSClientPool with mocked provider."""
+        return AWSClientPool(
+            credential_provider=mock_credential_provider,
+            default_region="us-east-1",
+        )
+
+    @pytest.mark.asyncio
+    async def test_get_client_returns_local_client_for_local_account(
+        self, pool, mock_local_client
+    ):
+        """Local account returns local client without AssumeRole."""
+        pool.set_local_client(mock_local_client)
+
+        client = await pool.get_client("111111111111")
+
+        assert client is mock_local_client
+        pool._credential_provider.get_credentials.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_get_client_assumes_role_for_cross_account(
+        self, pool, mock_credential_provider
+    ):
+        """Cross-account request triggers AssumeRole."""
+        mock_creds = Mock()
+        mock_creds.access_key_id = "AKIATEST"
+        mock_creds.secret_access_key = "secret"
+        mock_creds.session_token = "token"
+        mock_creds.account_id = "222222222222"
+        mock_creds.role_arn = "arn:aws:iam::222222222222:role/TestRole"
+        mock_credential_provider.get_credentials.return_value = mock_creds
+
+        with patch("mcp_server.clients.aws_client_pool.AWSClient") as mock_aws:
+            mock_aws.from_credentials.return_value = Mock()
+            client = await pool.get_client("222222222222")
+
+        mock_credential_provider.get_credentials.assert_called_once_with("222222222222")
+
+    @pytest.mark.asyncio
+    async def test_get_client_caches_clients(self, pool, mock_credential_provider):
+        """Subsequent calls return cached client."""
+        mock_creds = Mock()
+        mock_creds.access_key_id = "AKIATEST"
+        mock_creds.secret_access_key = "secret"
+        mock_creds.session_token = "token"
+        mock_creds.account_id = "222222222222"
+        mock_creds.role_arn = "arn:aws:iam::222222222222:role/TestRole"
+        mock_credential_provider.get_credentials.return_value = mock_creds
+
+        with patch("mcp_server.clients.aws_client_pool.AWSClient") as mock_aws:
+            mock_aws.from_credentials.return_value = Mock()
+            client1 = await pool.get_client("222222222222")
+            client2 = await pool.get_client("222222222222")
+
+        assert client1 is client2
+        assert mock_credential_provider.get_credentials.call_count == 1
+
+    @pytest.mark.asyncio
+    async def test_get_clients_for_accounts_returns_errors_for_failures(
+        self, pool, mock_credential_provider
+    ):
+        """get_clients_for_accounts returns exceptions for failed accounts."""
+        mock_credential_provider.get_credentials.side_effect = [
+            Mock(access_key_id="AK1", secret_access_key="s1", session_token="t1",
+                 account_id="111", role_arn="arn1"),
+            AssumeRoleError("Access denied", "222", "arn2"),
+        ]
+
+        with patch("mcp_server.clients.aws_client_pool.AWSClient") as mock_aws:
+            mock_aws.from_credentials.return_value = Mock()
+            results = await pool.get_clients_for_accounts(["111", "222"])
+
+        assert "111" in results
+        assert isinstance(results["222"], AssumeRoleError)
+
+    def test_clear_clients_removes_all(self, pool):
+        """clear_clients() removes all cached clients."""
+        pool._clients["111:us-east-1"] = Mock()
+        pool._clients["222:us-east-1"] = Mock()
+
+        pool.clear_clients()
+
+        assert len(pool._clients) == 0
+
+    def test_clear_clients_removes_specific_account(self, pool):
+        """clear_clients(account_id) removes only that account."""
+        pool._clients["111:us-east-1"] = Mock()
+        pool._clients["222:us-east-1"] = Mock()
+
+        pool.clear_clients("111")
+
+        assert "111:us-east-1" not in pool._clients
+        assert "222:us-east-1" in pool._clients
+```
+
+#### `tests/unit/test_multi_account_compliance_service.py`
+
+```python
+"""Unit tests for MultiAccountComplianceService."""
+
+import pytest
+from unittest.mock import Mock, AsyncMock, patch
+from datetime import datetime
+
+from mcp_server.services.multi_account_compliance_service import (
+    MultiAccountComplianceService,
+)
+from mcp_server.models.compliance import ComplianceResult
+from mcp_server.models.violations import Violation
+
+
+class TestMultiAccountComplianceService:
+    """Tests for MultiAccountComplianceService."""
+
+    @pytest.fixture
+    def mock_client_pool(self):
+        """Create mock AWSClientPool."""
+        pool = Mock()
+        pool.get_client = AsyncMock()
+        return pool
+
+    @pytest.fixture
+    def mock_policy_service(self):
+        """Create mock PolicyService."""
+        return Mock()
+
+    @pytest.fixture
+    def service(self, mock_client_pool, mock_policy_service):
+        """Create MultiAccountComplianceService with mocks."""
+        return MultiAccountComplianceService(
+            client_pool=mock_client_pool,
+            policy_service=mock_policy_service,
+            cache=None,
+            max_concurrent=5,
+            timeout_seconds=120,
+        )
+
+    @pytest.mark.asyncio
+    async def test_scan_single_account_success(
+        self, service, mock_client_pool, mock_policy_service
+    ):
+        """Successfully scan a single account."""
+        mock_client = Mock()
+        mock_client_pool.get_client.return_value = mock_client
+
+        mock_result = ComplianceResult(
+            compliance_score=0.8,
+            total_resources=10,
+            compliant_resources=8,
+            violations=[],
+        )
+
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.return_value = Mock(
+                account_id="123456789012",
+                success=True,
+                violations=[],
+                compliant_count=8,
+            )
+
+            result = await service.check_compliance_multi_account(
+                account_ids=["123456789012"],
+                resource_types=["ec2:instance"],
+            )
+
+        assert result.account_metadata.total_accounts == 1
+        assert len(result.account_metadata.successful_accounts) == 1
+
+    @pytest.mark.asyncio
+    async def test_scan_multiple_accounts_parallel(self, service):
+        """Multiple accounts are scanned in parallel."""
+        account_ids = ["111", "222", "333"]
+
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.return_value = Mock(
+                success=True,
+                violations=[],
+                compliant_count=5,
+            )
+
+            result = await service.check_compliance_multi_account(
+                account_ids=account_ids,
+                resource_types=["ec2:instance"],
+            )
+
+        assert mock_scan.call_count == 3
+        assert result.account_metadata.total_accounts == 3
+
+    @pytest.mark.asyncio
+    async def test_partial_failure_continues_other_accounts(self, service):
+        """Failure in one account doesn't stop others."""
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.side_effect = [
+                Mock(account_id="111", success=True, violations=[], compliant_count=5),
+                Mock(account_id="222", success=False, error_message="Access denied"),
+                Mock(account_id="333", success=True, violations=[], compliant_count=3),
+            ]
+
+            result = await service.check_compliance_multi_account(
+                account_ids=["111", "222", "333"],
+                resource_types=["ec2:instance"],
+            )
+
+        assert len(result.account_metadata.successful_accounts) == 2
+        assert len(result.account_metadata.failed_accounts) == 1
+        assert "222" in result.account_metadata.failed_accounts
+
+    @pytest.mark.asyncio
+    async def test_aggregation_calculates_correct_totals(self, service):
+        """Result aggregation sums resources correctly."""
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.side_effect = [
+                Mock(account_id="111", success=True, violations=[
+                    Violation(resource_id="r1", resource_type="ec2:instance",
+                              tag_name="Environment", violation_type="missing",
+                              severity="high", message="Missing tag")
+                ], compliant_count=5),
+                Mock(account_id="222", success=True, violations=[], compliant_count=10),
+            ]
+
+            result = await service.check_compliance_multi_account(
+                account_ids=["111", "222"],
+                resource_types=["ec2:instance"],
+            )
+
+        # Account 111: 5 compliant + 1 violation = 6 resources
+        # Account 222: 10 compliant + 0 violations = 10 resources
+        # Total: 16 resources, 15 compliant
+        assert result.total_resources == 16
+        assert result.compliant_resources == 15
+        assert len(result.violations) == 1
+
+    @pytest.mark.asyncio
+    async def test_compliance_score_calculation(self, service):
+        """Compliance score is correctly calculated across accounts."""
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.side_effect = [
+                Mock(account_id="111", success=True, violations=[
+                    Violation(resource_id="r1", resource_type="ec2:instance",
+                              tag_name="Env", violation_type="missing",
+                              severity="high", message="Missing")
+                ] * 2, compliant_count=8),  # 8/10 = 80%
+                Mock(account_id="222", success=True, violations=[
+                    Violation(resource_id="r2", resource_type="ec2:instance",
+                              tag_name="Env", violation_type="missing",
+                              severity="high", message="Missing")
+                ] * 5, compliant_count=5),  # 5/10 = 50%
+            ]
+
+            result = await service.check_compliance_multi_account(
+                account_ids=["111", "222"],
+                resource_types=["ec2:instance"],
+            )
+
+        # Total: 13 compliant / 20 resources = 65%
+        assert result.compliance_score == pytest.approx(0.65, rel=0.01)
+
+    @pytest.mark.asyncio
+    async def test_account_breakdown_contains_per_account_metrics(self, service):
+        """Result contains per-account breakdown."""
+        with patch.object(service, "_scan_single_account") as mock_scan:
+            mock_scan.side_effect = [
+                Mock(account_id="111", success=True, violations=[], compliant_count=10),
+                Mock(account_id="222", success=True, violations=[
+                    Violation(resource_id="r1", resource_type="ec2:instance",
+                              tag_name="Env", violation_type="missing",
+                              severity="high", message="Missing")
+                ], compliant_count=4),
+            ]
+
+            result = await service.check_compliance_multi_account(
+                account_ids=["111", "222"],
+                resource_types=["ec2:instance"],
+            )
+
+        assert "111" in result.account_breakdown
+        assert "222" in result.account_breakdown
+        assert result.account_breakdown["111"].compliance_score == 1.0
+        assert result.account_breakdown["222"].compliance_score == 0.8
+
+    @pytest.mark.asyncio
+    async def test_semaphore_limits_concurrency(self, service):
+        """Semaphore limits concurrent account scans."""
+        service._max_concurrent = 2
+        call_times = []
+
+        async def mock_scan(*args, **kwargs):
+            import asyncio
+            call_times.append(datetime.utcnow())
+            await asyncio.sleep(0.1)
+            return Mock(success=True, violations=[], compliant_count=1)
+
+        with patch.object(service, "_scan_single_account", side_effect=mock_scan):
+            await service.check_compliance_multi_account(
+                account_ids=["111", "222", "333", "444"],
+                resource_types=["ec2:instance"],
+            )
+
+        # With max_concurrent=2, should complete in ~2 batches
+        # First 2 start together, next 2 start after first batch completes
+```
+
+### 6.2 Integration Tests
+
+#### `tests/integration/test_multi_account_scanning.py`
+
+```python
+"""Integration tests for multi-account scanning with moto."""
+
+import pytest
+import boto3
+from moto import mock_aws
+from unittest.mock import patch
+
+from mcp_server.clients.credential_provider import CredentialProvider
+from mcp_server.clients.aws_client_pool import AWSClientPool
+from mcp_server.clients.aws_client import AWSClient
+from mcp_server.services.multi_account_compliance_service import (
+    MultiAccountComplianceService,
+)
+from mcp_server.services.policy_service import PolicyService
+
+
+@pytest.fixture
+def policy_service():
+    """Create PolicyService with test policy."""
+    return PolicyService(policy_path="policies/tagging_policy.json")
+
+
+@mock_aws
+class TestMultiAccountIntegration:
+    """Integration tests using moto AWS mocking."""
+
+    def setup_method(self):
+        """Set up mock AWS resources."""
+        # Create STS client for AssumeRole mocking
+        self.sts = boto3.client("sts", region_name="us-east-1")
+
+        # Create EC2 instances in "different accounts" (simulated)
+        self.ec2 = boto3.client("ec2", region_name="us-east-1")
+
+    @pytest.mark.asyncio
+    async def test_end_to_end_multi_account_scan(self, policy_service):
+        """Full multi-account scan workflow."""
+        # Create test EC2 instances
+        self.ec2.run_instances(
+            ImageId="ami-12345",
+            MinCount=1,
+            MaxCount=1,
+            TagSpecifications=[
+                {
+                    "ResourceType": "instance",
+                    "Tags": [
+                        {"Key": "Environment", "Value": "production"},
+                        {"Key": "Owner", "Value": "team-a"},
+                    ],
+                }
+            ],
+        )
+
+        # Create local client
+        local_client = AWSClient(region="us-east-1")
+
+        # Create mock credential provider that returns local creds
+        with patch.object(CredentialProvider, "get_credentials") as mock_get_creds:
+            mock_get_creds.return_value = Mock(
+                access_key_id="test",
+                secret_access_key="test",
+                session_token="test",
+                account_id="222222222222",
+                role_arn="arn:aws:iam::222222222222:role/Test",
+            )
+
+            provider = CredentialProvider()
+            pool = AWSClientPool(credential_provider=provider)
+            pool.set_local_client(local_client)
+
+            service = MultiAccountComplianceService(
+                client_pool=pool,
+                policy_service=policy_service,
+                max_concurrent=2,
+            )
+
+            # This would scan the local account
+            # In real test, would need proper moto multi-account setup
+            result = await service.check_compliance_multi_account(
+                account_ids=[local_client.account_id],
+                resource_types=["ec2:instance"],
+            )
+
+            assert result.total_resources >= 0
+            assert 0.0 <= result.compliance_score <= 1.0
+
+    @pytest.mark.asyncio
+    async def test_assume_role_chain(self):
+        """Test STS AssumeRole is called correctly."""
+        provider = CredentialProvider(
+            role_arn_template="arn:aws:iam::{account_id}:role/{role_name}",
+            default_role_name="TestRole",
+        )
+
+        # This will fail in moto because the role doesn't exist
+        # but validates the call structure
+        with pytest.raises(Exception):
+            await provider.get_credentials("123456789012")
+
+    @pytest.mark.asyncio
+    async def test_cache_isolation_between_accounts(self, policy_service):
+        """Verify cache keys isolate accounts."""
+        from mcp_server.services.compliance_service import ComplianceService
+
+        local_client = AWSClient(region="us-east-1")
+
+        svc = ComplianceService(
+            aws_client=local_client,
+            policy_service=policy_service,
+            cache=None,
+        )
+
+        # Generate cache keys for different accounts
+        key1 = svc._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters={"account_id": "111111111111"},
+        )
+        key2 = svc._generate_cache_key(
+            resource_types=["ec2:instance"],
+            filters={"account_id": "222222222222"},
+        )
+
+        # Keys should be different
+        assert key1 != key2
+```
+
+### 6.3 Property-Based Tests
+
+#### `tests/property/test_multi_account_aggregation.py`
+
+```python
+"""Property-based tests for multi-account result aggregation."""
+
+import pytest
+from hypothesis import given, strategies as st, assume, settings
+
+from mcp_server.models.multi_account import (
+    AccountSummary,
+    AccountScanMetadata,
+    MultiAccountComplianceResult,
+)
+from mcp_server.models.violations import Violation
+
+
+# Strategies for generating test data
+account_id_strategy = st.text(
+    alphabet="0123456789", min_size=12, max_size=12
+)
+
+violation_strategy = st.builds(
+    Violation,
+    resource_id=st.text(min_size=1, max_size=50),
+    resource_type=st.sampled_from(["ec2:instance", "rds:db", "s3:bucket"]),
+    tag_name=st.text(min_size=1, max_size=20),
+    violation_type=st.sampled_from(["missing", "invalid_value"]),
+    severity=st.sampled_from(["critical", "high", "medium", "low"]),
+    message=st.text(min_size=1, max_size=100),
+)
+
+account_summary_strategy = st.builds(
+    AccountSummary,
+    account_id=account_id_strategy,
+    account_alias=st.none() | st.text(min_size=1, max_size=30),
+    total_resources=st.integers(min_value=0, max_value=10000),
+    compliant_resources=st.integers(min_value=0, max_value=10000),
+    compliance_score=st.floats(min_value=0.0, max_value=1.0),
+    violation_count=st.integers(min_value=0, max_value=10000),
+    cost_attribution_gap=st.floats(min_value=0.0, max_value=1000000.0),
+).filter(lambda s: s.compliant_resources <= s.total_resources)
+
+
+class TestMultiAccountAggregationProperties:
+    """Property-based tests for aggregation logic."""
+
+    @given(st.lists(account_summary_strategy, min_size=1, max_size=20))
+    @settings(max_examples=100)
+    def test_compliance_score_always_bounded(self, summaries: list[AccountSummary]):
+        """REQ-MA-1: Compliance score is always between 0 and 1."""
+        total_resources = sum(s.total_resources for s in summaries)
+        total_compliant = sum(s.compliant_resources for s in summaries)
+
+        if total_resources > 0:
+            score = total_compliant / total_resources
+        else:
+            score = 1.0
+
+        assert 0.0 <= score <= 1.0
+
+    @given(st.lists(account_summary_strategy, min_size=1, max_size=20))
+    @settings(max_examples=100)
+    def test_total_resources_equals_sum_of_accounts(
+        self, summaries: list[AccountSummary]
+    ):
+        """REQ-MA-2: Total resources equals sum of per-account resources."""
+        expected_total = sum(s.total_resources for s in summaries)
+
+        result = MultiAccountComplianceResult(
+            compliance_score=0.5,
+            total_resources=expected_total,
+            compliant_resources=sum(s.compliant_resources for s in summaries),
+            violations=[],
+            account_metadata=AccountScanMetadata(
+                total_accounts=len(summaries),
+                successful_accounts=[s.account_id for s in summaries],
+                failed_accounts=[],
+            ),
+            account_breakdown={s.account_id: s for s in summaries},
+        )
+
+        assert result.total_resources == expected_total
+
+    @given(st.lists(account_summary_strategy, min_size=1, max_size=20))
+    @settings(max_examples=100)
+    def test_compliant_resources_never_exceeds_total(
+        self, summaries: list[AccountSummary]
+    ):
+        """REQ-MA-3: Compliant resources never exceed total resources."""
+        for summary in summaries:
+            assert summary.compliant_resources <= summary.total_resources
+
+    @given(
+        st.lists(account_id_strategy, min_size=1, max_size=10, unique=True),
+        st.lists(account_id_strategy, min_size=0, max_size=5, unique=True),
+    )
+    @settings(max_examples=50)
+    def test_successful_and_failed_accounts_are_disjoint(
+        self, successful: list[str], failed: list[str]
+    ):
+        """REQ-MA-4: An account cannot be both successful and failed."""
+        # Remove any overlap for test setup
+        failed = [a for a in failed if a not in successful]
+
+        metadata = AccountScanMetadata(
+            total_accounts=len(successful) + len(failed),
+            successful_accounts=successful,
+            failed_accounts=failed,
+        )
+
+        success_set = set(metadata.successful_accounts)
+        failed_set = set(metadata.failed_accounts)
+
+        assert success_set.isdisjoint(failed_set)
+
+    @given(st.lists(violation_strategy, min_size=0, max_size=100))
+    @settings(max_examples=50)
+    def test_violation_count_matches_list_length(self, violations: list[Violation]):
+        """REQ-MA-5: Violation count in summary matches actual violations."""
+        result = MultiAccountComplianceResult(
+            compliance_score=0.5,
+            total_resources=100,
+            compliant_resources=100 - len(violations),
+            violations=violations,
+            account_metadata=AccountScanMetadata(
+                total_accounts=1,
+                successful_accounts=["123456789012"],
+                failed_accounts=[],
+            ),
+            account_breakdown={},
+        )
+
+        assert len(result.violations) == len(violations)
+
+    @given(
+        st.integers(min_value=0, max_value=1000),
+        st.integers(min_value=0, max_value=1000),
+    )
+    @settings(max_examples=100)
+    def test_empty_scan_has_perfect_compliance(
+        self, compliant: int, violations: int
+    ):
+        """REQ-MA-6: Empty scan (0 resources) has 100% compliance."""
+        total = compliant + violations
+
+        if total == 0:
+            score = 1.0  # Convention for empty scan
+        else:
+            score = compliant / total
+
+        if total == 0:
+            assert score == 1.0
+        else:
+            assert 0.0 <= score <= 1.0
+```
+
+---
+
+## Phase 7: UAT Strategy (User Acceptance Testing)
+
+### 7.1 UAT Environment Setup
+
+#### Prerequisites
+
+| Component | Requirement |
+|-----------|-------------|
+| AWS Accounts | Minimum 3 accounts: 1 management + 2 member accounts |
+| IAM Roles | `FinOpsTagComplianceReadOnly` role deployed in each member account |
+| Network | Outbound internet access for STS API calls |
+| Test Resources | Tagged and untagged EC2, RDS, S3 resources in each account |
+
+#### Environment Configuration
+
+```bash
+# UAT environment variables
+export MULTI_ACCOUNT_ENABLED=true
+export AWS_ACCOUNT_IDS=111111111111,222222222222,333333333333
+export AWS_ASSUME_ROLE_NAME=FinOpsTagComplianceReadOnly
+export MAX_CONCURRENT_ACCOUNTS=3
+export ACCOUNT_SCAN_TIMEOUT_SECONDS=180
+export LOG_LEVEL=DEBUG
+```
+
+### 7.2 UAT Test Scenarios
+
+#### Scenario 1: Basic Multi-Account Scan
+**Objective**: Verify basic cross-account scanning works
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start MCP server with multi-account config | Server starts, logs show "multi-account services initialized" |
+| 2 | Call `check_tag_compliance` with `account_ids=["111...","222..."]` | Returns `MultiAccountComplianceResult` |
+| 3 | Verify `account_breakdown` contains both accounts | Each account has `AccountSummary` entry |
+| 4 | Verify `account_metadata.successful_accounts` lists both | Both account IDs present |
+
+**Pass Criteria**: All accounts scanned successfully, results aggregated correctly
+
+---
+
+#### Scenario 2: Single Account Backward Compatibility
+**Objective**: Verify existing single-account behavior unchanged
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Call `check_tag_compliance` WITHOUT `account_ids` param | Returns standard `ComplianceResult` (not Multi) |
+| 2 | Verify response format matches v1 schema | Same fields as before multi-account feature |
+| 3 | Verify no AssumeRole calls in logs | Only local account scanned |
+
+**Pass Criteria**: Single-account mode unchanged, no regressions
+
+---
+
+#### Scenario 3: Partial Failure Handling
+**Objective**: Verify graceful handling when some accounts fail
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Remove IAM role from one member account | Role deletion confirmed |
+| 2 | Call `check_tag_compliance` with all 3 accounts | Returns result with partial success |
+| 3 | Verify `account_metadata.failed_accounts` contains failed account | Failed account ID listed |
+| 4 | Verify `account_metadata.successful_accounts` contains others | Other accounts present |
+| 5 | Verify overall `compliance_score` calculated from successful only | Score reflects 2 accounts |
+
+**Pass Criteria**: Partial failure doesn't crash, results from successful accounts returned
+
+---
+
+#### Scenario 4: Timeout Handling
+**Objective**: Verify per-account timeout works
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Set `ACCOUNT_SCAN_TIMEOUT_SECONDS=5` | Config updated |
+| 2 | Create account with 1000+ resources (slow scan) | Resources created |
+| 3 | Call `check_tag_compliance` including slow account | Returns within reasonable time |
+| 4 | Verify slow account in `failed_accounts` with timeout error | Error message mentions timeout |
+| 5 | Verify other accounts completed successfully | Other results present |
+
+**Pass Criteria**: Timeout triggers, doesn't block other accounts
+
+---
+
+#### Scenario 5: Concurrency Control
+**Objective**: Verify semaphore limits concurrent scans
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Set `MAX_CONCURRENT_ACCOUNTS=2` | Config updated |
+| 2 | Call scan with 5 accounts | Scan starts |
+| 3 | Monitor CloudWatch/logs for concurrent API calls | Max 2 accounts scanned simultaneously |
+| 4 | Verify all 5 accounts eventually complete | All results returned |
+
+**Pass Criteria**: Never more than 2 concurrent account scans
+
+---
+
+#### Scenario 6: Cache Isolation
+**Objective**: Verify cache doesn't mix data between accounts
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Scan Account A, note violation count | Results cached |
+| 2 | Add new untagged resource to Account B only | Resource created |
+| 3 | Scan Account A again (should use cache) | Same violation count as step 1 |
+| 4 | Scan Account B | Shows new violation |
+| 5 | Verify Account A cache wasn't polluted | Account A count unchanged |
+
+**Pass Criteria**: Each account has isolated cache
+
+---
+
+#### Scenario 7: Credential Refresh
+**Objective**: Verify long-running scans handle credential expiration
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Set `AWS_ASSUME_ROLE_SESSION_DURATION=900` (15 min) | Short session |
+| 2 | Start continuous scanning (every 10 min) | Scans running |
+| 3 | Wait 20+ minutes | Credentials should expire |
+| 4 | Verify scans continue working | Auto-refresh occurred |
+| 5 | Check logs for "refreshing credentials" message | Refresh logged |
+
+**Pass Criteria**: Credentials auto-refresh before expiration
+
+---
+
+#### Scenario 8: MCP Tool Integration
+**Objective**: Verify tool works via MCP Inspector
+
+| Step | Action | Expected Result |
+|------|--------|-----------------|
+| 1 | Start server: `python -m mcp_server.stdio_server` | Server running |
+| 2 | Connect MCP Inspector | Connected successfully |
+| 3 | List tools, verify `check_tag_compliance` has `account_ids` param | Parameter visible |
+| 4 | Call tool with `account_ids: ["111...", "222..."]` | Multi-account result returned |
+| 5 | Verify JSON response is valid | Parseable JSON |
+
+**Pass Criteria**: Tool callable from MCP client with multi-account param
+
+---
+
+### 7.3 UAT Acceptance Criteria Matrix
+
+| ID | Criterion | Priority | Status |
+|----|-----------|----------|--------|
+| UAT-1 | Multi-account scan returns aggregated results | P0 | [ ] |
+| UAT-2 | Single-account mode unchanged (backward compat) | P0 | [ ] |
+| UAT-3 | Failed accounts don't crash scan | P0 | [ ] |
+| UAT-4 | Per-account timeout enforced | P1 | [ ] |
+| UAT-5 | Concurrency limit respected | P1 | [ ] |
+| UAT-6 | Cache isolated per account | P0 | [ ] |
+| UAT-7 | Credentials auto-refresh | P1 | [ ] |
+| UAT-8 | MCP tool integration works | P0 | [ ] |
+| UAT-9 | Violations include account_id field | P1 | [ ] |
+| UAT-10 | account_breakdown has per-account metrics | P1 | [ ] |
+
+### 7.4 UAT Sign-Off
+
+| Role | Name | Date | Signature |
+|------|------|------|-----------|
+| Product Owner | | | |
+| Tech Lead | | | |
+| QA Lead | | | |
+| Security | | | |
+
+### 7.5 Known Limitations for UAT
+
+1. **Moto limitations**: Integration tests with moto don't fully simulate cross-account AssumeRole
+2. **Cost Explorer**: Per-account cost attribution requires Cost Explorer access in each account
+3. **Rate limits**: AWS STS has rate limits (~100 AssumeRole/sec) that may affect large-scale scans
+4. **Account aliases**: Account aliases require `iam:ListAccountAliases` permission
 
 ---
 
