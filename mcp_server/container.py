@@ -160,6 +160,7 @@ class ServiceContainer:
                     aws_client=self._aws_client,
                     policy_service=self._policy_service,
                     cache=self._redis_cache,
+                    cache_ttl=s.compliance_cache_ttl_seconds,
                 )
                 logger.info("ServiceContainer: compliance service initialized")
             except Exception as e:
@@ -180,12 +181,15 @@ class ServiceContainer:
                 regional_client_factory = RegionalClientFactory()
 
                 # Factory function to create ComplianceService for a regional client
-                # Captures policy_service and redis_cache from container scope
+                # Captures policy_service, redis_cache, and cache_ttl from container scope
+                compliance_cache_ttl = s.compliance_cache_ttl_seconds
+
                 def make_compliance_service(aws_client: AWSClient) -> ComplianceService:
                     return ComplianceService(
                         aws_client=aws_client,
                         policy_service=self._policy_service,
                         cache=self._redis_cache,
+                        cache_ttl=compliance_cache_ttl,
                     )
 
                 self._multi_region_scanner = MultiRegionScanner(

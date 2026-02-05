@@ -192,6 +192,13 @@ class CoreSettings(BaseSettings):
         description="TTL for caching enabled regions list",
         validation_alias="REGION_CACHE_TTL_SECONDS",
     )
+    compliance_cache_ttl_seconds: int = Field(
+        default=3600,
+        ge=60,
+        le=86400,
+        description="TTL for caching compliance scan results in seconds (default: 1 hour, max: 24 hours)",
+        validation_alias="COMPLIANCE_CACHE_TTL_SECONDS",
+    )
 
     # Timeout Configuration (Requirements: 16.1, 16.2)
     tool_execution_timeout_seconds: int = Field(
