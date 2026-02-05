@@ -19,7 +19,9 @@
       "Bash(Select-String -Pattern \"SessionManager\")",
       "Bash($env:PATH += \";C:\\\\Program Files\\\\Amazon\\\\SessionManagerPlugin\\\\bin\")",
       "Bash(session-manager-plugin:*)",
-      "Bash(export PATH=\"$PATH:/c/Program Files/Amazon/SessionManagerPlugin/bin\")"
+      "Bash(export PATH=\"$PATH:/c/Program Files/Amazon/SessionManagerPlugin/bin\")",
+      "Bash(curl -s -X POST \"https://mcp.optimnow.io/mcp/tools/call\" -H \"Content-Type: application/json\" -H \"Authorization: Bearer TSvlygVknr1XhJ4UUEz6VEW5lrvjgDY6\" -d '{\"\"name\"\": \"\"check_tag_compliance\"\", \"\"arguments\"\": {\"\"resource_types\"\": [\"\"all\"\"]}}' --max-time 120)",
+      "Bash(curl:*)"
     ],
     "additionalDirectories": [
       "c:\\Users\\jlati\\Documents\\GitHub\\finops-tag-compliance-mcp\\docs\\business"
