@@ -191,6 +191,7 @@ class MultiRegionScanner:
         resource_types: list[str],
         filters: dict | None = None,
         severity: str = "all",
+        force_refresh: bool = False,
     ) -> MultiRegionComplianceResult:
         """
         Scan resources across all enabled regions.
@@ -207,6 +208,7 @@ class MultiRegionScanner:
             resource_types: Resource types to scan (e.g., ["ec2:instance", "rds:db"])
             filters: Optional filters (may include region filter from user query)
             severity: Severity filter for violations ("all", "errors_only", "warnings_only")
+            force_refresh: If True, bypass cache and perform fresh scan (default: False)
 
         Returns:
             Aggregated compliance result from all regions
@@ -285,6 +287,7 @@ class MultiRegionScanner:
                 filters=filters,
                 severity=severity,
                 extended_timeout=is_all_mode,  # Use extended timeout for "all" mode
+                force_refresh=force_refresh,
             )
             # Override the region to "global" for proper attribution
             # Global resources don't belong to any specific region
@@ -318,6 +321,7 @@ class MultiRegionScanner:
                     filters=filters,
                     severity=severity,
                     chunk_size=DEFAULT_RESOURCE_TYPE_CHUNK_SIZE,
+                    force_refresh=force_refresh,
                 )
             else:
                 regional_results = await self._scan_regions_parallel(
@@ -326,6 +330,7 @@ class MultiRegionScanner:
                     filters=filters,
                     severity=severity,
                     extended_timeout=is_all_mode,  # Use extended timeout for "all" mode
+                    force_refresh=force_refresh,
                 )
         
         # Combine global and regional results
@@ -385,6 +390,7 @@ class MultiRegionScanner:
         filters: dict | None,
         severity: str,
         extended_timeout: bool = False,
+        force_refresh: bool = False,
     ) -> list[RegionalScanResult]:
         """
         Scan multiple regions in parallel with concurrency control.
@@ -414,7 +420,7 @@ class MultiRegionScanner:
         async def scan_with_semaphore(region: str) -> RegionalScanResult:
             async with semaphore:
                 return await self._scan_region(
-                    region, resource_types, filters, severity, extended_timeout
+                    region, resource_types, filters, severity, extended_timeout, force_refresh
                 )
 
         # Create tasks for all regions
@@ -450,6 +456,7 @@ class MultiRegionScanner:
         filters: dict | None,
         severity: str,
         chunk_size: int = DEFAULT_RESOURCE_TYPE_CHUNK_SIZE,
+        force_refresh: bool = False,
     ) -> list[RegionalScanResult]:
         """
         Scan regions with resource types chunked to avoid overwhelming AWS APIs.
@@ -504,6 +511,7 @@ class MultiRegionScanner:
                 filters=filters,
                 severity=severity,
                 extended_timeout=True,
+                force_refresh=force_refresh,
             )
 
             # Merge chunk results into accumulated results
@@ -539,6 +547,7 @@ class MultiRegionScanner:
         filters: dict | None,
         severity: str,
         extended_timeout: bool = False,
+        force_refresh: bool = False,
     ) -> RegionalScanResult:
         """
         Scan a single region with retry logic.
@@ -552,6 +561,7 @@ class MultiRegionScanner:
             filters: Optional filters
             severity: Severity filter
             extended_timeout: Use extended timeout for "all" mode scanning
+            force_refresh: If True, bypass cache and perform fresh scan
 
         Returns:
             RegionalScanResult with success status and data or error
@@ -571,7 +581,7 @@ class MultiRegionScanner:
             try:
                 # Apply timeout to the scan operation
                 result = await asyncio.wait_for(
-                    self._execute_region_scan(region, resource_types, filters, severity),
+                    self._execute_region_scan(region, resource_types, filters, severity, force_refresh),
                     timeout=timeout_seconds,
                 )
 
@@ -628,18 +638,20 @@ class MultiRegionScanner:
         resource_types: list[str],
         filters: dict | None,
         severity: str,
+        force_refresh: bool = False,
     ) -> RegionalScanResult:
         """
         Execute the actual scan for a single region.
-        
+
         Creates a regional client and compliance service, then performs the scan.
-        
+
         Args:
             region: AWS region code
             resource_types: Resource types to scan
             filters: Optional filters
             severity: Severity filter
-            
+            force_refresh: If True, bypass cache and perform fresh scan
+
         Returns:
             RegionalScanResult with resources and violations
             
@@ -660,11 +672,12 @@ class MultiRegionScanner:
         regional_filters = self._strip_region_filter(filters)
         
         # Execute compliance check
+        # Use cache by default (force_refresh=False) for faster repeated scans
         compliance_result = await compliance_service.check_compliance(
             resource_types=resource_types,
             filters=regional_filters,
             severity=severity,
-            force_refresh=True,  # Always fresh scan for multi-region
+            force_refresh=force_refresh,
         )
         
         # Convert to RegionalScanResult

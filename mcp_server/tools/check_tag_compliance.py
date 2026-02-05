@@ -204,11 +204,12 @@ async def check_tag_compliance(
 
     if use_multi_region:
         # Multi-region scanning mode
-        logger.info("Using multi-region scanner for compliance check")
+        logger.info(f"Using multi-region scanner for compliance check (force_refresh={force_refresh})")
         result = await multi_region_scanner.scan_all_regions(
             resource_types=resource_types,
             filters=filters,
             severity=severity,
+            force_refresh=force_refresh,
         )
         logger.info(
             f"Multi-region compliance check complete: score={result.compliance_score:.2%}, "
