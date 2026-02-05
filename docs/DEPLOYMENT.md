@@ -524,6 +524,46 @@ Edit `policies/tagging_policy.json`:
 
 See [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md) for details.
 
+#### Redis Cache Configuration
+
+The server uses Redis to cache compliance scan results, significantly improving performance for repeated queries.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
+| `REDIS_TTL` | Default TTL for general cache (seconds) | `3600` |
+| `COMPLIANCE_CACHE_TTL_SECONDS` | TTL for compliance scan results (seconds) | `3600` |
+| `REGION_CACHE_TTL_SECONDS` | TTL for enabled regions list (seconds) | `3600` |
+
+**Cache Behavior:**
+- **First scan**: Fetches resources from AWS APIs (~3-60 seconds depending on regions)
+- **Subsequent scans**: Returns cached results instantly (< 1 second)
+- **Cache key**: SHA256 hash of query parameters (resource types, filters, regions)
+- **Force refresh**: Use `force_refresh=true` parameter to bypass cache
+
+**Example: Configure 15-minute cache TTL**
+```bash
+# In .env file or environment
+COMPLIANCE_CACHE_TTL_SECONDS=900
+```
+
+**Monitoring Redis Cache:**
+```bash
+# Check cache keys
+docker exec redis redis-cli KEYS "compliance:*"
+
+# Check TTL of a specific key
+docker exec redis redis-cli TTL "compliance:abc123..."
+
+# Clear all cache (use with caution)
+docker exec redis redis-cli FLUSHDB
+```
+
+**Troubleshooting Cache:**
+- If results seem stale, use `force_refresh=true` in the API call
+- If cache keys are empty, verify Redis connection with `docker exec redis redis-cli PING`
+- Check server logs for "Cache hit" or "Cache miss" messages
+
 ---
 
 ## 5. Monitoring

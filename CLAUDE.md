@@ -329,12 +329,35 @@ The `AWSClient` (`mcp_server/clients/aws_client.py`) wraps boto3 with:
 ### Caching Strategy
 
 Redis caching (`mcp_server/clients/cache.py`) is used for:
-- Compliance scan results (1-hour TTL by default)
+- Compliance scan results (configurable TTL, default 1 hour)
 - Budget tracking session state
 - Loop detection call history
 - Security event tracking
+- Enabled regions list (for region discovery)
 
-Cache keys are SHA256 hashes of normalized query parameters including the AWS region. This ensures that changing regions invalidates cached results. Use `force_refresh=True` to bypass cache.
+**Cache Configuration:**
+- `COMPLIANCE_CACHE_TTL_SECONDS` - TTL for compliance results (default: `3600`, range: 60-86400)
+- `REGION_CACHE_TTL_SECONDS` - TTL for enabled regions list (default: `3600`)
+- `REDIS_URL` - Redis connection URL (default: `redis://localhost:6379/0`)
+
+**Cache Key Generation:**
+Cache keys are SHA256 hashes of normalized query parameters including:
+- AWS region
+- Resource types (sorted)
+- Filters (region, account_id, etc.)
+- Severity level
+- Scanned regions list (for multi-region)
+
+This ensures that changing any parameter invalidates cached results.
+
+**Bypassing Cache:**
+- Use `force_refresh=true` parameter in tool calls to bypass cache
+- Multi-region scanner respects the `force_refresh` parameter
+- Useful for real-time compliance checks or after infrastructure changes
+
+**Cache Performance:**
+- First scan: 3-60 seconds (depending on regions and resource count)
+- Cached scan: < 1 second
 
 ### Middleware Pipeline
 

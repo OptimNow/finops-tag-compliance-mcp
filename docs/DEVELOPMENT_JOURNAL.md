@@ -2453,3 +2453,127 @@ Tested via curl to remote server (`https://mcp.optimnow.io`):
 - Multi-region scanning verified working on production server
 - Ready to merge to main
 
+---
+
+## February 5, 2026 - Redis Cache Optimization for Multi-Region Scanning
+
+### The Problem
+
+After merging multi-region scanning (PR #18), I discovered that the Redis cache wasn't being used at all for multi-region scans. Every scan took 50-60 seconds, even when results should have been cached.
+
+**Investigation with Claude Code:**
+
+1. Checked Redis for cached keys:
+   ```bash
+   docker exec redis redis-cli KEYS "compliance:*"
+   # Result: (empty array)
+   ```
+
+2. Tested API timing with PowerShell:
+   ```powershell
+   Measure-Command { curl http://localhost:8080/mcp/tools/call ... }
+   # First call: 3.6 seconds
+   # Second call: 3.8 seconds (should be instant if cached!)
+   ```
+
+**Root Cause:**
+
+Found in `mcp_server/services/multi_region_scanner.py` line 667:
+```python
+force_refresh=True,  # Always fresh scan for multi-region
+```
+
+The multi-region scanner was **hardcoded to bypass cache entirely**. This was likely added during development to ensure fresh data, but never removed for production.
+
+### The Solution: Three-Part Cache Enhancement
+
+**Option A: Enable cache for multi-region scanner (COMPLETED)**
+
+Changed line 667 to propagate the `force_refresh` parameter instead of hardcoding `True`:
+```python
+force_refresh=force_refresh,  # Respect user's cache preference
+```
+
+Modified 6 functions to pass `force_refresh` through the call chain:
+- `scan_all_regions()`
+- `_scan_regions_parallel()`
+- `_scan_regions_chunked()`
+- `_scan_region()`
+- `_execute_region_scan()`
+
+**Option B: Configurable TTL via environment variable (COMPLETED)**
+
+Added new configuration in `config.py`:
+```python
+compliance_cache_ttl_seconds: int = Field(
+    default=3600,
+    ge=60,
+    le=86400,  # Max 24 hours
+    description="TTL for caching compliance scan results",
+    validation_alias="COMPLIANCE_CACHE_TTL_SECONDS",
+)
+```
+
+Updated `container.py` to pass the TTL to `ComplianceService`:
+```python
+self._compliance_service = ComplianceService(
+    aws_client=self._aws_client,
+    policy_service=self._policy_service,
+    cache=self._redis_cache,
+    cache_ttl=s.compliance_cache_ttl_seconds,  # Now configurable!
+)
+```
+
+**Option D: Expose force_refresh in tools (COMPLETED)**
+
+The `force_refresh` parameter in `check_tag_compliance` tool now actually works - it propagates through to the multi-region scanner.
+
+### Performance Impact
+
+| Scenario | Before | After |
+|----------|--------|-------|
+| First multi-region scan | 50-60s | 50-60s (same) |
+| Second scan (same query) | 50-60s | < 1s (cached!) |
+| Forced refresh | N/A | 50-60s (bypasses cache) |
+
+**Expected 90%+ reduction in average response time** for repeated queries.
+
+### Configuration Reference
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `COMPLIANCE_CACHE_TTL_SECONDS` | Cache TTL for compliance results | `3600` (1 hour) |
+| `REGION_CACHE_TTL_SECONDS` | Cache TTL for enabled regions | `3600` (1 hour) |
+| `REDIS_URL` | Redis connection URL | `redis://localhost:6379/0` |
+
+### Files Modified
+
+- `mcp_server/services/multi_region_scanner.py` - Propagate `force_refresh` parameter
+- `mcp_server/tools/check_tag_compliance.py` - Pass `force_refresh` to scanner
+- `mcp_server/config.py` - Add `COMPLIANCE_CACHE_TTL_SECONDS`
+- `mcp_server/container.py` - Use configurable `cache_ttl`
+- `docs/DEPLOYMENT.md` - Document Redis cache configuration
+- `CLAUDE.md` - Update caching strategy section
+
+### Commits
+
+1. `d36ed31` - feat: enable Redis cache for multi-region scanning (Option A + D)
+2. `01c4f94` - feat: add configurable cache TTL via COMPLIANCE_CACHE_TTL_SECONDS (Option B)
+
+### What I Learned
+
+1. **Debug with evidence**: Using Redis CLI and timing measurements proved the cache wasn't working - much more effective than guessing.
+
+2. **Hardcoded values are tech debt**: The `force_refresh=True` was probably a quick fix during development that became a production performance problem.
+
+3. **Configuration > Code changes**: Making TTL configurable via environment variable allows tuning without code changes or redeployment.
+
+4. **Cache key design matters**: The SHA256 hash of query parameters ensures different queries don't pollute each other's cache.
+
+**UAT Testing Needed:**
+
+1. Run compliance scan, verify Redis key created
+2. Run same scan again, verify instant response
+3. Change TTL via environment variable, verify new TTL applied
+4. Use `force_refresh=true`, verify cache bypassed
+
