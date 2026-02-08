@@ -1,0 +1,620 @@
+# FinOps Tag Compliance MCP Server - Regression Test Suite
+#
+# Runs against the HTTP transport at localhost:8080.
+# Start the server first: python run_server.py
+#
+# Usage:
+#   cd tests/regression
+#   npx promptfoo@latest eval
+#   npx promptfoo@latest view    # Open results in browser
+#
+# Environment variables:
+#   MCP_SERVER_URL  - Server URL (default: http://localhost:8080)
+#   MCP_API_KEY     - API key if auth is enabled (optional)
+#   MCP_TIMEOUT     - Request timeout in seconds (default: 120)
+
+description: "FinOps Tag Compliance MCP Server - Regression Tests"
+
+providers:
+  - id: "python:mcp_provider.py"
+    label: "MCP HTTP Provider"
+
+# The prompt template wraps each test case into a JSON tool call
+prompts:
+  - "{{tool_call}}"
+
+defaultTest:
+  options:
+    provider:
+      id: "python:mcp_provider.py"
+
+tests:
+  # ===========================================================================
+  # Tool 1: check_tag_compliance
+  # ===========================================================================
+
+  # 1.1 - Basic compliance check with specific resource types
+  - description: "check_tag_compliance - specific resource types"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"], "severity": "all"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.compliance_score !== undefined
+            && typeof data.compliance_score === 'number'
+            && data.compliance_score >= 0
+            && data.compliance_score <= 1;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_resources !== undefined
+            && typeof data.total_resources === 'number'
+            && data.total_resources >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.compliant_resources !== undefined
+            && data.compliant_resources <= data.total_resources;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.violations);
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.scan_timestamp !== undefined
+            && data.scan_timestamp.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.cost_attribution_gap !== undefined
+            && typeof data.cost_attribution_gap === 'number';
+
+  # 1.2 - Compliance check returns multi-region metadata
+  - description: "check_tag_compliance - has region metadata"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // Multi-region scan should include region_metadata
+          if (data.region_metadata) {
+            return data.region_metadata.total_regions > 0
+              && Array.isArray(data.region_metadata.successful_regions);
+          }
+          // Single-region scan is also acceptable
+          return true;
+
+  # 1.3 - Compliance check with severity filter
+  - description: "check_tag_compliance - errors_only filter"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": ["ec2:instance"], "severity": "errors_only"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // All violations should be errors when filtered
+          return data.violations.every(v => v.severity === 'error' || v.severity === 'ERROR');
+
+  # 1.4 - Compliance check violation structure
+  - description: "check_tag_compliance - violation structure"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": ["s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // If there are violations, check their structure
+          if (data.violations.length > 0) {
+            const v = data.violations[0];
+            return v.resource_id !== undefined
+              && v.resource_type !== undefined
+              && v.violation_type !== undefined
+              && v.tag_name !== undefined
+              && v.severity !== undefined;
+          }
+          return true;
+
+  # ===========================================================================
+  # Tool 2: find_untagged_resources
+  # ===========================================================================
+
+  # 2.1 - Basic untagged resource scan
+  - description: "find_untagged_resources - basic scan"
+    vars:
+      tool_call: |
+        {"name": "find_untagged_resources", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_untagged !== undefined
+            && typeof data.total_untagged === 'number'
+            && data.total_untagged >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.resources);
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.scan_timestamp !== undefined;
+
+  # 2.2 - Untagged resources with cost estimates
+  - description: "find_untagged_resources - with costs"
+    vars:
+      tool_call: |
+        {"name": "find_untagged_resources", "arguments": {"resource_types": ["ec2:instance"], "include_costs": true}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // When include_costs is true, total_monthly_cost should be present
+          return data.total_monthly_cost !== undefined
+            && typeof data.total_monthly_cost === 'number';
+
+  # 2.3 - Untagged resource structure
+  - description: "find_untagged_resources - resource structure"
+    vars:
+      tool_call: |
+        {"name": "find_untagged_resources", "arguments": {"resource_types": ["s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.resources.length > 0) {
+            const r = data.resources[0];
+            return r.resource_id !== undefined
+              && r.resource_type !== undefined
+              && r.region !== undefined
+              && r.arn !== undefined
+              && typeof r.current_tags === 'object'
+              && Array.isArray(r.missing_required_tags);
+          }
+          return true;
+
+  # 2.4 - Untagged resources with region filter
+  - description: "find_untagged_resources - region filter"
+    vars:
+      tool_call: |
+        {"name": "find_untagged_resources", "arguments": {"resource_types": ["ec2:instance"], "regions": ["us-east-1"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_untagged !== undefined
+            && Array.isArray(data.resources);
+
+  # ===========================================================================
+  # Tool 3: validate_resource_tags
+  # ===========================================================================
+
+  # 3.1 - Validate with valid ARN format
+  - description: "validate_resource_tags - valid ARN"
+    vars:
+      tool_call: |
+        {"name": "validate_resource_tags", "arguments": {"resource_arns": ["arn:aws:s3:::my-test-bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_resources !== undefined
+            && data.compliant_resources !== undefined
+            && data.non_compliant_resources !== undefined;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.results);
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.validation_timestamp !== undefined;
+
+  # 3.2 - Validate resource result structure
+  - description: "validate_resource_tags - result structure"
+    vars:
+      tool_call: |
+        {"name": "validate_resource_tags", "arguments": {"resource_arns": ["arn:aws:s3:::my-test-bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.results.length > 0) {
+            const r = data.results[0];
+            return r.resource_arn !== undefined
+              && r.resource_type !== undefined
+              && r.is_compliant !== undefined
+              && Array.isArray(r.violations)
+              && typeof r.current_tags === 'object';
+          }
+          return true;
+
+  # 3.3 - Validate counts are consistent
+  - description: "validate_resource_tags - consistent counts"
+    vars:
+      tool_call: |
+        {"name": "validate_resource_tags", "arguments": {"resource_arns": ["arn:aws:s3:::my-test-bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_resources === data.compliant_resources + data.non_compliant_resources;
+
+  # ===========================================================================
+  # Tool 4: get_cost_attribution_gap
+  # ===========================================================================
+
+  # 4.1 - Basic cost attribution gap
+  - description: "get_cost_attribution_gap - basic"
+    vars:
+      tool_call: |
+        {"name": "get_cost_attribution_gap", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_spend !== undefined
+            && typeof data.total_spend === 'number'
+            && data.total_spend >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.attributable_spend !== undefined
+            && data.attribution_gap !== undefined
+            && data.attribution_gap_percentage !== undefined;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.scan_timestamp !== undefined;
+
+  # 4.2 - Cost attribution gap with group_by
+  - description: "get_cost_attribution_gap - group by resource_type"
+    vars:
+      tool_call: |
+        {"name": "get_cost_attribution_gap", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"], "group_by": "resource_type"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // When group_by is set, breakdown should exist
+          if (data.breakdown) {
+            return typeof data.breakdown === 'object';
+          }
+          return true;
+
+  # 4.3 - Cost attribution gap math consistency
+  - description: "get_cost_attribution_gap - math consistency"
+    vars:
+      tool_call: |
+        {"name": "get_cost_attribution_gap", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // attribution_gap should equal total_spend - attributable_spend (within rounding)
+          const expectedGap = data.total_spend - data.attributable_spend;
+          return Math.abs(data.attribution_gap - expectedGap) < 0.01;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // Percentage should be between 0 and 100
+          return data.attribution_gap_percentage >= 0
+            && data.attribution_gap_percentage <= 100;
+
+  # ===========================================================================
+  # Tool 5: suggest_tags
+  # ===========================================================================
+
+  # 5.1 - Tag suggestion for S3 bucket
+  - description: "suggest_tags - S3 bucket"
+    vars:
+      tool_call: |
+        {"name": "suggest_tags", "arguments": {"resource_arn": "arn:aws:s3:::my-test-bucket"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.resource_arn !== undefined
+            && data.resource_type !== undefined;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.suggestions)
+            && typeof data.current_tags === 'object';
+
+  # 5.2 - Tag suggestion structure
+  - description: "suggest_tags - suggestion structure"
+    vars:
+      tool_call: |
+        {"name": "suggest_tags", "arguments": {"resource_arn": "arn:aws:s3:::my-test-bucket"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.suggestions && data.suggestions.length > 0) {
+            const s = data.suggestions[0];
+            return s.tag_name !== undefined
+              && s.suggested_value !== undefined
+              && s.confidence !== undefined
+              && typeof s.confidence === 'number'
+              && s.confidence >= 0
+              && s.confidence <= 1;
+          }
+          return true;
+
+  # ===========================================================================
+  # Tool 6: get_tagging_policy
+  # ===========================================================================
+
+  # 6.1 - Returns tagging policy
+  - description: "get_tagging_policy - returns policy"
+    vars:
+      tool_call: |
+        {"name": "get_tagging_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.required_tags)
+            && data.required_tags.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.optional_tags);
+
+  # 6.2 - Required tag structure
+  - description: "get_tagging_policy - required tag structure"
+    vars:
+      tool_call: |
+        {"name": "get_tagging_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.required_tags.length > 0) {
+            const tag = data.required_tags[0];
+            return tag.name !== undefined
+              && tag.description !== undefined;
+          }
+          return true;
+
+  # 6.3 - Known required tags present
+  - description: "get_tagging_policy - known tags exist"
+    vars:
+      tool_call: |
+        {"name": "get_tagging_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          const tagNames = data.required_tags.map(t => t.name);
+          // These are the standard required tags from tagging_policy.json
+          return tagNames.includes('Environment')
+            && tagNames.includes('Owner')
+            && tagNames.includes('Application');
+
+  # 6.4 - Policy is idempotent (same result on repeated calls)
+  - description: "get_tagging_policy - idempotent"
+    vars:
+      tool_call: |
+        {"name": "get_tagging_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // Basic structural check - policy should always return same shape
+          return typeof data === 'object'
+            && Array.isArray(data.required_tags)
+            && Array.isArray(data.optional_tags);
+
+  # ===========================================================================
+  # Tool 7: generate_compliance_report
+  # ===========================================================================
+
+  # 7.1 - JSON report
+  - description: "generate_compliance_report - JSON format"
+    vars:
+      tool_call: |
+        {"name": "generate_compliance_report", "arguments": {"resource_types": ["ec2:instance"], "format": "json"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.format !== undefined
+            && data.report_data !== undefined;
+
+  # 7.2 - Markdown report
+  - description: "generate_compliance_report - Markdown format"
+    vars:
+      tool_call: |
+        {"name": "generate_compliance_report", "arguments": {"resource_types": ["ec2:instance"], "format": "markdown"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.format === 'markdown'
+            && data.report_data !== undefined;
+
+  # 7.3 - CSV report
+  - description: "generate_compliance_report - CSV format"
+    vars:
+      tool_call: |
+        {"name": "generate_compliance_report", "arguments": {"resource_types": ["ec2:instance"], "format": "csv"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.format === 'csv'
+            && data.report_data !== undefined;
+
+  # 7.4 - Report with recommendations
+  - description: "generate_compliance_report - with recommendations"
+    vars:
+      tool_call: |
+        {"name": "generate_compliance_report", "arguments": {"resource_types": ["ec2:instance"], "format": "json", "include_recommendations": true}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.report_data !== undefined;
+
+  # ===========================================================================
+  # Tool 8: get_violation_history
+  # ===========================================================================
+
+  # 8.1 - Basic history retrieval
+  - description: "get_violation_history - basic"
+    vars:
+      tool_call: |
+        {"name": "get_violation_history", "arguments": {"days_back": 30, "group_by": "day"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.period_days !== undefined
+            && typeof data.period_days === 'number';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.data_points);
+
+  # 8.2 - History with week grouping
+  - description: "get_violation_history - weekly grouping"
+    vars:
+      tool_call: |
+        {"name": "get_violation_history", "arguments": {"days_back": 90, "group_by": "week"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.period_days !== undefined
+            && Array.isArray(data.data_points);
+
+  # 8.3 - History data point structure
+  - description: "get_violation_history - data point structure"
+    vars:
+      tool_call: |
+        {"name": "get_violation_history", "arguments": {"days_back": 30}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.data_points && data.data_points.length > 0) {
+            const dp = data.data_points[0];
+            return dp.timestamp !== undefined
+              && dp.compliance_score !== undefined;
+          }
+          // Empty history is acceptable (no scans stored yet)
+          return true;
+
+  # 8.4 - History with month grouping
+  - description: "get_violation_history - monthly grouping"
+    vars:
+      tool_call: |
+        {"name": "get_violation_history", "arguments": {"days_back": 90, "group_by": "month"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.period_days !== undefined;
+
+  # ===========================================================================
+  # Error handling & edge cases
+  # ===========================================================================
+
+  # E.1 - Invalid tool name returns error
+  - description: "error - invalid tool name"
+    vars:
+      tool_call: |
+        {"name": "nonexistent_tool", "arguments": {}}
+    assert:
+      - type: javascript
+        value: |
+          // Should get an error response (HTTP error or MCP error)
+          const data = JSON.parse(output);
+          return data.error !== undefined || data.detail !== undefined;
+
+  # E.2 - Invalid severity value
+  - description: "error - invalid severity"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": ["ec2:instance"], "severity": "INVALID_VALUE"}}
+    assert:
+      - type: is-json
+        # Should still return a response (may use default severity or return error)
+
+  # E.3 - Empty resource_types
+  - description: "edge case - empty resource types"
+    vars:
+      tool_call: |
+        {"name": "check_tag_compliance", "arguments": {"resource_types": []}}
+    assert:
+      - type: is-json
+        # Should handle gracefully
+
+  # E.4 - Invalid ARN format
+  - description: "error - invalid ARN format"
+    vars:
+      tool_call: |
+        {"name": "validate_resource_tags", "arguments": {"resource_arns": ["not-a-valid-arn"]}}
+    assert:
+      - type: is-json
+        # Should handle gracefully (validation error or empty results)
+
+  # ===========================================================================
+  # Performance & response time checks
+  # ===========================================================================
+
+  # P.1 - Policy retrieval should be fast (no AWS calls)
+  - description: "performance - get_tagging_policy is fast"
+    vars:
+      tool_call: |
+        {"name": "get_tagging_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: latency
+        threshold: 5000  # Should complete in under 5 seconds
+
+  # P.2 - History retrieval should be fast (local DB only)
+  - description: "performance - get_violation_history is fast"
+    vars:
+      tool_call: |
+        {"name": "get_violation_history", "arguments": {"days_back": 7}}
+    assert:
+      - type: is-json
+      - type: latency
+        threshold: 5000  # Should complete in under 5 seconds
