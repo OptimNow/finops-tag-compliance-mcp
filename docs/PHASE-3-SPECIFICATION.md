@@ -1,7 +1,7 @@
-# Phase 3 Specification: Multi-Cloud Support (AWS + Azure + GCP)
+# Phase 3 Specification: Multi-Cloud + Multi-Account + Automation
 
-**Version**: 1.0
-**Timeline**: Months 5-6 (8 weeks)
+**Version**: 2.0
+**Timeline**: Months 7-10 (~8 weeks)
 **Status**: Ready for Development (after Phase 2 completion)
 **Prerequisites**: Phase 2 successfully deployed with stable production traffic
 
@@ -9,7 +9,7 @@
 
 ## Overview
 
-Phase 3 extends the proven AWS-only MCP server to support Azure and Google Cloud Platform, creating a unified multi-cloud tag governance solution. The infrastructure remains the same (ECS Fargate), but the application gains multi-cloud SDKs and cross-cloud intelligence.
+Phase 3 extends the proven AWS-only MCP server to support Azure and Google Cloud Platform, adds multi-account AWS scanning, completes codebase modernization, and delivers automation/policy enforcement tools. The infrastructure remains ECS Fargate, but the application gains multi-cloud SDKs, cross-cloud intelligence, and 3 new tools (17 total).
 
 **Key Additions in Phase 3**:
 - ✅ Azure SDK integration (azure-mgmt-* packages)
@@ -19,12 +19,14 @@ Phase 3 extends the proven AWS-only MCP server to support Azure and Google Cloud
 - ✅ Multi-cloud credential management (Azure Key Vault, GCP Secret Manager integration)
 - ✅ Cloud-agnostic compliance reporting
 - ✅ Cross-cloud cost attribution gap analysis
+- ✅ **Multi-account AWS scanning** via AssumeRole (moved from Phase 2)
+- ✅ **Codebase modernization** — `src/` layout, `mcp_handler.py` decomposition (deferred from Phase 1.9/2)
+- ✅ **3 new automation tools** — export_for_automation, generate_terraform_policy, generate_config_rules
 
 **What Stays the Same**:
-- Same 15 tools, now with `cloud_provider` parameter
+- Same 14 tools from Phase 2, now with `cloud_provider` parameter
 - Same ECS Fargate infrastructure
 - Same OAuth 2.0 authentication
-- Same approval workflows
 
 ---
 
@@ -160,9 +162,9 @@ pyyaml==6.0.1
 
 ---
 
-## Updated Tools (All 15 Tools Now Multi-Cloud)
+## Updated Tools (All 14 Tools Now Multi-Cloud)
 
-All existing 15 tools from Phases 1 and 2 are updated to accept a `cloud_provider` parameter.
+All existing 14 tools from Phases 1 and 2 are updated to accept a `cloud_provider` parameter.
 
 ### Tool Signature Pattern
 
@@ -286,84 +288,127 @@ async def check_tag_compliance(
 
 ---
 
-## New Phase 3 Tools (Cross-Cloud Intelligence)
+## New Phase 3 Tools (Automation & Policy Enforcement)
 
-### 16. cross_cloud_tag_consistency_check
+**Phase 3 total: 17 tools** (14 from Phase 2 + 3 new)
 
-**Purpose**: Identify tag naming and value inconsistencies across clouds
+### 15. export_for_automation
 
-**Parameters**:
-```json
-{
-  "tag_keys": ["Environment", "CostCenter", "Owner"],
-  "check_case_sensitivity": true,
-  "check_value_variations": true
-}
-```
-
-**Returns**:
-```json
-{
-  "inconsistencies": [
-    {
-      "tag_key": "Environment",
-      "issue": "case_inconsistency",
-      "aws_values": ["production", "staging"],
-      "azure_values": ["Production", "Staging"],
-      "gcp_values": ["prod", "stage"],
-      "affected_resources": 234,
-      "recommendation": "Standardize to lowercase: 'production', 'staging'"
-    },
-    {
-      "tag_key": "CostCenter",
-      "issue": "naming_inconsistency",
-      "aws_key": "CostCenter",
-      "azure_key": "cost-center",
-      "gcp_key": "costcenter",
-      "recommendation": "Standardize to 'CostCenter' (PascalCase) across clouds"
-    }
-  ]
-}
-```
-
-### 17. unified_tagging_policy_validator
-
-**Purpose**: Validate a single tagging policy works across all three clouds
+**Purpose**: Export compliance data for external automation platforms (wiv.ai, Ansible, etc.)
 
 **Parameters**:
 ```json
 {
-  "policy": {
-    "required_tags": [
-      {"name": "Environment", "allowed_values": ["production", "staging"]}
-    ]
-  }
-}
-```
-
-**Returns**:
-```json
-{
-  "validation_result": {
-    "aws": {
-      "compatible": true,
-      "warnings": []
-    },
-    "azure": {
-      "compatible": true,
-      "warnings": ["Azure tags are case-insensitive, may cause confusion"]
-    },
-    "gcp": {
-      "compatible": true,
-      "warnings": ["GCP calls them 'labels', not 'tags'"]
-    }
+  "format": "json | yaml | csv",
+  "target_platform": "wiv.ai | ansible | generic",
+  "filters": {
+    "severity": "errors_only",
+    "resource_types": ["ec2:instance", "rds:db"],
+    "cloud_provider": "aws"
   },
-  "recommendations": [
-    "Use lowercase tag values for cross-cloud consistency",
-    "Document that Azure tags are case-insensitive"
+  "include_remediation_hints": true
+}
+```
+
+**Returns**:
+```json
+{
+  "export_data": "...",
+  "format": "json",
+  "target_platform": "wiv.ai",
+  "resource_count": 45,
+  "violation_count": 127,
+  "remediation_hints_included": true
+}
+```
+
+**Features**:
+- Platform-specific export formats (wiv.ai schema, Ansible playbook variables, generic JSON/YAML)
+- Includes remediation hints for each violation
+- Filterable by severity, resource type, cloud provider
+- Supports multi-cloud data in a single export
+
+### 16. generate_terraform_policy
+
+**Purpose**: Generate Terraform tag enforcement policies (AWS Config rules, Azure Policy, GCP Org Policy)
+
+**Parameters**:
+```json
+{
+  "cloud_provider": "aws | azure | gcp | all",
+  "policy_type": "config_rule | scp | azure_policy | gcp_org_constraint",
+  "required_tags": ["Environment", "Owner", "CostCenter"],
+  "enforcement_level": "audit | deny"
+}
+```
+
+**Returns**:
+```hcl
+resource "aws_config_config_rule" "required_tags" {
+  name = "required-tags-enforcement"
+  source {
+    owner             = "AWS"
+    source_identifier = "REQUIRED_TAGS"
+  }
+  input_parameters = jsonencode({
+    tag1Key   = "Environment"
+    tag2Key   = "Owner"
+    tag3Key   = "CostCenter"
+  })
+}
+```
+
+**Features**:
+- Generates cloud-native Terraform resources for tag enforcement
+- Supports AWS Config rules, Azure Policy definitions, GCP Organization Constraints
+- Configurable enforcement level (audit-only vs deny)
+- Output is valid HCL, ready to apply with `terraform plan`
+
+### 17. generate_config_rules
+
+**Purpose**: Generate cloud-native policy enforcement rules (AWS Config, Azure Policy, GCP Organization Constraints)
+
+**Parameters**:
+```json
+{
+  "cloud_provider": "aws | azure | gcp",
+  "rule_type": "required_tags | allowed_values | naming_convention",
+  "tags": [
+    {"name": "Environment", "allowed_values": ["production", "staging", "development"]},
+    {"name": "Owner", "validation_regex": "^[a-z]+@company.com$"}
   ]
 }
 ```
+
+**Returns** (AWS example):
+```json
+{
+  "cloud_provider": "aws",
+  "rule_type": "required_tags",
+  "config_rule": {
+    "ConfigRuleName": "required-tags-enforcement",
+    "Source": {
+      "Owner": "AWS",
+      "SourceIdentifier": "REQUIRED_TAGS"
+    },
+    "InputParameters": "{\"tag1Key\":\"Environment\",\"tag2Key\":\"Owner\"}"
+  },
+  "deployment_instructions": "Deploy via AWS CLI: aws configservice put-config-rule --config-rule file://rule.json"
+}
+```
+
+**Features**:
+- Generates cloud-native enforcement rules (not Terraform — direct API format)
+- AWS: Config rules with managed or custom Lambda evaluators
+- Azure: Policy definitions with effect (audit/deny)
+- GCP: Organization policy constraints
+- Includes deployment instructions for each cloud
+
+---
+
+## Cross-Cloud Intelligence (Built into existing tools)
+
+Cross-cloud tag consistency checking and unified policy validation are built into the multi-cloud updates of existing Phase 2 tools (tools 1-14 with `cloud_provider` parameter), not as separate tools. When `cloud_provider="all"`, results include cross-cloud inconsistency detection and recommendations.
 
 ---
 
@@ -485,7 +530,7 @@ async def check_tag_compliance(
 
 ## Credential Management (Multi-Cloud)
 
-### AWS IAM Task Role (Same as Phase 2)
+### AWS IAM Task Role (Extended from Phase 2)
 
 ```json
 {
@@ -498,20 +543,23 @@ async def check_tag_compliance(
         "ec2:Describe*",
         "rds:Describe*",
         "s3:GetBucketTagging",
+        "s3:ListAllMyBuckets",
         "lambda:List*",
-        "ce:GetCostAndUsage"
+        "ecs:List*",
+        "ecs:Describe*",
+        "ce:GetCostAndUsage",
+        "ce:GetTags",
+        "tag:GetResources",
+        "tag:GetTagKeys",
+        "tag:GetTagValues"
       ],
       "Resource": "*"
     },
     {
-      "Sid": "AWSWriteAccess",
+      "Sid": "AssumeRoleInMemberAccounts",
       "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags",
-        "rds:AddTagsToResource",
-        "s3:PutBucketTagging"
-      ],
-      "Resource": "*"
+      "Action": "sts:AssumeRole",
+      "Resource": "arn:aws:iam::*:role/mcp-cross-account-role"
     },
     {
       "Sid": "SecretsAccess",
@@ -900,6 +948,90 @@ gcp_type = get_cloud_resource_type('virtual_machine', 'gcp')  # 'compute.instanc
 
 ---
 
+## Multi-Account AWS Support (Moved from Phase 2)
+
+Phase 3 adds support for scanning multiple AWS accounts using AssumeRole, enabling enterprise-wide compliance visibility.
+
+### Architecture
+
+```
+┌──────────────────┐
+│  MCP Server      │
+│  (Main Account)  │
+│                  │
+│  IAM Role:       │
+│  mcp-server-role │
+└────────┬─────────┘
+         │ AssumeRole
+         ├────────────────────────────┐
+         │                            │
+         ▼                            ▼
+┌─────────────────┐          ┌─────────────────┐
+│  Account 1      │          │  Account 2      │
+│                 │          │                 │
+│  IAM Role:      │          │  IAM Role:      │
+│  mcp-cross-     │          │  mcp-cross-     │
+│  account-role   │          │  account-role   │
+└─────────────────┘          └─────────────────┘
+```
+
+### Enhanced Tool Signatures
+
+All scan tools gain multi-account parameters:
+```python
+async def check_tag_compliance(
+    resource_types: Optional[List[str]] = None,
+    regions: Optional[List[str]] = None,
+    accounts: Optional[List[str]] = None,  # NEW: Multi-account
+    cross_account_role_name: str = "mcp-cross-account-role"
+) -> Dict
+```
+
+### Configuration
+
+```yaml
+# config.yaml
+multi_account:
+  enabled: true
+  cross_account_role_name: "mcp-cross-account-role"
+  session_duration_seconds: 3600
+  session_cache_ttl_seconds: 900
+  max_parallel_accounts: 5
+```
+
+### Key Features
+
+1. **AssumeRole Integration**: MCP server assumes IAM roles in member accounts
+2. **Parallel Scanning**: Accounts scanned in parallel for performance
+3. **Error Handling**: Continues if one account fails (reports error in results)
+4. **Session Caching**: Assumed role credentials cached (15-minute TTL)
+5. **Aggregated Reporting**: Cross-account summaries and comparisons
+
+See `docs/DEPLOY_MULTI_ACCOUNT.md` for complete multi-account deployment guide.
+
+---
+
+## Codebase Modernization (Deferred from Phase 1.9 / Phase 2)
+
+Phase 3 includes the Tier 2 refactoring that was deferred from earlier phases, as the codebase grows significantly with multi-cloud SDKs.
+
+### Deliverables
+
+- **`src/` layout reorganization** for pip-installable core library package
+- **Decompose `mcp_handler.py`** (1504 lines) into modular FastMCP server (~200 lines)
+- **Session management extraction** (BudgetTracker, LoopDetector to `session/` module)
+- **HTTP backwards-compat wrapper** using core library
+- **Dual package setup** in pyproject.toml (core lib + MCP server)
+- **Test import updates** after layout change
+
+### Rationale
+
+Deferred from Phase 2 because the current codebase (`stdio_server.py` with `@mcp.tool()` decorators) handles 14 tools cleanly. The `src/` layout and pip-installable package become valuable in Phase 3 when adding multi-cloud SDKs and the codebase grows significantly.
+
+See [REFACTORING_PLAN.md](../archive/specs/REFACTORING_PLAN.md) for full analysis and implementation steps.
+
+---
+
 ## Testing Strategy (Multi-Cloud)
 
 ### Unit Tests
@@ -1053,17 +1185,33 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 
 **Migration Strategy**: Default `cloud_provider="aws"` if not specified, allowing gradual migration.
 
+### Additional Phase 3 Migration Steps
+
+5. **Weeks 5-6**: Multi-account AWS + Codebase modernization
+   - Implement AssumeRole scanning across member accounts
+   - Complete `src/` layout reorganization
+   - Decompose `mcp_handler.py` into modular server
+   - Run full regression suite after codebase changes
+
+6. **Weeks 7-8**: Automation tools + Polish
+   - Implement tools 15-17 (export_for_automation, generate_terraform_policy, generate_config_rules)
+   - Final integration testing across all 17 tools
+   - Production deployment and UAT
+
 ---
 
 ## Success Criteria for Phase 3
 
 ### Functional Requirements
 
-✅ All 15 tools working for AWS, Azure, and GCP
+✅ All 17 tools working for AWS, Azure, and GCP (14 existing + 3 new)
 ✅ Cross-cloud consistency checking functional
 ✅ Unified compliance reports accurate
 ✅ Multi-cloud credential management working
 ✅ All clouds have feature parity
+✅ Multi-account AWS scanning working (10+ accounts)
+✅ Automation tools generating valid Terraform and Config rules
+✅ Codebase modernization complete (`src/` layout, modular server)
 
 ### Non-Functional Requirements
 
@@ -1079,6 +1227,7 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 ✅ 500+ compliance audits per month across all clouds
 ✅ At least 20% of audits use `cloud_provider="all"`
 ✅ Measurable cross-cloud consistency improvement
+✅ Terraform policies generated and deployable across clouds
 ✅ User satisfaction NPS > 60
 
 ---
@@ -1105,16 +1254,36 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 
 ## Deliverables Checklist
 
-### Code
+### Code — Multi-Cloud
 
 - [ ] Azure SDK integration (azure-mgmt-* packages)
 - [ ] GCP SDK integration (google-cloud-* packages)
-- [ ] All 15 tools updated with `cloud_provider` parameter
+- [ ] All 14 Phase 2 tools updated with `cloud_provider` parameter
 - [ ] Cross-cloud consistency checking implemented
 - [ ] Unified tagging policy v2.0 schema
 - [ ] Resource type mapping table
-- [ ] Unit tests for multi-cloud (>80% coverage)
-- [ ] Integration tests (AWS + Azure + GCP)
+
+### Code — New Tools (15-17)
+
+- [ ] Tool 15: `export_for_automation` (wiv.ai, Ansible, generic)
+- [ ] Tool 16: `generate_terraform_policy` (AWS Config, Azure Policy, GCP Org Policy)
+- [ ] Tool 17: `generate_config_rules` (cloud-native enforcement rules)
+
+### Code — Multi-Account AWS
+
+- [ ] `MultiAccountAWSClient` class with AssumeRole
+- [ ] Session caching (15-minute TTL)
+- [ ] Multi-account parameters added to all scan tools
+- [ ] Per-account violation breakdown in reports
+
+### Code — Codebase Modernization
+
+- [ ] `src/` layout reorganization
+- [ ] `mcp_handler.py` decomposition into modular FastMCP server
+- [ ] Session management extraction (BudgetTracker, LoopDetector)
+- [ ] HTTP backwards-compat wrapper
+- [ ] Dual package setup in pyproject.toml
+- [ ] Test import updates after layout change
 
 ### Infrastructure
 
@@ -1124,6 +1293,7 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 - [ ] GCP credentials stored in AWS Secrets Manager
 - [ ] Updated ECS task definition with new SDKs
 - [ ] Credential rotation monitoring enabled
+- [ ] IAM trust relationships for multi-account scanning
 
 ### Documentation
 
@@ -1132,13 +1302,16 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 - [ ] GCP credential setup guide
 - [ ] Cross-cloud consistency guide
 - [ ] Unified tagging policy migration guide
+- [ ] Multi-account deployment guide
 - [ ] User guide for multi-cloud features
 
 ### Testing
 
-- [ ] Unit tests passing for all clouds
+- [ ] Unit tests passing for all clouds (>80% coverage)
 - [ ] Integration tests passing (AWS + Azure + GCP)
 - [ ] Cross-cloud consistency tests passing
+- [ ] Multi-account integration tests (10+ accounts)
+- [ ] Automation tool output validation tests
 - [ ] Load testing completed (multi-cloud queries)
 - [ ] 10+ beta users testing multi-cloud features
 
@@ -1154,7 +1327,7 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: December 2024
+**Document Version**: 2.0
+**Last Updated**: February 2026
 **Ready for Development**: After Phase 2 completion
-**Assigned to**: Kiro (post-Phase 2)
+**Development Team**: TBD

@@ -1,8 +1,8 @@
-# Development Journal: Building a FinOps MCP Server with Kiro
+# Development Journal: Building a FinOps MCP Server with AI
 
-**Author**: Jean (FinOps Practitioner, Non-Developer)  
-**Project**: FinOps Tag Compliance MCP Server  
-**Tool**: Kiro AI Assistant  
+**Author**: Jean (FinOps Practitioner, Non-Developer)
+**Project**: FinOps Tag Compliance MCP Server
+**Tools**: Kiro AI Assistant (Phase 1), Claude Code (Phase 1.9+)
 **Timeline**: December 2024 - Present
 
 ---
@@ -2576,4 +2576,119 @@ The `force_refresh` parameter in `check_tag_compliance` tool now actually works 
 2. Run same scan again, verify instant response
 3. Change TTL via environment variable, verify new TTL applied
 4. Use `force_refresh=true`, verify cache bypassed
+
+
+---
+
+## February 8, 2026: Roadmap v2.2 & Specification Documents Overhaul
+
+### Planning Session: Aligning All Documentation with Revised Roadmap
+
+**The Trigger:**
+
+With Phase 1 + 1.9 complete and Phase 2 about to begin, the existing roadmap and specification documents had accumulated significant drift. The original documents were written in December 2024 and reflected an older understanding of timelines, tool counts, team composition, and architecture decisions. A comprehensive review and update was needed before Phase 2 development could start.
+
+**What Changed — ROADMAP.md v2.0 → v2.2:**
+
+Over multiple sessions, the roadmap was restructured:
+
+1. **Phase 2 reorganized into 5 sub-phases** (2.1-2.5):
+   - 2.1: Cloud Custodian + OpenOps policy generation tools
+   - 2.2: Compliance scheduling + drift detection tools
+   - 2.3: AWS Organizations integration (import_aws_tag_policy)
+   - 2.4: Automatic policy detection + daily compliance snapshots
+   - 2.5: ECS Fargate production deployment + OAuth 2.0
+
+2. **Timeline compressed**: "Months 3-4 (8 weeks)" → "~1.5 weeks (7 working days)" reflecting AI-assisted development speed
+
+3. **Bulk tagging removed entirely**: Tools 9-11 (bulk_tag_resources, preview_bulk_tagging, approve_bulk_tagging_request) deleted — write operations deferred
+
+4. **Multi-account support moved to Phase 3**: AssumeRole-based scanning moved from Phase 2 to Phase 3 to reduce Phase 2 scope
+
+5. **Codebase modernization deferred to Phase 3**: src/ layout, mcp_handler.py decomposition deferred since they don't block Phase 2
+
+6. **Two UAT gates added**: UAT 1 (Day 4, functional) and UAT 2 (Day 7, production on ECS)
+
+7. **Parallelization**: Sub-phases 2.1-2.4 can run in parallel (Days 1-3)
+
+8. **Regression testing strategy added**: Automated test suite (51+ files), tests/regression/ harness, manual UAT checklists
+
+9. **Team updated**: "Kiro (AI Assistant)" → "Claude (AI Developer) + FinOps Engineer (UAT)"
+
+**What Changed — PHASE-2-SPECIFICATION.md v1.0 → v2.0:**
+
+Major rewrite to align with ROADMAP.md v2.2:
+
+| Section | Change |
+|---------|--------|
+| Title | "Production-Grade ECS Fargate Deployment" → "Enhanced Compliance + Production Scale" |
+| Timeline | "Months 3-4 (8 weeks)" → "~1.5 weeks (7 working days)" |
+| Tool count | 15 → 14 (removed bulk tagging tools 9-11) |
+| New tools | Added `generate_custodian_policy` (tool 9), `generate_openops_workflow` (tool 10) |
+| Removed | Multi-account support (→ Phase 3), step-up authorization, tag:write/tag:approve scopes |
+| Added | Phase 2 Sub-Phases table, automatic policy detection, daily snapshots |
+| Auth | Removed write permissions, TagWriteAccess IAM statement |
+| Database | Removed bulk_tagging_requests table |
+| Migration | 4-week → 7-day compressed timeline |
+| Team | "Kiro (post-Phase 1)" → "Claude (AI Developer) + FinOps Engineer (UAT)" |
+
+**What Changed — PHASE-3-SPECIFICATION.md v1.0 → v2.0:**
+
+Major rewrite to absorb deferred Phase 2 content and add automation:
+
+| Section | Change |
+|---------|--------|
+| Title | "Multi-Cloud Support" → "Multi-Cloud + Multi-Account + Automation" |
+| Timeline | "Months 5-6 (8 weeks)" → "Months 7-10 (~8 weeks)" |
+| Tool count | 15 base → 14 base + 3 new = 17 total |
+| New tools | `export_for_automation` (15), `generate_terraform_policy` (16), `generate_config_rules` (17) |
+| Replaced | Old tools 16-17 (cross_cloud_tag_consistency_check, unified_tagging_policy_validator) |
+| Added sections | Multi-Account AWS Support (from Phase 2), Codebase Modernization (deferred from 1.9), Cross-Cloud Intelligence |
+| IAM | Updated to read-only + AssumeRole (removed write) |
+| Deliverables | 4 code categories: Multi-Cloud, Automation Tools, Multi-Account, Codebase Modernization |
+
+**Verification Checks (all passed):**
+- Zero occurrences of "15 tools" in either spec
+- Zero occurrences of "bulk_tag" in Phase 2 spec
+- Zero occurrences of "step-up" in Phase 2 spec
+- Zero occurrences of "Kiro" in either spec
+- Zero occurrences of "December 2024" in either spec
+- Tool numbering correct: 9-14 in Phase 2, 15-17 in Phase 3
+- No code files modified (docs-only changes)
+
+**Files Modified:**
+- `docs/ROADMAP.md` — v2.0 → v2.2 (multiple sessions)
+- `docs/PHASE-2-SPECIFICATION.md` — v1.0 → v2.0 (complete rewrite)
+- `docs/PHASE-3-SPECIFICATION.md` — v1.0 → v2.0 (complete rewrite)
+- `CLAUDE.md` — Updated phase status and refactoring status
+- `docs/DEVELOPMENT_JOURNAL.md` — This entry
+
+**What I Learned:**
+
+1. **Specifications drift quickly**: The original December 2024 specs had 15 tools, bulk tagging, step-up auth, Kiro references, and 8-week timelines — none of which reflected current reality.
+
+2. **AI-assisted development compresses timelines dramatically**: Phase 2 went from "8 weeks with a developer" to "7 working days with AI + UAT."
+
+3. **Scope reduction is strategic**: Moving multi-account and codebase modernization to Phase 3 keeps Phase 2 focused and achievable.
+
+4. **Documentation alignment is prerequisite work**: Starting Phase 2 development with misaligned specs would have caused confusion and rework.
+
+5. **Systematic verification prevents drift**: Running grep checks after document updates ensures no stale references remain.
+
+**My Role:**
+- Identified that specification documents needed updating after roadmap changes
+- Reviewed and approved the update plan
+- Directed the documentation alignment effort
+- Requested PR creation and merge
+
+**Outcome:**
+
+✅ All three planning documents aligned (ROADMAP.md v2.2, PHASE-2-SPECIFICATION.md v2.0, PHASE-3-SPECIFICATION.md v2.0)
+✅ CLAUDE.md updated with current phase status
+✅ No code changes — pure documentation alignment
+✅ Ready for Phase 2 development to begin
+
+**Implementation Time**: ~3 hours across multiple sessions
+**Complexity**: Low (documentation only, no code changes)
+**User Impact**: High (enables clear Phase 2 development with aligned specifications)
 
