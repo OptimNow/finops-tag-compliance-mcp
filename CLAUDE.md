@@ -26,8 +26,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
 
-**Phase**: Phase 1 MVP Complete (AWS support only) + Phase 1.9 in progress
-**Refactoring**: Phase 1.9 -- Core Library Extraction (see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
+**Phase**: Phase 1 + 1.9 Complete ✅ — Phase 2 starting (6 new tools + ECS Fargate)
+**Refactoring**: Deferred to Phase 3 (see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
 
 ## Development Commands
 
@@ -814,7 +814,7 @@ Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [
 - `stdio_server.py` -- standard MCP server using FastMCP SDK with all 8 tools, compatible with Claude Desktop and MCP Inspector
 - `pyproject.toml` updated with `mcp>=1.0.0` dependency and `finops-tag-compliance` script entry point
 
-**Remaining (see REFACTORING_PLAN.md):**
+**Deferred to Phase 3** (not needed for Phase 2 tool additions, becomes valuable when adding multi-cloud SDKs; see [REFACTORING_PLAN.md](REFACTORING_PLAN.md)):
 - `src/` layout reorganization and test import updates
 - MCP-specific model extraction
 - Session management module (`BudgetTracker`, `LoopDetector`)

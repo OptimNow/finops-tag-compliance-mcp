@@ -1,24 +1,27 @@
-# Phase 2 Specification: Production-Grade ECS Fargate Deployment
+# Phase 2 Specification: Enhanced Compliance + Production Scale
 
-**Version**: 1.0
-**Timeline**: Months 3-4 (8 weeks)
-**Status**: Ready for Development (after Phase 1 completion)
-**Prerequisites**: Phase 1 successfully deployed and validated
+**Version**: 2.0
+**Timeline**: ~1.5 weeks (7 working days)
+**Status**: Ready for Development
+**Prerequisites**: Phase 1 + Phase 1.9 successfully deployed and validated
 
 ---
 
 ## Overview
 
-Phase 2 transforms the Phase 1 MVP into a production-grade service with high availability, auto-scaling, and enterprise features. The functionality remains AWS-only, but the infrastructure is designed for reliability, security, and scale.
+Phase 2 adds 6 new tools (remediation script generation, compliance scheduling, drift detection, CSV export, policy import) and server-side automation features, then deploys to production-grade ECS Fargate infrastructure. The functionality remains AWS-only, but the infrastructure is designed for reliability, security, and scale.
+
+**Development Model**: AI-assisted development (Claude builds tools/tests/infrastructure in parallel; user performs UAT and deployment). Sub-phases 2.1-2.4 are developed in parallel (Days 1-3), validated together in UAT 1 (Day 4), then production infrastructure deployed in 2.5 (Days 5-6) and validated in UAT 2 (Day 7).
 
 **Key Improvements from Phase 1**:
+- ✅ 6 additional tools (14 total) — Cloud Custodian policies, OpenOps workflows, compliance scheduling, drift detection, CSV export, AWS policy import
+- ✅ **Automated daily compliance snapshots** — Server-side scheduled scans for consistent trend tracking
+- ✅ **Automatic AWS policy detection** — Zero-touch policy setup on startup
 - ✅ ECS Fargate (serverless containers) instead of single EC2
 - ✅ Application Load Balancer with SSL/TLS
 - ✅ Managed Redis (ElastiCache) and PostgreSQL (RDS)
 - ✅ OAuth 2.0 + PKCE authentication (replaces simple API keys)
-- ✅ Step-up authorization for write operations
-- ✅ 7 additional tools (15 total) including bulk tagging
-- ✅ **Agent Safety Enhancements** - Intent disambiguation, approval workflows, cost thresholds
+- ✅ **Agent Safety Enhancements** - Intent disambiguation, cost thresholds, dry run mode
 - ✅ Auto-scaling based on load
 - ✅ Comprehensive monitoring and alerting
 - ✅ Infrastructure as Code (Terraform)
@@ -188,7 +191,25 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 
 ---
 
-## MCP Tools (15 Total)
+## Phase 2 Sub-Phases (Compressed Timeline)
+
+Phase 2 is delivered in ~1.5 weeks (7 working days) using an AI-assisted development model.
+
+| Sub-Phase | Schedule | Deliverables |
+|-----------|----------|-------------|
+| **2.1** Remediation Script Generation | Days 1-3 (parallel) | Tools 9-10: `generate_custodian_policy`, `generate_openops_workflow` |
+| **2.2** Compliance Tools | Days 1-3 (parallel) | Tools 11-12: `schedule_compliance_audit`, `detect_tag_drift` |
+| **2.3** Export & Policy Tools | Days 1-3 (parallel) | Tools 13-14: `export_violations_csv`, `import_aws_tag_policy` |
+| **2.4** Auto-Policy + Daily Snapshots | Days 1-3 (parallel) | Automatic policy detection, daily compliance snapshots |
+| **🧪 UAT 1** | Day 4 | Functional validation on EC2 — all 14 tools + regression |
+| **2.5** ECS Fargate Production | Days 5-6 | ECS, ALB, ElastiCache, RDS, OAuth, CI/CD |
+| **🧪 UAT 2** | Day 7 | Production validation on ECS Fargate |
+
+> **⚡ Parallelization**: Phases 2.1-2.4 are developed in parallel since they are independent features touching different files. All are validated together in UAT 1.
+
+---
+
+## MCP Tools (14 Total)
 
 ### Existing Tools from Phase 1 (8)
 
@@ -206,114 +227,86 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 - ✅ Add OpenSearch/Elasticsearch domain support to `find_untagged_resources`
 - ✅ Improve ARN validation to handle all AWS resource types correctly
 
-### New Tools in Phase 2 (7)
+### New Tools in Phase 2 (6)
 
-#### 9. bulk_tag_resources (Write Operation - Step-Up Auth Required)
+#### 9. generate_custodian_policy
 
-**Purpose**: Apply tags to multiple resources with approval workflow
+**Purpose**: Generate Cloud Custodian YAML policies from compliance violations
 
-**Authentication**: Requires step-up authorization (OAuth 2.0 with elevated scope)
-
-**Parameters**:
-```json
-{
-  "resource_arns": [
-    "arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123",
-    "arn:aws:ec2:us-east-1:123456789012:instance/i-0def456"
-  ],
-  "tags": {
-    "CostCenter": "Engineering",
-    "Owner": "platform-team@company.com"
-  },
-  "dry_run": false,
-  "approval_required": true
-}
-```
-
-**Returns**:
-```json
-{
-  "request_id": "bulk-tag-req-12345",
-  "status": "pending_approval",
-  "resources_affected": 2,
-  "estimated_compliance_improvement": 0.04,
-  "approval_url": "https://mcp.finops.company.com/approvals/12345",
-  "approvers": ["john.doe@company.com", "jane.smith@company.com"]
-}
-```
-
-**Step-Up Flow**:
-1. User requests bulk tagging
-2. MCP server checks if user has `tag:write` scope
-3. If NO: Returns 403 with step-up auth URL
-4. User re-authenticates with elevated scope
-5. Request creates approval ticket
-6. Approver reviews and approves/denies
-7. If approved: Tags applied, audit logged
-
-#### 10. preview_bulk_tagging
-
-**Purpose**: Preview impact of bulk tagging before execution
+**Sub-Phase**: 2.1 (Days 1-3, parallel)
 
 **Parameters**:
 ```json
 {
-  "resource_arns": ["arn:aws:ec2:..."],
-  "tags": {"CostCenter": "Engineering"}
+  "resource_types": ["ec2:instance", "rds:db"],
+  "violation_types": ["missing_tag", "invalid_value"],
+  "target_tags": ["Environment", "Owner", "CostCenter"],
+  "dry_run": true
 }
 ```
 
 **Returns**:
-```json
-{
-  "preview": {
-    "resources_affected": 42,
-    "current_compliance": 0.68,
-    "projected_compliance": 0.72,
-    "compliance_improvement": 0.04,
-    "cost_attribution_gap_reduction": 5200.00,
-    "resources": [
-      {
-        "arn": "arn:aws:ec2:...",
-        "current_tags": {"Environment": "production"},
-        "new_tags": {"Environment": "production", "CostCenter": "Engineering"},
-        "tags_added": ["CostCenter"],
-        "tags_changed": []
-      }
-    ]
-  }
-}
+```yaml
+policies:
+  - name: enforce-required-tags-ec2
+    resource: ec2
+    filters:
+      - or:
+        - "tag:Environment": absent
+        - "tag:Owner": absent
+        - "tag:CostCenter": absent
+    actions:
+      - type: tag
+        tags:
+          Environment: "unknown"
+          Owner: "unassigned"
 ```
 
-#### 11. approve_bulk_tagging_request
+**Features**:
+- Generates valid Cloud Custodian policy YAML from violation data
+- Supports: tag enforcement, tag normalization, missing tag remediation
+- Dry-run mode: generates `notify` actions instead of `tag` actions
+- Output is syntactically valid and directly executable with `custodian run`
 
-**Purpose**: Approve or deny pending bulk tagging requests
+#### 10. generate_openops_workflow
 
-**Authorization**: Requires `tag:approve` role
+**Purpose**: Generate OpenOps-compatible automation workflows from compliance violations
+
+**Sub-Phase**: 2.1 (Days 1-3, parallel)
 
 **Parameters**:
 ```json
 {
-  "request_id": "bulk-tag-req-12345",
-  "action": "approve | deny",
-  "comment": "Approved - Engineering team resources"
+  "violations": ["compliance_score_below_threshold"],
+  "remediation_strategy": "auto_tag",
+  "resource_types": ["ec2:instance"],
+  "threshold": 0.8
 }
 ```
 
 **Returns**:
-```json
-{
-  "request_id": "bulk-tag-req-12345",
-  "status": "approved",
-  "executed": true,
-  "resources_tagged": 42,
-  "execution_time": "2024-12-15T14:32:00Z"
-}
+```yaml
+name: "Fix EC2 Tagging Violations"
+triggers:
+  - compliance_score_below: 0.8
+steps:
+  - name: "Tag EC2 Instances"
+    action: "aws_cli"
+    script: |
+      aws ec2 create-tags --resources {resource_id} \
+        --tags Key=CostCenter,Value=Engineering
 ```
 
-#### 12. schedule_compliance_audit
+**Features**:
+- Generates OpenOps YAML workflow conforming to platform schema
+- Supports: compliance score thresholds, resource type filters, scheduled execution
+- Users can go from "check compliance" → "generate remediation" in one conversation
+
+#### 11. schedule_compliance_audit
 
 **Purpose**: Schedule recurring compliance audits
+
+**Sub-Phase**: 2.2 (Days 1-3, parallel)
 
 **Parameters**:
 ```json
@@ -321,6 +314,7 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
   "schedule": "daily | weekly | monthly",
   "time": "09:00",
   "timezone": "America/New_York",
+  "resource_types": ["ec2:instance", "rds:db"],
   "recipients": ["finops-team@company.com"],
   "format": "email | slack | both"
 }
@@ -330,19 +324,29 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
 ```json
 {
   "schedule_id": "audit-sched-789",
-  "next_run": "2024-12-16T09:00:00-05:00",
+  "next_run": "2026-02-10T09:00:00-05:00",
   "status": "active"
 }
 ```
 
-#### 13. detect_tag_drift
+**Features**:
+- Configurable schedule (cron format)
+- Full or filtered resource type coverage
+- Results stored with "scheduled" flag in history
+- CloudWatch metrics for scan success/failure
 
-**Purpose**: Detect tags that have changed unexpectedly
+#### 12. detect_tag_drift
+
+**Purpose**: Detect tags that have changed unexpectedly since last scan
+
+**Sub-Phase**: 2.2 (Days 1-3, parallel)
 
 **Parameters**:
 ```json
 {
   "lookback_days": 7,
+  "resource_types": ["ec2:instance"],
+  "tag_keys": ["Environment", "Owner"],
   "threshold": 5
 }
 ```
@@ -356,133 +360,26 @@ For complete requirements and design, see [Agent Safety Enhancements Spec](../.k
       "tag": "Environment",
       "old_value": "production",
       "new_value": "prod",
-      "changed_at": "2024-12-14T10:23:00Z",
-      "changed_by": "arn:aws:iam::123456789012:user/john.doe"
+      "changed_at": "2026-02-08T10:23:00Z",
+      "changed_by": "arn:aws:iam::123456789012:user/john.doe",
+      "severity": "critical"
     }
   ],
   "total_drifts": 12
 }
 ```
 
-#### 14. Multi-Account Support (Enhanced)
+**Features**:
+- Compares current tags against last known state
+- Reports: tags added, removed, or changed
+- Filters by resource type, region, tag key
+- Severity classification (required tag removed = critical)
 
-**Purpose**: Check compliance across multiple AWS accounts using AssumeRole
+#### 13. export_violations_csv
 
-**New Parameters** (added to all scan tools):
-- `accounts`: List of AWS account IDs to scan (defaults to current account)
-- `cross_account_role_name`: IAM role name in member accounts (default: `CrossAccountTagAuditRole`)
-- `external_id`: Optional external ID for enhanced security
+**Purpose**: Export violation data to CSV format for external analysis
 
-**Enhanced tool signature**:
-```python
-async def check_tag_compliance(
-    resource_types: Optional[List[str]] = None,
-    regions: Optional[List[str]] = None,
-    accounts: Optional[List[str]] = None  # NEW: Multi-account support
-) -> Dict
-```
-
-**Single Account Usage** (Phase 1 behavior):
-```json
-{
-  "resource_types": ["ec2:instance"],
-  "regions": ["us-east-1"]
-}
-```
-
-**Multi-Account Usage** (Phase 2):
-```json
-{
-  "resource_types": ["ec2:instance"],
-  "regions": ["us-east-1"],
-  "accounts": ["123456789012", "234567890123", "345678901234"]
-}
-```
-
-**Returns** (multi-account):
-```json
-{
-  "multi_account": true,
-  "accounts_scanned": 3,
-  "results_by_account": {
-    "123456789012": {
-      "account_name": "Production",
-      "compliance_score": 0.72,
-      "violations": 127,
-      "total_resources": 1250,
-      "cost_attribution_gap": 45200.00
-    },
-    "234567890123": {
-      "account_name": "Staging",
-      "compliance_score": 0.65,
-      "violations": 203,
-      "total_resources": 890,
-      "cost_attribution_gap": 28900.00
-    },
-    "345678901234": {
-      "account_name": "Development",
-      "compliance_score": 0.83,
-      "violations": 45,
-      "total_resources": 350,
-      "cost_attribution_gap": 12100.00
-    }
-  },
-  "aggregated_summary": {
-    "overall_compliance": 0.71,
-    "total_violations": 375,
-    "total_resources": 2490,
-    "total_cost_attribution_gap": 86200.00
-  }
-}
-```
-
-**Implementation Details**:
-
-See `docs/DEPLOY_MULTI_ACCOUNT.md` for complete multi-account deployment guide.
-
-**Key Features**:
-1. **AssumeRole Integration**: MCP server assumes IAM roles in member accounts
-2. **Parallel Scanning**: Accounts scanned in parallel for performance
-3. **Error Handling**: Continues if one account fails (reports error in results)
-4. **Session Caching**: Assumed role credentials cached for 1 hour
-5. **Aggregated Reporting**: Cross-account summaries and comparisons
-
-**IAM Setup Required**:
-
-Management Account (where MCP runs):
-```json
-{
-  "Sid": "AssumeRoleInMemberAccounts",
-  "Effect": "Allow",
-  "Action": "sts:AssumeRole",
-  "Resource": "arn:aws:iam::*:role/CrossAccountTagAuditRole"
-}
-```
-
-Member Accounts (each account to scan):
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {
-      "AWS": "arn:aws:iam::111111111111:role/MCPServerRole"
-    },
-    "Action": "sts:AssumeRole",
-    "Condition": {
-      "StringEquals": {
-        "sts:ExternalId": "finops-mcp-cross-account-v1"
-      }
-    }
-  }]
-}
-```
-
-**Development Estimate**: 2-3 weeks (includes testing with 10+ accounts)
-
-#### 15. export_violations_csv
-
-**Purpose**: Export violations to CSV for external analysis
+**Sub-Phase**: 2.3 (Days 1-3, parallel)
 
 **Parameters**:
 ```json
@@ -491,18 +388,64 @@ Member Accounts (each account to scan):
     "severity": "errors_only",
     "resource_types": ["ec2:instance"]
   },
-  "format": "csv | xlsx | json"
+  "columns": ["resource_arn", "resource_type", "violation", "severity", "region"],
+  "format": "csv"
 }
 ```
 
 **Returns**:
 ```json
 {
-  "export_url": "https://s3.amazonaws.com/finops-exports/violations-2024-12-15.csv",
-  "expires_at": "2024-12-16T00:00:00Z",
-  "row_count": 450
+  "data": "resource_arn,resource_type,violation,...\narn:aws:ec2:...,ec2:instance,...",
+  "row_count": 450,
+  "format": "csv"
 }
 ```
+
+**Features**:
+- Configurable columns and filters
+- Supports large datasets with pagination
+- Download-ready format for spreadsheet analysis
+
+#### 14. import_aws_tag_policy
+
+**Purpose**: Fetch and convert AWS Organizations tag policies at runtime
+
+**Sub-Phase**: 2.3 (Days 1-3, parallel)
+
+**Parameters**:
+```json
+{
+  "policy_id": "p-xxxxxxxx",
+  "save_to_file": true,
+  "output_path": "policies/tagging_policy.json"
+}
+```
+
+**Returns**:
+```json
+{
+  "status": "success",
+  "policy": {
+    "version": "1.0",
+    "required_tags": [],
+    "optional_tags": []
+  },
+  "saved_to": "policies/tagging_policy.json",
+  "summary": {
+    "required_tags_count": 5,
+    "optional_tags_count": 2,
+    "enforced_services": ["ec2", "rds", "s3"]
+  }
+}
+```
+
+**Features**:
+- User-initiated import via Claude Desktop ("Import my AWS tag policy")
+- Lists available policies if policy_id not provided
+- Automatic conversion and file saving
+- IAM permission guidance for insufficient access
+- Requires: `organizations:DescribePolicy` and `organizations:ListPolicies`
 
 ---
 
@@ -518,7 +461,7 @@ Most AWS organizations already have tag policies defined in AWS Organizations. R
 2. **MCP Tool for Import** (Phase 2.1 - New Tool)
 3. **Automatic Detection** (Phase 2.2 - Startup Behavior)
 
-### Tool 16: import_aws_tag_policy
+### Tool 14: import_aws_tag_policy
 
 **Purpose**: Fetch and convert AWS Organizations tag policy to MCP format
 
@@ -615,15 +558,15 @@ policy:
 3. **Automatic sync**: Server can periodically re-import to stay in sync
 4. **Audit trail**: Conversion logged for compliance
 
-### Phase 2.1 vs Phase 2.2
+### Tool 14 vs Automatic Detection (Phase 2.4)
 
-**Phase 2.1 (MCP Tool)**:
+**Tool 14 `import_aws_tag_policy` (Phase 2.3)**:
 - User-initiated import via Claude Desktop
 - "Import my AWS tag policy"
 - Gives user control over when/how to import
 
-**Phase 2.2 (Automatic)**:
-- Zero-touch setup
+**Automatic Policy Detection (Phase 2.4)**:
+- Zero-touch setup on server startup
 - Server handles it automatically
 - Best for production deployments
 
@@ -651,32 +594,8 @@ Phase 2 replaces simple API keys with OAuth 2.0 for enterprise security.
 
 | Scope | Description | Required For |
 |-------|-------------|--------------|
-| `tag:read` | Read tag data, compliance reports | All read tools |
-| `tag:write` | Apply tags to resources | `bulk_tag_resources` |
-| `tag:approve` | Approve bulk tagging requests | `approve_bulk_tagging_request` |
-| `admin` | Full access, policy updates | Admin operations |
-
-#### Step-Up Authorization
-
-For sensitive operations (bulk tagging), users must re-authenticate with elevated scope:
-
-```
-User: "Bulk tag 100 EC2 instances with CostCenter=Engineering"
-
-MCP Server: {
-  "error": "insufficient_scope",
-  "required_scope": "tag:write",
-  "step_up_url": "https://mcp.finops.company.com/oauth/authorize?scope=tag:write"
-}
-
-User re-authenticates with tag:write scope
-
-MCP Server: Creates approval request, returns request_id
-
-Approver reviews and approves
-
-MCP Server: Executes bulk tagging
-```
+| `tag:read` | Read tag data, compliance reports | All compliance tools (1-14) |
+| `admin` | Full access, policy updates, scheduling | Admin operations, scheduled audits |
 
 ### Credential Management (AWS)
 
@@ -705,23 +624,6 @@ MCP Server: Executes bulk tagging
         "tag:GetTagValues"
       ],
       "Resource": "*"
-    },
-    {
-      "Sid": "TagWriteAccess",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:CreateTags",
-        "rds:AddTagsToResource",
-        "s3:PutBucketTagging",
-        "lambda:TagResource",
-        "ecs:TagResource"
-      ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": ["us-east-1", "us-west-2"]
-        }
-      }
     },
     {
       "Sid": "SecretsManagerAccess",
@@ -1192,24 +1094,6 @@ CREATE INDEX idx_audit_logs_timestamp ON audit_logs(timestamp DESC);
 CREATE INDEX idx_audit_logs_user_id ON audit_logs(user_id);
 CREATE INDEX idx_audit_logs_tool_name ON audit_logs(tool_name);
 
--- Bulk tagging requests table
-CREATE TABLE bulk_tagging_requests (
-    id SERIAL PRIMARY KEY,
-    request_id VARCHAR(50) UNIQUE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-    created_by VARCHAR(255) NOT NULL,
-    resource_arns TEXT[] NOT NULL,
-    tags JSONB NOT NULL,
-    status VARCHAR(20) NOT NULL,  -- pending, approved, denied, executed
-    approved_by VARCHAR(255),
-    approved_at TIMESTAMP WITH TIME ZONE,
-    executed_at TIMESTAMP WITH TIME ZONE,
-    comment TEXT
-);
-
-CREATE INDEX idx_bulk_requests_status ON bulk_tagging_requests(status);
-CREATE INDEX idx_bulk_requests_created_by ON bulk_tagging_requests(created_by);
-
 -- OAuth sessions table
 CREATE TABLE oauth_sessions (
     id SERIAL PRIMARY KEY,
@@ -1271,28 +1155,30 @@ CREATE TABLE scheduled_audits (
 
 ## Migration from Phase 1 to Phase 2
 
-### Migration Steps
+### Migration Steps (Compressed Timeline)
 
-1. **Week 1**: Deploy Phase 2 infrastructure in parallel
-   - Create ECS cluster, RDS, ElastiCache
-   - Deploy same code as Phase 1
-   - Test with staging users
+1. **Days 1-3**: Build all 6 new tools + server features in parallel
+   - Phases 2.1-2.4 developed concurrently (independent features, no conflicts)
+   - Regression test harness created before any new code
+   - Automated test suite run after each sub-phase
 
-2. **Week 2**: Add new Phase 2 features
-   - Implement OAuth 2.0 authentication
-   - Add 7 new tools
-   - Test step-up authorization
+2. **Day 4**: UAT 1 — Functional validation on EC2
+   - Deploy updated code to EC2 (`git pull` + restart)
+   - Test all 6 new tools (9-14) against real AWS account
+   - Run full regression suite against Phase 1 tools
+   - Go/no-go decision for production deployment
 
-3. **Week 3**: Data migration
-   - Export SQLite audit logs from Phase 1
-   - Import to PostgreSQL
+3. **Days 5-6**: ECS Fargate production deployment
+   - Create ECS cluster, RDS, ElastiCache via CloudFormation/CDK
+   - Deploy application with OAuth 2.0 authentication
+   - Data migration: SQLite → PostgreSQL
    - Verify data integrity
 
-4. **Week 4**: Cutover
-   - Update DNS to point to ALB
-   - Monitor for issues
-   - Keep Phase 1 EC2 running for 1 week (rollback option)
-   - Decommission Phase 1 EC2
+4. **Day 7**: UAT 2 — Production validation
+   - Re-run same tool queries from UAT 1 on production
+   - Validate ElastiCache, RDS, OAuth all functioning
+   - Keep Phase 1 EC2 running as rollback option
+   - Update DNS to point to ALB after validation
 
 ### Blue/Green Deployment
 
@@ -1320,10 +1206,12 @@ terraform destroy -target=module.ecs_blue
 
 ### Functional Requirements
 
-✅ All 15 tools working in production
+✅ All 14 tools working in production
 ✅ OAuth 2.0 authentication functional
-✅ Step-up authorization working for write operations
-✅ Bulk tagging with approval workflows tested
+✅ Cloud Custodian policies generated from compliance violations
+✅ OpenOps workflows generated from compliance data
+✅ Daily compliance snapshots running automatically
+✅ Automatic AWS policy detection working on startup
 ✅ Auto-scaling validated (scales from 2 to 10 tasks)
 
 ### Non-Functional Requirements
@@ -1338,7 +1226,7 @@ terraform destroy -target=module.ecs_blue
 
 ✅ 20+ active users
 ✅ 100+ compliance audits per month
-✅ At least 5 bulk tagging operations approved and executed
+✅ Generated remediation scripts (Custodian/OpenOps) are syntactically valid
 ✅ Measurable compliance improvement (5%+ increase)
 ✅ User satisfaction NPS > 50
 
@@ -1347,13 +1235,13 @@ terraform destroy -target=module.ecs_blue
 ## Next Steps After Phase 2
 
 1. **Evaluate multi-cloud demand** - Do users need Azure/GCP support?
-2. **Collect feature requests** - What additional tools would add value?
-3. **Performance optimization** - Any bottlenecks at scale?
-4. **Decide on Phase 3** - Go/no-go for multi-cloud expansion
+2. **Codebase modernization** - `src/` layout, `mcp_handler.py` decomposition (deferred to Phase 3)
+3. **Multi-account AWS** - AssumeRole scanning across multiple accounts (deferred to Phase 3)
+4. **Decide on Phase 3** - Go/no-go for multi-cloud + multi-account expansion
 
 ---
 
-**Document Version**: 1.0
-**Last Updated**: December 2024
-**Ready for Development**: After Phase 1 completion
-**Assigned to**: Kiro (post-Phase 1)
+**Document Version**: 2.0
+**Last Updated**: February 2026
+**Ready for Development**: After Phase 1.9 completion
+**Development Team**: Claude (AI Developer) + FinOps Engineer (UAT)
