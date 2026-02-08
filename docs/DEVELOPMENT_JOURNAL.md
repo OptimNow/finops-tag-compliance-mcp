@@ -2692,3 +2692,96 @@ Major rewrite to absorb deferred Phase 2 content and add automation:
 **Complexity**: Low (documentation only, no code changes)
 **User Impact**: High (enables clear Phase 2 development with aligned specifications)
 
+
+---
+
+## February 8, 2026 (Entry #2): promptfoo Regression Test Suite
+
+### Setting Up Non-Regression Testing Before Phase 2
+
+**The Trigger:**
+
+With 6 new tools about to be added in Phase 2 (tools 9-14), we needed a safety net to catch regressions in the existing 8 Phase 1 tools. If adding `generate_custodian_policy` accidentally breaks `check_tag_compliance`'s output format, we need to know immediately — not during UAT.
+
+**What Was Built:**
+
+A **promptfoo-based regression test suite** in `tests/regression/` with 34 test cases:
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| Custom provider | `mcp_provider.py` | Python bridge: promptfoo → HTTP POST → `/mcp/tools/call` |
+| Test definitions | `promptfooconfig.yaml` | 34 test cases with assertions |
+| Documentation | `README.md` | Setup, usage, CI integration |
+
+**How It Works:**
+
+```
+promptfoo reads YAML → sends tool_call JSON to mcp_provider.py
+  → provider POSTs to localhost:8080/mcp/tools/call
+    → MCP server runs the tool
+      → response flows back to promptfoo
+        → assertions check the response structure
+```
+
+**Test Coverage (34 structural tests):**
+
+| Tool | Tests | What's Checked |
+|------|-------|----------------|
+| check_tag_compliance | 4 | Score range 0-1, violation structure, severity filter, multi-region metadata |
+| find_untagged_resources | 4 | Resource list, cost fields, resource structure, region filter |
+| validate_resource_tags | 3 | ARN validation, result structure, count consistency |
+| get_cost_attribution_gap | 3 | Spend fields, group_by breakdown, gap = total - attributable |
+| suggest_tags | 2 | Suggestion structure, confidence scores 0-1 |
+| get_tagging_policy | 4 | Policy shape, required tag structure, known tags, idempotency |
+| generate_compliance_report | 4 | JSON/Markdown/CSV formats, recommendations |
+| get_violation_history | 4 | Data points, day/week/month grouping |
+| Error handling | 4 | Invalid tool name, invalid severity, empty inputs, invalid ARN |
+| Performance | 2 | Latency < 5s for no-AWS-call tools |
+
+**Two Types of Assertions — Structural vs Business:**
+
+The 34 tests created today are **structural** — they check that responses are valid JSON with correct field names, types, and value ranges. They do NOT check business logic.
+
+**Business logic tests** (planned for UAT 1) will verify things like:
+- `compliance_score == 1.0` → `violations` must be empty
+- `total_untagged == len(resources)` (count matches list)
+- `attribution_gap == total_spend - attributable_spend` (math checks)
+- `is_compliant == true` → zero violations for that resource
+- Violation `tag_name` values exist in the tagging policy
+
+These need to be defined jointly with the user during UAT 1 (Day 4 of Phase 2) because they encode business expectations that only the user can validate.
+
+**Prompt Fidelity — A Future Testing Layer:**
+
+Evaluated an article on "prompt fidelity" — measuring whether an AI agent actually executes user intent correctly vs. hallucinating plausible output. For our MCP tools, this would test: *"When a user asks 'What's my compliance score?', does Claude call `check_tag_compliance` or does it hallucinate a number?"*
+
+This is a different testing layer:
+1. **Structural** (done): Is the JSON response shaped correctly?
+2. **Business logic** (UAT 1): Are the numbers internally consistent?
+3. **Prompt fidelity** (Phase 3+): Does the AI agent use the right tool for the right question?
+
+Layer 3 requires LLM-in-the-loop testing (Claude as the test subject, not the test runner) — deferred to Phase 3+.
+
+**PR**: #20 (tests/promptfoo-regression-suite branch)
+
+**What I Learned:**
+
+1. **promptfoo isn't just for LLMs**: It works well for any API that returns JSON — the custom provider pattern lets you test any HTTP endpoint.
+
+2. **Structural tests are fast to write but limited**: They catch format regressions (renamed fields, changed types) but not logic bugs (wrong numbers, incorrect calculations).
+
+3. **Business tests need domain knowledge**: Only the user/FinOps engineer knows that "compliance_score 1.0 with violations present" is a bug. These tests must be co-authored.
+
+4. **Testing layers build on each other**: Structural → Business → Prompt Fidelity. Each layer catches different categories of bugs.
+
+**Outcome:**
+
+✅ 34 structural regression tests ready to run
+✅ UAT 1 reminder placed for business logic test co-authoring
+✅ Prompt fidelity noted as Phase 3+ enhancement
+✅ CLAUDE.md updated with promptfoo commands and documentation
+
+**Implementation Time**: ~1.5 hours
+**Complexity**: Low-Medium (new testing framework integration)
+**User Impact**: High (regression safety net for Phase 2 development)
+

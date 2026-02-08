@@ -13,6 +13,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Format code | `black mcp_server/ tests/` |
 | Type check | `mypy mcp_server/` |
 | Test with MCP Inspector | `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server` |
+| Run regression tests (promptfoo) | `cd tests/regression && npx promptfoo@latest eval` |
 
 **Critical Files:**
 - `mcp_server/stdio_server.py` - MCP entry point (Claude Desktop)
@@ -67,6 +68,10 @@ pytest tests/                                          # All tests
 pytest tests/unit/test_compliance_service.py          # Specific file
 pytest tests/ --cov=mcp_server --cov-report=html     # Coverage HTML report
 pytest tests/ -m "not integration"                    # Exclude integration tests
+
+# Regression tests (promptfoo — requires MCP HTTP server running)
+cd tests/regression && npx promptfoo@latest eval      # Run 34 regression tests
+cd tests/regression && npx promptfoo@latest view       # View results in browser
 ```
 
 ### Code Quality
@@ -532,6 +537,15 @@ This project uses a **3-layer testing strategy**:
 - Use fixtures from `tests/conftest.py` for common test data
 - Property tests should reference requirement numbers in docstrings
 - Integration tests should clean up resources after completion
+
+4. **Regression Tests** (`tests/regression/`) - promptfoo-based API regression
+   - 34 test cases validating all 8 MCP tool response structures
+   - Custom Python provider calls `POST /mcp/tools/call` on HTTP server
+   - Structural assertions (JSON shape, types, value ranges)
+   - Business logic assertions (mathematical consistency, cross-field validation) — to be formalized during UAT 1
+   - Run with: `cd tests/regression && npx promptfoo@latest eval`
+   - Requires HTTP server running: `python run_server.py`
+   - CI-compatible: promptfoo returns exit code 1 on assertion failures
 
 ## Important Patterns
 
