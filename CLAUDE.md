@@ -856,3 +856,78 @@ Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [
 - `docs/TESTING_QUICK_START.md` - Testing guide
 - `docs/SECURITY_CONFIGURATION.md` - Production security configuration guide
 - `docs/ROADMAP.md` - Overall project roadmap (4 phases + Phase 1.9)
+
+## Common Pitfalls & Lessons Learned
+
+Development mistakes encountered during this project. **Claude must check this section before making changes** to avoid repeating known issues.
+
+### Configuration
+
+- **Pydantic Settings + .env conflict**: `CoreSettings` rejects HTTP-specific env vars unless `extra="ignore"` is set in `model_config`. Always use `extra="ignore"` in any Settings subclass that may share an .env file with other Settings classes. (`mcp_server/config.py`)
+- **Policy file path hyphen/underscore mismatch**: `.env` had `tagging-policy.json` (hyphen) but actual file was `tagging_policy.json` (underscore). Always check actual filenames match env var values exactly.
+- **BOM characters corrupt Python files**: Invisible Byte Order Mark (U+FEFF) from copy-paste causes `SyntaxError: invalid non-printable character`. Use UTF-8 without BOM. Prefer template-based file creation over direct character manipulation.
+- **New features must default to disabled**: If a new security feature defaults to enabled, existing deployments break. All new features get `FEATURE_NAME_ENABLED=false` by default.
+- **Docker paths differ on Windows vs Linux**: Use `${USERPROFILE}/.aws` on Windows, `~/.aws` on Linux in `docker-compose.yml`. Document both.
+
+### AWS API
+
+- **Cost Explorer is always us-east-1**: The CE client must target `us-east-1` regardless of resource region. Don't create regional CE clients.
+- **Resource Groups Tagging API doesn't return creation dates**: `age_days` must be `Optional[int] = None`, not required. Don't show "0 days" when data is unavailable — use `None`.
+- **Stopped EC2 instances have zero compute cost**: Don't distribute service costs evenly across all instances. Check `instance_state` first: stopped/terminated = $0 compute. Use 3-tier distribution: actual → state-aware → proportional fallback.
+- **IAM permissions must match actual API calls**: Wrong IAM role → no resources found despite correct code. Test all AWS API calls before deploying; document exact permissions in `docs/IAM_PERMISSIONS.md`.
+- **SSM Session Manager mangles special characters**: Pipes, quotes, curly braces get corrupted. Use base64-encoded Python one-liners for complex remote commands.
+- **AWS credentials file corruption**: Multiple profiles mixed together causes `IncompleteSignature`. Delete and recreate `~/.aws/credentials` if you get signature errors.
+
+### Architecture & Business Logic
+
+- **Don't import MCP into service layer**: Services must be protocol-agnostic. Never `from mcp import ...` inside `mcp_server/services/`. MCP stays in `tools/` and `stdio_server.py` only.
+- **Always use injected services, never create new instances**: `get_violation_history` once created a new `HistoryService` instead of using the injected one, reading from a wrong database path. Use DI consistently.
+- **Wire all service dependencies through entry points**: Multi-region scanner was built but not passed to tools in `stdio_server.py`. Always wire new services through the full chain.
+- **Multi-region conditions can silently disable features**: A `not use_tagging_api` condition blocked multi-region for "all" mode. Remove conditions that disable features without clear warnings.
+- **Free resources pollute compliance metrics**: VPC, Subnet, Security Groups inflate violation counts without financial impact. Use `config/resource_types.json` to separate cost-generating, free, and unattributable resources.
+- **Hide meaningless $0.00 cost columns**: When Tagging API provides no cost data, displaying "$0.00 Cost Impact" is misleading. Conditionally hide cost sections when all values are zero.
+
+### Testing
+
+- **moto not installed by default**: `tests/unit/test_aws_client.py` fails on import. Install with `pip install moto[all]` or skip with `--ignore`.
+- **Unit tests that make real AWS calls will hang**: Always mock boto3 in unit tests. Use `asyncio.to_thread()` + mock.
+- **Property tests catch edge cases unit tests miss**: Use Hypothesis for validation logic — it generates 100+ test cases automatically and finds boundary conditions.
+- **Always test through the full HTTP stack**: Unit tests on services may pass while the HTTP handler has different validation. Use curl/Postman to validate real endpoints.
+
+### Performance & Caching
+
+- **Never hardcode `force_refresh=True`**: This was left from debugging and made every multi-region scan take 50-60 seconds. Propagate the parameter through all function calls.
+- **Include all context in cache keys**: Region, resource types, filters, severity, scanned regions — changing any of these must produce a different cache key. Missing region in cache key returned stale results for wrong region.
+
+### Git & CI
+
+- **Branch protection blocks self-merge**: PRs require an approving review. Cannot self-approve with `gh`. Either have user approve, or bypass in repo settings.
+- **Infracost skips docs-only PRs**: This is correct behavior, not an error. Don't debug Infracost "Skipped" status on non-IaC changes.
+
+### Compatibility
+
+- **Python 3.10: `datetime.UTC` doesn't exist**: Use `from datetime import timezone` and `timezone.utc` instead. `datetime.UTC` is Python 3.11+ only.
+- **Docker buildx 0.17+ required for compose build**: On older EC2 instances, use `docker build -t image-name .` directly instead of `docker-compose build`.
+- **AI agents wrap single values in arrays**: Claude sometimes sends `severity: ["errors_only"]` instead of `"errors_only"`. Add auto-unwrapping for single-element string arrays in input validation.
+
+### Documentation
+
+- **Specifications drift quickly**: The Phase 2 spec still referenced 15 tools, bulk tagging, and 8-week timelines months after those decisions changed. Run grep checks after roadmap updates to catch stale references.
+- **Always comment hardcoded values**: Cost Explorer's us-east-1 requirement wasn't documented, causing confusion during multi-region setup. If a value is hardcoded for a reason, comment why.
+
+## End-of-Session Protocol
+
+**At the end of every coding session**, Claude must:
+
+1. **Review errors encountered** during the session (failed commands, bugs hit, unexpected behavior)
+2. **Check if any are new** (not already listed in "Common Pitfalls & Lessons Learned" above)
+3. **Append new pitfalls** to the appropriate category in this section, following the format:
+   `- **Short title**: One-line description of what went wrong and what to do instead.`
+4. If the pitfall doesn't fit an existing category, create a new one
+
+This ensures the knowledge base grows with each session and mistakes are never repeated.
+
+**Format for new entries:**
+```
+- **[Short title]**: [What went wrong]. [What to do instead]. ([File or component affected])
+```
