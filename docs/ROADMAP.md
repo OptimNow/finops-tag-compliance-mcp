@@ -423,13 +423,188 @@ scheduled_compliance:
 
 **If FAIL**: Roll back to EC2, Claude fixes issues, redeploy
 
+### Phase 2.6: Multi-Tenant Cross-Account Client Deployment (~8-12 days)
+
+**Goal**: Enable customers to connect their AWS accounts to the centralized MCP server via cross-account IAM roles (read-only), following the CloudZero model.
+
+**Problem Statement**:
+Currently the MCP server runs in a single AWS account and scans only that account's resources. To serve multiple customers from a single centralized server, we need cross-account AssumeRole support with per-client isolation. This is the **production client deployment model** — customers connect their accounts to OptimNow's MCP server without deploying any compute in their own infrastructure.
+
+**Architecture**:
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    OPTIMNOW ACCOUNT (Control Plane)                      │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────────────┐    │
+│  │                    ECS Fargate (Phase 2.5)                       │    │
+│  │                                                                 │    │
+│  │  ┌───────────────┐  ┌──────────────┐  ┌──────────────────────┐ │    │
+│  │  │  MCP Server   │  │   Redis      │  │  Client Registry     │ │    │
+│  │  │  (multi-tenant)│  │   (cache)    │  │  (RDS PostgreSQL)    │ │    │
+│  │  └───────┬───────┘  └──────────────┘  └──────────────────────┘ │    │
+│  └──────────┼──────────────────────────────────────────────────────┘    │
+│             │ STS AssumeRole (per client, with External ID)             │
+└─────────────┼───────────────────────────────────────────────────────────┘
+              │
+    ┌─────────┴──────────────────────────────────────┐
+    │                                                │
+    ▼                                                ▼
+┌──────────────────────┐              ┌──────────────────────┐
+│  CLIENT ACCOUNT A    │              │  CLIENT ACCOUNT B    │
+│                      │              │                      │
+│  IAM Role read-only  │              │  IAM Role read-only  │
+│  Trust: OptimNow acct│              │  Trust: OptimNow acct│
+│  External ID: abc123 │              │  External ID: xyz789 │
+│                      │              │                      │
+│  Zero compute        │              │  Zero compute        │
+│  Zero data copied    │              │  Zero data copied    │
+└──────────────────────┘              └──────────────────────┘
+```
+
+**Design Principles** (inspired by CloudZero):
+- **100% read-only**: No write access to customer accounts — remediation is done via Cloud Custodian / AWS Tag Policies, not by the MCP server
+- **Least-privilege IAM**: ~20 read actions only (tag:Get*, ec2:Describe*, ce:GetCost*, etc.)
+- **External ID per client**: Prevents confused deputy attacks (AWS best practice)
+- **Customer-revocable**: Client deletes CloudFormation stack → access revoked instantly
+- **Open-source IAM policy**: Published on GitHub for security review transparency
+- **No data storage**: Only aggregated compliance scores are stored — raw resource data never persisted
+- **Strictly less intrusive than CloudZero**: CloudZero stores full CUR data; we store only compliance metrics
+
+**Deliverables**:
+
+1. **Client CloudFormation Template** (`infrastructure/cloudformation-client-readonly.yaml`)
+   - IAM Role with read-only permissions for tag compliance scanning
+   - Trust policy pointing to OptimNow AWS account with External ID condition
+   - Outputs: Role ARN for client to communicate back
+   - 1-click deploy via AWS Console URL
+   - Published on GitHub (open-source, auditable)
+
+2. **Multi-Tenant AssumeRole Layer** (`mcp_server/clients/cross_account_client.py`)
+   - STS AssumeRole with External ID per client
+   - Session caching (15-minute TTL, auto-refresh)
+   - Client ID → Role ARN + External ID mapping (stored in RDS)
+   - Graceful error handling (role revoked, permissions changed, etc.)
+
+3. **Client Onboarding API**
+   - `POST /clients/register` — Generates unique External ID, returns CloudFormation 1-click URL
+   - `POST /clients/verify` — Tests AssumeRole to confirm access works
+   - `GET /clients/{id}/status` — Returns connection health
+   - `DELETE /clients/{id}` — Removes client from registry (does not touch their AWS account)
+
+4. **Client Isolation**
+   - Redis cache keys prefixed by `client:{client_id}:`
+   - Audit logs tagged with `client_id`
+   - Rate limiting per client (separate from global limits)
+   - API key per client (existing auth middleware supports multiple keys)
+   - Compliance history stored per client in RDS
+
+5. **Licensing & Metering Integration**
+   - License validation tied to client_id
+   - Resource count metering per scan (for tier enforcement)
+   - Usage dashboard: scans/month, resources scanned, regions covered
+   - Quota enforcement: Starter (1K resources), Professional (10K), Enterprise (unlimited)
+
+**Client Onboarding Flow**:
+
+```
+Customer                         OptimNow                     Client AWS Account
+  │                                │                              │
+  │  1. "Connect my AWS account"   │                              │
+  │───────────────────────────────►│                              │
+  │                                │  2. Generate External ID     │
+  │  3. CloudFormation 1-click URL │     + store in registry      │
+  │◄───────────────────────────────│                              │
+  │                                │                              │
+  │  4. Click → Deploy in AWS ─────────────────────────────────►  │
+  │     (creates IAM Role)         │                      IAM Role│
+  │                                │                              │
+  │  5. "Role ARN: arn:aws:iam::   │                              │
+  │      123456:role/OptimNow..."  │                              │
+  │───────────────────────────────►│                              │
+  │                                │  6. STS AssumeRole test ───► │
+  │                                │◄──── OK, read access works   │
+  │  7. "Account connected ✅"     │                              │
+  │◄───────────────────────────────│                              │
+  │                                │                              │
+  │  8. "check_tag_compliance"     │                              │
+  │───────────────────────────────►│  9. AssumeRole + scan ─────► │
+  │                                │◄──── tags, costs, resources  │
+  │  10. Compliance results        │                              │
+  │◄───────────────────────────────│                              │
+```
+
+**IAM Permissions (Client Role)** — 20 read-only actions:
+
+```
+tag:GetResources, tag:GetTagKeys, tag:GetTagValues
+ec2:DescribeInstances, ec2:DescribeTags, ec2:DescribeVolumes, ec2:DescribeRegions
+rds:DescribeDBInstances, rds:ListTagsForResource
+s3:ListAllMyBuckets, s3:GetBucketTagging, s3:GetBucketLocation
+lambda:ListFunctions, lambda:ListTags
+ecs:ListClusters, ecs:ListServices, ecs:DescribeServices, ecs:ListTagsForResource
+ce:GetCostAndUsage, ce:GetCostAndUsageWithResources
+```
+
+**Security Model**:
+
+| Threat | Mitigation |
+|--------|-----------|
+| Confused deputy attack | External ID unique per client (STS condition) |
+| Privilege escalation | 100% read-only, zero write/delete actions |
+| Cross-client data leakage | STS sessions isolated per client, cache prefixed |
+| OptimNow account compromise | Read-only blast radius, client can revoke role instantly |
+| Data in transit | TLS everywhere (STS + API calls) |
+| Data at rest | Only compliance scores stored, no raw resource data |
+| Client abuse | Rate limiting per client, budget tracking, API key auth |
+| Stale access | Client deletes CloudFormation stack → immediate revocation |
+
+**Comparison with CloudZero**:
+
+| Aspect | CloudZero | OptimNow |
+|--------|-----------|----------|
+| Access model | Cross-account read-only | Cross-account read-only ✅ |
+| Provisioning | CloudFormation automated | CloudFormation automated ✅ |
+| External ID | Yes | Yes ✅ |
+| Open-source policy | GitHub (public) | GitHub (public) ✅ |
+| Data stored | Full CUR + resource metadata | Compliance scores only ✅ (less) |
+| Write access | None | None ✅ |
+| Remediation | N/A | Via Cloud Custodian (external) |
+| Time to connect | ~5 min | ~5 min (target) ✅ |
+| Revocation | Delete CloudFormation | Delete CloudFormation ✅ |
+
+**Success Metrics**:
+- Client onboarding in <5 minutes (CloudFormation deploy + verify)
+- 10+ client accounts connected simultaneously
+- Zero cross-client data leakage
+- STS session refresh without client disruption
+- <3 second scan response time (with caching)
+
+**Estimated Effort**: ~8-12 days
+
+| Component | Days |
+|-----------|------|
+| Client CloudFormation template | 1 |
+| Multi-tenant AssumeRole layer | 2-3 |
+| Client onboarding API | 2-3 |
+| Client isolation (cache, audit, rate limit) | 1-2 |
+| Licensing & metering integration | 2-3 |
+
+**Dependencies**: Requires Phase 2.5 (ECS Fargate + RDS) to be complete.
+
+### Detailed Spec
+
+See [PHASE-2.6-SPECIFICATION.md](./PHASE-2.6-SPECIFICATION.md)
+
 ---
 
-## Phase 3: Multi-Cloud, Multi-Account & Automation (Months 7-10)
+## Phase 3: Multi-Cloud & Automation (Months 7-10)
 
-**Goal**: Extend to Azure + GCP, add multi-account AWS support, and complete automation tooling
+**Goal**: Extend to Azure + GCP, and complete automation tooling
 
-**Scope**: Multi-cloud support, multi-account AWS scanning, policy enforcement tools, unified reporting
+**Scope**: Multi-cloud support, policy enforcement tools, unified reporting
+
+**Note**: Multi-account AWS scanning is now handled by Phase 2.6 (cross-account SaaS model). Phase 3 focuses on multi-cloud and automation.
 
 ### Tool Summary
 
@@ -585,6 +760,40 @@ See [PHASE-3-SPECIFICATION.md](./PHASE-3-SPECIFICATION.md)
 ```
 
 **Cost**: ~$150-200/month
+
+### Phase 2.6: Multi-Tenant Cross-Account (Production Client Deployment)
+```
+┌──────────────────────────────────────┐
+│ Application Load Balancer (TLS)      │
+└────────┬──────────────┬──────────────┘
+         │              │
+┌────────▼────┐    ┌────▼────┐
+│ ECS Task 1  │    │ECS Task 2│
+│ Multi-Tenant│    │Multi-Tenant│
+│ AssumeRole  │    │ AssumeRole│
+└────────┬────┘    └────┬─────┘
+         │              │
+    ┌────▼──────────────▼────┐
+    │ ElastiCache (Redis)    │
+    │ Cache per client_id    │
+    └────────────────────────┘
+    ┌────────────────────────┐
+    │ RDS (PostgreSQL)       │
+    │ Client registry +      │
+    │ per-client audit/history│
+    └────────────────────────┘
+         │ STS AssumeRole
+    ┌────┴───────────────────────────┐
+    │         │          │           │
+    ▼         ▼          ▼           ▼
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│Client A│ │Client B│ │Client C│ │Client N│
+│IAM Role│ │IAM Role│ │IAM Role│ │IAM Role│
+│ReadOnly│ │ReadOnly│ │ReadOnly│ │ReadOnly│
+└────────┘ └────────┘ └────────┘ └────────┘
+```
+
+**Cost**: ~$150-200/month (same infra as Phase 2.5, no additional compute)
 
 ### Phase 3: Multi-Cloud + Automation
 ```
@@ -752,10 +961,11 @@ Regression prevention is critical during Phase 2, where 6 new tools and server-s
 | **🧪 UAT 1** | 1 day | Functional validation on EC2 | Day 4 |
 | **Phase 2.5** | 2 days | ECS Fargate production deployment | Days 5-6 |
 | **🧪 UAT 2** | 1 day | Production validation on ECS | Day 7 |
-| **Phase 2 total** | ~1.5 weeks | Production deployment + 14 tools | End of Week 2 |
-| **Phase 3** | 8 weeks | Multi-cloud + multi-account + 17 tools | End of Month 4 |
+| **Phase 2.6** | 8-12 days | Multi-tenant cross-account client deployment | Days 8-19 |
+| **Phase 2 total** | ~4 weeks | Production deployment + 14 tools + client onboarding | End of Week 4 |
+| **Phase 3** | 8 weeks | Multi-cloud + multi-account + 17 tools | End of Month 5 |
 
-**Total**: ~10 weeks from Phase 2 kickoff to Phase 3 completion
+**Total**: ~12 weeks from Phase 2 kickoff to Phase 3 completion
 
 ---
 

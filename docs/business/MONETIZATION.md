@@ -450,23 +450,48 @@ Model B: Container Listing (self-hosted by customer)
 
 ---
 
-### Option 3: Hosted SaaS (Future - Month 9-12)
+### Option 3: Cross-Account SaaS — Hosted Server + Client Read-Only Role (Primary SaaS Model)
 
-**Why later**: More complexity, requires proven demand and cash flow to fund infrastructure.
+**Why this model**: Combines the simplicity of hosted SaaS (no deployment for the customer) with the security of cross-account read-only access (no credentials to share). Inspired by the CloudZero connection model.
 
 **How it works**:
 
 You:
-- Deploy MCP on your AWS (ECS Fargate or Lambda)
+- Deploy MCP on your AWS account (ECS Fargate — Phase 2.5 infrastructure)
 - Expose URL: https://mcp.optimnow.io
 - Manage infrastructure, updates, security, scaling
+- Use STS AssumeRole to read customer accounts (read-only)
 
 Customer:
-- Configures Claude Desktop to point to your server
-- Provides AWS credentials (IAM role or access keys) via your UI
-- Pays monthly subscription
+- Deploys a CloudFormation template in their account (~5 minutes, 1-click)
+- Template creates an IAM Role with read-only permissions + External ID
+- Provides the Role ARN to OptimNow → connection established
+- No compute in their account, no credentials to share, no data leaves their account
+- Revokes access by deleting the CloudFormation stack
 
-**Customer setup**:
+**Architecture**:
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                    OPTIMNOW ACCOUNT (Control Plane)                      │
+│                                                                         │
+│  MCP Server (ECS Fargate) ─── STS AssumeRole ──► Client Account A      │
+│                               (External ID)  ──► Client Account B      │
+│  Redis (cache per client)                    ──► Client Account C      │
+│  RDS (client registry + audit)               ──► Client Account N      │
+│                                                                         │
+│  Dashboard / Billing / Licensing                                        │
+└─────────────────────────────────────────────────────────────────────────┘
+```
+
+**Customer onboarding**:
+1. Customer signs up on optimnow.io
+2. Receives a unique External ID + CloudFormation 1-click URL
+3. Deploys CloudFormation in their AWS Console (~5 min)
+4. Provides Role ARN back to OptimNow
+5. OptimNow verifies access (STS AssumeRole health check)
+6. Customer starts scanning via Claude Desktop / MCP
+
+**Customer setup** (Claude Desktop config):
 ```json
 {
   "mcpServers": {
@@ -482,40 +507,67 @@ Customer:
 }
 ```
 
-**Pricing** (higher than self-hosted, since you manage infrastructure):
+**Security model** (strictly less intrusive than CloudZero):
+- 100% read-only: ~20 IAM actions, zero write/delete
+- External ID per customer: prevents confused deputy attacks
+- No credentials exchanged: customer never shares access keys
+- Customer-revocable: delete CloudFormation stack → instant revocation
+- IAM policy published on GitHub: full transparency for security reviews
+- No raw data stored: only compliance scores and aggregated metrics
+- TLS everywhere: STS calls + API calls encrypted in transit
+
+**Pricing** (SaaS, customer deploys nothing):
 
 ```
-Starter: €299/month
-- Up to 1,000 resources
-- Hosted by OptimNow
+Starter: €149/month (€1,499/year)
+- Up to 1,000 AWS resources
+- 1 AWS account
 - Email support (48h)
 
-Professional: €799/month
-- Up to 10,000 resources
-- Hosted by OptimNow
+Professional: €399/month (€3,999/year)
+- Up to 10,000 AWS resources
+- Up to 5 AWS accounts
 - Priority support (24h)
+- Historical compliance trends
 
-Enterprise: €2,499/month
+Enterprise: €999+/month (custom)
 - Unlimited resources
-- Hosted by OptimNow
+- Unlimited AWS accounts
 - Slack support (4h SLA)
+- Custom tagging policy
+- Dedicated onboarding
 ```
 
-**Revenue projection**: €100-200K ARR (Year 2)
+**Early Adopter Offer**: 30% lifetime discount for first 10 customers
+
+**Revenue projection**: €80-150K ARR (Year 1-2)
 
 **Pros**:
-- Lower friction for customers (no deployment needed)
-- Predictable monthly revenue
-- Easier to update (you control the infrastructure)
-- Better for customers without technical expertise
+- Zero deployment friction for customers (1-click CloudFormation only)
+- No credentials shared (cross-account IAM role, not access keys)
+- You control updates, monitoring, and scaling
+- Enterprise-friendly security model (read-only, auditable, revocable)
+- Strictly less intrusive than CloudZero (less data stored)
+- Customer data never leaves their account (only scores sent back)
+- Compatible with AWS Marketplace (Option 2) for distribution
 
 **Cons**:
-- You pay infrastructure for all customers
-- Must handle scaling
-- Customer must trust you with AWS credentials (security concern)
-- Lower margins (infrastructure costs)
+- You pay infrastructure costs (~€150-200/month for ECS + RDS + Redis)
+- Customer must deploy CloudFormation (minimal friction but not zero)
+- Multi-tenant isolation must be rigorous (cache, audit, rate limiting)
+- STS session management complexity
 
-**When to launch**: Once you have €5-10K MRR from self-hosted licenses and proven demand.
+**When to launch**: After Phase 2.6 is complete (requires ECS Fargate + multi-tenant AssumeRole layer).
+
+**CloudFormation template**: `infrastructure/cloudformation-client-readonly.yaml` (open-source, auditable)
+
+---
+
+### Option 3b: Self-Hosted SaaS (Legacy — Deprecated in favor of Option 3)
+
+**Note**: This option (customer shares AWS credentials with a hosted server) is **deprecated** in favor of Option 3 (cross-account IAM role). The cross-account model is more secure and enterprise-friendly because the customer never shares credentials — they just create a read-only IAM role.
+
+Kept here for reference only.
 
 ---
 
