@@ -262,8 +262,26 @@ class ComplianceService:
                 f"Excluded {free_resource_count} free resources (VPC, Subnet, Security Group, etc.)"
             )
 
+        # Filter out terminated/shutting-down instances (safety net for Tagging API path).
+        # The EC2 direct API already filters these, but the Resource Groups Tagging API
+        # may still return recently-terminated resources without state information.
+        filtered_by_state = []
+        terminated_count = 0
+
+        for resource in filtered_by_cost:
+            state = resource.get("instance_state", "")
+            if state and state.lower() in ("terminated", "shutting-down"):
+                terminated_count += 1
+                continue
+            filtered_by_state.append(resource)
+
+        if terminated_count > 0:
+            logger.info(
+                f"Excluded {terminated_count} terminated/shutting-down resources"
+            )
+
         # Apply post-fetch filters (region, account_id)
-        filtered_resources = self._apply_resource_filters(filtered_by_cost, filters)
+        filtered_resources = self._apply_resource_filters(filtered_by_state, filters)
         logger.info(f"Total resources after filtering: {len(filtered_resources)}")
 
         # Validate each resource against policy and collect violations

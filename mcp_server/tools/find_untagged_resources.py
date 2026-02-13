@@ -207,6 +207,26 @@ async def find_untagged_resources(
 
     logger.info(f"Total resources fetched: {len(all_resources)}")
 
+    # Filter out terminated/shutting-down instances (safety net for Tagging API path).
+    # The EC2 direct API already filters these, but the Resource Groups Tagging API
+    # may still return recently-terminated resources without state information.
+    filtered_resources = []
+    terminated_count = 0
+
+    for resource in all_resources:
+        state = resource.get("instance_state", "")
+        if state and state.lower() in ("terminated", "shutting-down"):
+            terminated_count += 1
+            continue
+        filtered_resources.append(resource)
+
+    if terminated_count > 0:
+        logger.info(
+            f"Excluded {terminated_count} terminated/shutting-down resources"
+        )
+
+    all_resources = filtered_resources
+
     # Get cost data only if requested
     if include_costs:
         resource_ids = [r["resource_id"] for r in all_resources]

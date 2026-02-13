@@ -242,6 +242,14 @@ class AWSClient:
 
         # Build EC2 filters
         ec2_filters = []
+
+        # Exclude terminated and shutting-down instances at the API level.
+        # These are no longer actionable and inflate compliance violation counts.
+        ec2_filters.append({
+            "Name": "instance-state-name",
+            "Values": ["pending", "running", "stopping", "stopped"],
+        })
+
         if "region" in filters and filters["region"] != self.region:
             # Would need to create a new client for different region
             # For now, only support current region
