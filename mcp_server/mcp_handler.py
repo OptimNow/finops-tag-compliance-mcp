@@ -803,9 +803,9 @@ class MCPHandler:
                     },
                     "notification_format": {
                         "type": "string",
-                        "enum": ["markdown", "json", "csv"],
-                        "default": "markdown",
-                        "description": "Report format for notifications.",
+                        "enum": ["email", "slack", "both"],
+                        "default": "email",
+                        "description": "Notification method: email, slack, or both.",
                     },
                 },
                 "required": [],
@@ -1817,9 +1817,9 @@ class MCPHandler:
         """Handle generate_openops_workflow tool invocation."""
         result = await generate_openops_workflow(
             policy_service=self.policy_service,
-            resource_types=arguments.get("resource_types"),
+            resource_types=arguments.get("resource_types") or ["all"],
             remediation_strategy=arguments.get("remediation_strategy", "notify"),
-            threshold=arguments.get("threshold"),
+            threshold=arguments.get("threshold", 0.8),
             target_tags=arguments.get("target_tags"),
             schedule=arguments.get("schedule", "daily"),
             compliance_service=self.compliance_service,
@@ -1834,7 +1834,7 @@ class MCPHandler:
             timezone_str=arguments.get("timezone_str", "UTC"),
             resource_types=arguments.get("resource_types"),
             recipients=arguments.get("recipients"),
-            notification_format=arguments.get("notification_format", "markdown"),
+            notification_format=arguments.get("notification_format", "email"),
         )
         return result.model_dump(mode="json")
 

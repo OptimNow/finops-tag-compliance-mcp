@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import boto3
 from pydantic import BaseModel, Field
 
 from ..clients.aws_client import AWSClient
@@ -218,7 +219,7 @@ async def _list_available_policies(aws_client: AWSClient) -> ImportAwsTagPolicyR
     """
     try:
         organizations_client = await asyncio.to_thread(
-            aws_client.session.client, "organizations"
+            boto3.client, "organizations", region_name=aws_client.region
         )
         response = await asyncio.to_thread(
             organizations_client.list_policies,
@@ -281,7 +282,7 @@ async def _fetch_policy(aws_client: AWSClient, policy_id: str) -> dict:
         Exception: If the API call fails
     """
     organizations_client = await asyncio.to_thread(
-        aws_client.session.client, "organizations"
+        boto3.client, "organizations", region_name=aws_client.region
     )
     response = await asyncio.to_thread(
         organizations_client.describe_policy,

@@ -564,9 +564,9 @@ async def generate_openops_workflow(
 
     result = await _openops(
         policy_service=_container.policy_service,
-        resource_types=resource_types,
+        resource_types=resource_types or ["all"],
         remediation_strategy=remediation_strategy,
-        threshold=threshold,
+        threshold=threshold if threshold is not None else 0.8,
         target_tags=target_tags,
         schedule=schedule,
         compliance_service=_container.compliance_service,
@@ -585,7 +585,7 @@ async def schedule_compliance_audit(
     timezone_str: str = "UTC",
     resource_types: list[str] | None = None,
     recipients: list[str] | None = None,
-    notification_format: str = "markdown",
+    notification_format: str = "email",
 ) -> str:
     """Create a compliance audit schedule configuration.
 
@@ -599,7 +599,7 @@ async def schedule_compliance_audit(
         timezone_str: Timezone (e.g. "UTC", "US/Eastern", "Europe/London")
         resource_types: Resource types to audit. If None, audits all types.
         recipients: Email addresses for notifications
-        notification_format: Report format: "markdown", "json", or "csv"
+        notification_format: Notification method: "email", "slack", or "both"
     """
     _ensure_initialized()
     from .tools import schedule_compliance_audit as _schedule
