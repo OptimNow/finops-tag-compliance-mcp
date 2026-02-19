@@ -492,6 +492,244 @@ async def get_violation_history(
 
 
 # ---------------------------------------------------------------------------
+# Tool 9: generate_custodian_policy
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def generate_custodian_policy(
+    resource_types: list[str] | None = None,
+    violation_types: list[str] | None = None,
+    target_tags: list[str] | None = None,
+    dry_run: bool = True,
+) -> str:
+    """Generate Cloud Custodian YAML policies from the tagging policy.
+
+    Creates enforceable Cloud Custodian policies based on the current tagging
+    policy. Policies can target specific resource types, violation types, and
+    tags. Use dry_run=True (default) to generate notify-only policies.
+
+    Args:
+        resource_types: Resource types to generate policies for (e.g. ["ec2:instance"]).
+            If None, generates for all resource types in the tagging policy.
+        violation_types: Types of violations to enforce: "missing_tag", "invalid_value".
+            If None, enforces all violation types.
+        target_tags: Specific tag names to enforce (e.g. ["Environment", "Owner"]).
+            If None, enforces all required tags from the policy.
+        dry_run: If True (default), generates notify-only policies. If False,
+            generates auto-remediation policies.
+    """
+    _ensure_initialized()
+    from .tools import generate_custodian_policy as _custodian
+
+    result = await _custodian(
+        policy_service=_container.policy_service,
+        resource_types=resource_types,
+        violation_types=violation_types,
+        target_tags=target_tags,
+        dry_run=dry_run,
+        compliance_service=_container.compliance_service,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
+# Tool 10: generate_openops_workflow
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def generate_openops_workflow(
+    resource_types: list[str] | None = None,
+    remediation_strategy: str = "notify",
+    threshold: float | None = None,
+    target_tags: list[str] | None = None,
+    schedule: str = "daily",
+) -> str:
+    """Generate an OpenOps automation workflow for tag remediation.
+
+    Creates an OpenOps-compatible YAML workflow that automates tag compliance
+    enforcement. Supports notification, auto-tagging, and reporting strategies.
+
+    Args:
+        resource_types: Resource types to include (e.g. ["ec2:instance"]).
+            If None, includes all resource types from the policy.
+        remediation_strategy: Strategy to use: "notify" (send alerts),
+            "auto_tag" (apply missing tags), or "report" (generate reports).
+        threshold: Compliance score threshold (0.0-1.0) that triggers the workflow.
+            If None, no threshold filter is applied.
+        target_tags: Specific tag names to target (e.g. ["Environment"]).
+            If None, targets all required tags.
+        schedule: How often to run: "daily", "weekly", or "monthly".
+    """
+    _ensure_initialized()
+    from .tools import generate_openops_workflow as _openops
+
+    result = await _openops(
+        policy_service=_container.policy_service,
+        resource_types=resource_types,
+        remediation_strategy=remediation_strategy,
+        threshold=threshold,
+        target_tags=target_tags,
+        schedule=schedule,
+        compliance_service=_container.compliance_service,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
+# Tool 11: schedule_compliance_audit
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def schedule_compliance_audit(
+    schedule: str = "daily",
+    time: str = "09:00",
+    timezone_str: str = "UTC",
+    resource_types: list[str] | None = None,
+    recipients: list[str] | None = None,
+    notification_format: str = "markdown",
+) -> str:
+    """Create a compliance audit schedule configuration.
+
+    Generates a schedule configuration for recurring compliance audits,
+    including cron expression and next estimated run time. This creates
+    the configuration — actual scheduling requires an external scheduler.
+
+    Args:
+        schedule: Frequency: "daily", "weekly", or "monthly"
+        time: Time of day in HH:MM format (24-hour)
+        timezone_str: Timezone (e.g. "UTC", "US/Eastern", "Europe/London")
+        resource_types: Resource types to audit. If None, audits all types.
+        recipients: Email addresses for notifications
+        notification_format: Report format: "markdown", "json", or "csv"
+    """
+    _ensure_initialized()
+    from .tools import schedule_compliance_audit as _schedule
+
+    result = await _schedule(
+        schedule=schedule,
+        time=time,
+        timezone_str=timezone_str,
+        resource_types=resource_types,
+        recipients=recipients,
+        notification_format=notification_format,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
+# Tool 12: detect_tag_drift
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def detect_tag_drift(
+    resource_types: list[str] | None = None,
+    tag_keys: list[str] | None = None,
+    lookback_days: int = 7,
+) -> str:
+    """Detect unexpected tag changes since the last compliance scan.
+
+    Compares current resource tags against expected state from the tagging
+    policy to identify missing required tags and invalid tag values.
+    Classifies drift by severity: critical (required tag removed),
+    warning (value changed), or info (optional tag changed).
+
+    Args:
+        resource_types: Resource types to check (e.g. ["ec2:instance"]).
+            Default: ["ec2:instance", "s3:bucket", "rds:db"]
+        tag_keys: Specific tag keys to monitor. If None, monitors all
+            required tags from the policy.
+        lookback_days: Number of days to look back for baseline (1-90, default 7)
+    """
+    _ensure_initialized()
+    from .tools import detect_tag_drift as _drift
+
+    result = await _drift(
+        aws_client=_container.aws_client,
+        policy_service=_container.policy_service,
+        resource_types=resource_types,
+        tag_keys=tag_keys,
+        lookback_days=lookback_days,
+        history_service=_container.history_service,
+        compliance_service=_container.compliance_service,
+        multi_region_scanner=_container.multi_region_scanner,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
+# Tool 13: export_violations_csv
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def export_violations_csv(
+    resource_types: list[str] | None = None,
+    severity: str = "all",
+    columns: list[str] | None = None,
+) -> str:
+    """Export compliance violations as CSV data.
+
+    Runs a compliance scan and exports violations in CSV format for
+    spreadsheet analysis, reporting, or integration with other tools.
+
+    Args:
+        resource_types: Resource types to scan (e.g. ["ec2:instance"]).
+            If None, scans all resource types.
+        severity: Filter by severity: "all", "errors_only", or "warnings_only"
+        columns: CSV columns to include. Available: resource_id, resource_type,
+            region, violation_type, tag_name, severity, current_value,
+            allowed_values, cost_impact, arn.
+            Default: resource_id, resource_type, region, violation_type,
+            tag_name, severity.
+    """
+    _ensure_initialized()
+    from .tools import export_violations_csv as _export
+
+    result = await _export(
+        compliance_service=_container.compliance_service,
+        resource_types=resource_types,
+        severity=severity,
+        columns=columns,
+        multi_region_scanner=_container.multi_region_scanner,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
+# Tool 14: import_aws_tag_policy
+# ---------------------------------------------------------------------------
+@mcp.tool()
+async def import_aws_tag_policy(
+    policy_id: str | None = None,
+    save_to_file: bool = True,
+    output_path: str = "policies/tagging_policy.json",
+) -> str:
+    """Import and convert an AWS Organizations tag policy to MCP format.
+
+    Connects to AWS Organizations to retrieve tag policies and converts
+    them to the MCP server's tagging policy format. If no policy_id is
+    provided, lists all available tag policies.
+
+    Args:
+        policy_id: AWS Organizations policy ID (e.g. "p-xxxxxxxx").
+            If None, lists all available tag policies instead of importing.
+        save_to_file: Whether to save the converted policy to a file (default True)
+        output_path: File path to save the converted policy
+            (default "policies/tagging_policy.json")
+    """
+    _ensure_initialized()
+    from .tools import import_aws_tag_policy as _import
+
+    result = await _import(
+        aws_client=_container.aws_client,
+        policy_id=policy_id,
+        save_to_file=save_to_file,
+        output_path=output_path,
+    )
+
+    return json.dumps(result.model_dump(mode="json"), default=str)
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 

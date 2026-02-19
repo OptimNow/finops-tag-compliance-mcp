@@ -618,3 +618,541 @@ tests:
       - type: is-json
       - type: latency
         threshold: 5000  # Should complete in under 5 seconds
+
+  # ===========================================================================
+  # Tool 9: generate_custodian_policy
+  # ===========================================================================
+
+  # 9.1 - Basic Custodian policy generation with specific resource types
+  - description: "generate_custodian_policy - specific resource types"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.policies)
+            && typeof data.total_policies === 'number'
+            && data.total_policies >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.combined_yaml === 'string';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.resource_types_covered)
+            && Array.isArray(data.target_tags);
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.dry_run === 'boolean';
+
+  # 9.2 - Custodian policy structure for individual policies
+  - description: "generate_custodian_policy - policy structure"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.policies.length > 0) {
+            const p = data.policies[0];
+            return p.name !== undefined
+              && p.resource_type !== undefined
+              && p.yaml_content !== undefined
+              && p.description !== undefined
+              && typeof p.filter_count === 'number'
+              && p.action_type !== undefined;
+          }
+          return true;
+
+  # 9.3 - Custodian policy dry_run mode produces notify actions
+  - description: "generate_custodian_policy - dry_run=true produces notify"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": ["ec2:instance"], "dry_run": true}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // dry_run should be true and policies should have notify action_type
+          if (data.policies.length > 0) {
+            return data.dry_run === true
+              && data.policies.every(p => p.action_type === 'notify');
+          }
+          return data.dry_run === true;
+
+  # 9.4 - Custodian policy total_policies matches policies array length
+  - description: "generate_custodian_policy - total_policies consistent"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": ["ec2:instance", "rds:db"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_policies === data.policies.length;
+
+  # ===========================================================================
+  # Tool 10: generate_openops_workflow
+  # ===========================================================================
+
+  # 10.1 - Basic OpenOps workflow generation
+  - description: "generate_openops_workflow - basic notify strategy"
+    vars:
+      tool_call: |
+        {"name": "generate_openops_workflow", "arguments": {"resource_types": ["ec2:instance"], "remediation_strategy": "notify"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.workflow_name !== undefined
+            && typeof data.workflow_name === 'string'
+            && data.workflow_name.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.yaml_content === 'string'
+            && data.yaml_content.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.remediation_strategy === 'notify';
+
+  # 10.2 - OpenOps workflow step structure
+  - description: "generate_openops_workflow - step structure"
+    vars:
+      tool_call: |
+        {"name": "generate_openops_workflow", "arguments": {"resource_types": ["ec2:instance"], "remediation_strategy": "report"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.steps)
+            && typeof data.step_count === 'number'
+            && data.step_count >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.steps.length > 0) {
+            const s = data.steps[0];
+            return s.name !== undefined
+              && s.action !== undefined;
+          }
+          return true;
+
+  # 10.3 - OpenOps workflow step_count matches steps array
+  - description: "generate_openops_workflow - step_count consistent"
+    vars:
+      tool_call: |
+        {"name": "generate_openops_workflow", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.step_count === data.steps.length;
+
+  # 10.4 - OpenOps workflow has resource_types in response
+  - description: "generate_openops_workflow - resource_types in response"
+    vars:
+      tool_call: |
+        {"name": "generate_openops_workflow", "arguments": {"resource_types": ["ec2:instance", "rds:db"], "remediation_strategy": "auto_tag"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.resource_types)
+            && data.resource_types.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.description !== undefined
+            && typeof data.description === 'string';
+
+  # ===========================================================================
+  # Tool 11: schedule_compliance_audit
+  # ===========================================================================
+
+  # 11.1 - Basic daily schedule creation
+  - description: "schedule_compliance_audit - daily schedule"
+    vars:
+      tool_call: |
+        {"name": "schedule_compliance_audit", "arguments": {"schedule": "daily", "time": "09:00"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.schedule_id !== undefined
+            && typeof data.schedule_id === 'string'
+            && data.schedule_id.startsWith('audit-sched-');
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.status === 'created';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.schedule_type === 'daily'
+            && data.time === '09:00';
+
+  # 11.2 - Schedule with full parameters
+  - description: "schedule_compliance_audit - full parameters"
+    vars:
+      tool_call: |
+        {"name": "schedule_compliance_audit", "arguments": {"schedule": "weekly", "time": "14:30", "timezone_str": "US/Eastern", "resource_types": ["ec2:instance"], "recipients": ["admin@example.com"], "notification_format": "markdown"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.schedule_type === 'weekly'
+            && data.time === '14:30'
+            && data.timezone === 'US/Eastern';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.cron_expression !== undefined
+            && typeof data.cron_expression === 'string'
+            && data.cron_expression.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.next_run !== undefined
+            && typeof data.next_run === 'string'
+            && data.next_run.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.message !== undefined
+            && typeof data.message === 'string';
+
+  # 11.3 - Schedule has correct cron format for monthly
+  - description: "schedule_compliance_audit - monthly cron expression"
+    vars:
+      tool_call: |
+        {"name": "schedule_compliance_audit", "arguments": {"schedule": "monthly", "time": "08:00"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // Monthly cron: "0 8 1 * *" (minute hour day-of-month * *)
+          return data.schedule_type === 'monthly'
+            && data.cron_expression !== undefined
+            && data.cron_expression.includes('1 *');
+
+  # ===========================================================================
+  # Tool 12: detect_tag_drift
+  # ===========================================================================
+
+  # 12.1 - Basic drift detection with defaults
+  - description: "detect_tag_drift - basic detection"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.drift_detected)
+            && typeof data.total_drifts === 'number'
+            && data.total_drifts >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.resources_analyzed === 'number'
+            && data.resources_analyzed >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.lookback_days === 'number'
+            && data.lookback_days >= 1
+            && data.lookback_days <= 90;
+
+  # 12.2 - Drift detection with specific resource types
+  - description: "detect_tag_drift - specific resource types"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {"resource_types": ["ec2:instance"], "lookback_days": 14}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.lookback_days === 14;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.scan_timestamp !== undefined;
+
+  # 12.3 - Drift detection summary structure
+  - description: "detect_tag_drift - summary structure"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // summary should have added, removed, changed counts
+          return typeof data.summary === 'object'
+            && typeof data.summary.added === 'number'
+            && typeof data.summary.removed === 'number'
+            && typeof data.summary.changed === 'number';
+
+  # 12.4 - Drift detection total_drifts matches drift_detected length
+  - description: "detect_tag_drift - total_drifts consistent"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.total_drifts === data.drift_detected.length;
+
+  # 12.5 - Drift entry structure
+  - description: "detect_tag_drift - drift entry structure"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {"resource_types": ["ec2:instance", "s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          if (data.drift_detected.length > 0) {
+            const d = data.drift_detected[0];
+            return d.resource_arn !== undefined
+              && d.resource_id !== undefined
+              && d.resource_type !== undefined
+              && d.tag_key !== undefined
+              && d.drift_type !== undefined
+              && ['added', 'removed', 'changed'].includes(d.drift_type)
+              && d.severity !== undefined
+              && ['critical', 'warning', 'info'].includes(d.severity);
+          }
+          // No drifts detected is acceptable
+          return true;
+
+  # ===========================================================================
+  # Tool 13: export_violations_csv
+  # ===========================================================================
+
+  # 13.1 - Basic CSV export with defaults
+  - description: "export_violations_csv - basic export"
+    vars:
+      tool_call: |
+        {"name": "export_violations_csv", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.csv_data !== undefined
+            && typeof data.csv_data === 'string';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.row_count === 'number'
+            && data.row_count >= 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.column_count === 'number'
+            && data.column_count > 0;
+
+  # 13.2 - CSV export has expected metadata fields
+  - description: "export_violations_csv - metadata fields"
+    vars:
+      tool_call: |
+        {"name": "export_violations_csv", "arguments": {"resource_types": ["s3:bucket"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return Array.isArray(data.columns)
+            && data.columns.length > 0;
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.format === 'csv';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return typeof data.filters_applied === 'object';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.export_timestamp !== undefined;
+
+  # 13.3 - CSV data contains header row matching columns
+  - description: "export_violations_csv - CSV header matches columns"
+    vars:
+      tool_call: |
+        {"name": "export_violations_csv", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // CSV header line should contain the column names
+          if (data.csv_data && data.csv_data.length > 0) {
+            const headerLine = data.csv_data.split('\n')[0];
+            // Check that at least some expected columns appear in the header
+            return data.columns.every(col => headerLine.includes(col));
+          }
+          return true;
+
+  # 13.4 - CSV export column_count matches columns array length
+  - description: "export_violations_csv - column_count consistent"
+    vars:
+      tool_call: |
+        {"name": "export_violations_csv", "arguments": {"resource_types": ["ec2:instance"], "severity": "errors_only"}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.column_count === data.columns.length;
+
+  # ===========================================================================
+  # Tool 14: import_aws_tag_policy
+  # ===========================================================================
+
+  # 14.1 - List available policies (no policy_id)
+  - description: "import_aws_tag_policy - list policies"
+    vars:
+      tool_call: |
+        {"name": "import_aws_tag_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // Should return a status field
+          return data.status !== undefined
+            && typeof data.status === 'string';
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // status should be 'listed' or 'error' (depending on AWS Organizations access)
+          return ['listed', 'error'].includes(data.status);
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.message !== undefined
+            && typeof data.message === 'string'
+            && data.message.length > 0;
+
+  # 14.2 - Response has conversion_timestamp
+  - description: "import_aws_tag_policy - has timestamp"
+    vars:
+      tool_call: |
+        {"name": "import_aws_tag_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          return data.conversion_timestamp !== undefined;
+
+  # 14.3 - When listing, available_policies is present (or error status)
+  - description: "import_aws_tag_policy - list structure"
+    vars:
+      tool_call: |
+        {"name": "import_aws_tag_policy", "arguments": {}}
+    assert:
+      - type: is-json
+      - type: javascript
+        value: |
+          const data = JSON.parse(output);
+          // If status is 'listed', available_policies should be an array
+          if (data.status === 'listed') {
+            return Array.isArray(data.available_policies);
+          }
+          // If status is 'error', message should explain the issue
+          if (data.status === 'error') {
+            return data.message.length > 0;
+          }
+          return true;
+
+  # 14.4 - Import with invalid policy_id returns error gracefully
+  - description: "import_aws_tag_policy - invalid policy_id"
+    vars:
+      tool_call: |
+        {"name": "import_aws_tag_policy", "arguments": {"policy_id": "p-invalid-does-not-exist"}}
+    assert:
+      - type: is-json
+        # Should return a response (error or exception) not crash
+
+  # ===========================================================================
+  # Phase 2 error handling & edge cases
+  # ===========================================================================
+
+  # E2.1 - Custodian policy with empty resource_types handled gracefully
+  - description: "error - generate_custodian_policy empty resource_types"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": []}}
+    assert:
+      - type: is-json
+        # Should handle gracefully (error or empty results)
+
+  # E2.2 - Invalid lookback_days for detect_tag_drift
+  - description: "error - detect_tag_drift invalid lookback_days"
+    vars:
+      tool_call: |
+        {"name": "detect_tag_drift", "arguments": {"lookback_days": 999}}
+    assert:
+      - type: is-json
+        # Should return validation error
+
+  # E2.3 - Invalid schedule type for schedule_compliance_audit
+  - description: "error - schedule_compliance_audit invalid schedule"
+    vars:
+      tool_call: |
+        {"name": "schedule_compliance_audit", "arguments": {"schedule": "hourly"}}
+    assert:
+      - type: is-json
+        # Should return validation error
+
+  # ===========================================================================
+  # Phase 2 performance checks
+  # ===========================================================================
+
+  # P2.1 - Schedule creation should be fast (no AWS calls)
+  - description: "performance - schedule_compliance_audit is fast"
+    vars:
+      tool_call: |
+        {"name": "schedule_compliance_audit", "arguments": {"schedule": "daily"}}
+    assert:
+      - type: is-json
+      - type: latency
+        threshold: 5000  # Should complete in under 5 seconds
+
+  # P2.2 - Custodian policy generation should be fast (no AWS calls, policy only)
+  - description: "performance - generate_custodian_policy is fast"
+    vars:
+      tool_call: |
+        {"name": "generate_custodian_policy", "arguments": {"resource_types": ["ec2:instance"]}}
+    assert:
+      - type: is-json
+      - type: latency
+        threshold: 10000  # Should complete in under 10 seconds
