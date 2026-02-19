@@ -1,15 +1,18 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: |
-  Tagging MCP Server - Production Security Infrastructure
+  Tagging MCP Server - Production Infrastructure (ECS Fargate)
 
   This template deploys the MCP server with production-grade security:
   - VPC with public/private subnets
   - Application Load Balancer with TLS termination
-  - EC2 in private subnet (no public IP)
-  - VPC endpoints for AWS APIs
+  - ECS Fargate in private subnets (MCP server + Redis sidecar)
+  - EFS for SQLite persistence across task restarts
+  - ECR for Docker image storage
+  - VPC endpoints for AWS APIs, ECR, and ECS Exec
   - API key authentication via Secrets Manager
   - CloudWatch alarms for security monitoring
-  - Optional S3 bucket for tagging policy configuration
+  - Auto-scaling (1-4 tasks based on CPU)
+  - EC2 instance retained as fallback (to be removed after stable migration)
 
   Requirements: 18.1-18.6, 19.6, 21.1-21.5, 23.2, 23.5
 
@@ -475,7 +478,7 @@ Resources:
       SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
       DefaultActions:
         - Type: forward
-          TargetGroupArn: !Ref MCPTargetGroup
+          TargetGroupArn: !Ref MCPTargetGroupFargate
 
   # Target Group
   MCPTargetGroup:
@@ -533,7 +536,9 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: ec2.amazonaws.com
+              Service:
+                - ec2.amazonaws.com
+                - ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
@@ -698,6 +703,407 @@ Resources:
           Value: !Ref Environment
 
   # ==========================================================================
+  # ECR Repository (Phase 2.5)
+  # ==========================================================================
+
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub '${ProjectName}-${Environment}'
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Keep last 10 images",
+                "selection": {
+                  "tagStatus": "any",
+                  "countType": "imageCountMoreThan",
+                  "countNumber": 10
+                },
+                "action": {
+                  "type": "expire"
+                }
+              }
+            ]
+          }
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================================================
+  # EFS for SQLite Persistence (Phase 2.5)
+  # ==========================================================================
+
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
+    Properties:
+      Encrypted: true
+      PerformanceMode: generalPurpose
+      ThroughputMode: bursting
+      FileSystemTags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-efs-${Environment}'
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  EFSMountTarget1:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Ref PrivateSubnet1
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+  EFSMountTarget2:
+    Type: AWS::EFS::MountTarget
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      SubnetId: !Ref PrivateSubnet2
+      SecurityGroups:
+        - !Ref EFSSecurityGroup
+
+  EFSAccessPoint:
+    Type: AWS::EFS::AccessPoint
+    Properties:
+      FileSystemId: !Ref EFSFileSystem
+      PosixUser:
+        Uid: '0'
+        Gid: '0'
+      RootDirectory:
+        Path: /mcp-data
+        CreationInfo:
+          OwnerUid: '0'
+          OwnerGid: '0'
+          Permissions: '755'
+      AccessPointTags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-efs-ap-${Environment}'
+
+  # EFS Security Group
+  EFSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for EFS mount targets
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 2049
+          ToPort: 2049
+          SourceSecurityGroupId: !Ref MCPServerSecurityGroup
+          Description: NFS from MCP Server (ECS tasks)
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-efs-sg-${Environment}'
+
+  # Allow MCP Server SG to reach EFS
+  MCPServerEgressToEFS:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref MCPServerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      DestinationSecurityGroupId: !Ref EFSSecurityGroup
+      Description: NFS to EFS mount targets
+
+  # ==========================================================================
+  # ECS Cluster, Task Definition, and Service (Phase 2.5)
+  # ==========================================================================
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-ecs-exec-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource: !Ref APIKeySecret
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${ProjectName}-cluster-${Environment}'
+      ClusterSettings:
+        - Name: containerInsights
+          Value: enabled
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${ProjectName}-task-${Environment}'
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      ExecutionRoleArn: !GetAtt ECSTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt MCPServerRole.Arn
+      Volumes:
+        - Name: efs-data
+          EFSVolumeConfiguration:
+            FilesystemId: !Ref EFSFileSystem
+            TransitEncryption: ENABLED
+            AuthorizationConfig:
+              AccessPointId: !Ref EFSAccessPoint
+              IAM: DISABLED
+      ContainerDefinitions:
+        # Redis sidecar container
+        - Name: redis
+          Image: redis:7-alpine
+          Essential: true
+          PortMappings:
+            - ContainerPort: 6379
+              Protocol: tcp
+          Command:
+            - redis-server
+            - --appendonly
+            - 'yes'
+            - --dir
+            - /data
+          MountPoints:
+            - SourceVolume: efs-data
+              ContainerPath: /data
+              ReadOnly: false
+          HealthCheck:
+            Command:
+              - CMD-SHELL
+              - redis-cli ping | grep -q PONG
+            Interval: 10
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 10
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MCPServerLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: redis
+          Memory: 128
+
+        # MCP Server container
+        - Name: mcp-server
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRRepository}:latest'
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          DependsOn:
+            - ContainerName: redis
+              Condition: HEALTHY
+          MountPoints:
+            - SourceVolume: efs-data
+              ContainerPath: /mnt/efs
+              ReadOnly: false
+          Environment:
+            - Name: REDIS_URL
+              Value: redis://localhost:6379/0
+            - Name: AUDIT_DB_PATH
+              Value: /mnt/efs/audit_logs.db
+            - Name: HISTORY_DB_PATH
+              Value: /mnt/efs/compliance_history.db
+            - Name: POLICY_PATH
+              Value: policies/tagging_policy.json
+            - Name: AUTH_ENABLED
+              Value: 'true'
+            - Name: CORS_ALLOWED_ORIGINS
+              Value: !Ref CORSAllowedOrigins
+            - Name: TLS_ENABLED
+              Value: 'false'
+            - Name: CLOUDWATCH_ENABLED
+              Value: 'true'
+            - Name: CLOUDWATCH_LOG_GROUP
+              Value: !Sub '/mcp-tagging/${Environment}'
+            - Name: AWS_REGION
+              Value: !Ref 'AWS::Region'
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+            - Name: SCHEDULER_ENABLED
+              Value: 'false'
+            - Name: LOG_LEVEL
+              Value: INFO
+          Secrets:
+            - Name: API_KEYS
+              ValueFrom: !Sub '${APIKeySecret}:primary_key::'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MCPServerLogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: mcp-server
+          Memory: 896
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Fargate Target Group (ip type - required for awsvpc network mode)
+  MCPTargetGroupFargate:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${ProjectName}-tg-ecs-${Environment}'
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: '200'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-tg-ecs-${Environment}'
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  ECSService:
+    Type: AWS::ECS::Service
+    DependsOn:
+      - HTTPSListener
+      - EFSMountTarget1
+      - EFSMountTarget2
+    Properties:
+      ServiceName: !Sub '${ProjectName}-service-${Environment}'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref ECSTaskDefinition
+      DesiredCount: 1
+      LaunchType: FARGATE
+      EnableExecuteCommand: true
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+          SecurityGroups:
+            - !Ref MCPServerSecurityGroup
+      LoadBalancers:
+        - ContainerName: mcp-server
+          ContainerPort: 8080
+          TargetGroupArn: !Ref MCPTargetGroupFargate
+      HealthCheckGracePeriodSeconds: 120
+      Tags:
+        - Key: Application
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ==========================================================================
+  # ECS Auto-Scaling (Phase 2.5)
+  # ==========================================================================
+
+  ECSAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: 4
+      MinCapacity: 1
+      ResourceId: !Sub 'service/${ECSCluster}/${ECSService.Name}'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  ECSAutoScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${ProjectName}-cpu-scaling-${Environment}'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref ECSAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: 70.0
+        ScaleOutCooldown: 60
+        ScaleInCooldown: 300
+
+  # ==========================================================================
+  # Additional VPC Endpoints for ECS (Phase 2.5)
+  # ==========================================================================
+
+  # ECR API endpoint (for docker login)
+  ECRApiVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.api'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ECR DKR endpoint (for docker pull)
+  ECRDkrVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ecr.dkr'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # SSM Messages endpoint (for ECS Exec debugging)
+  SSMMessagesVPCEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VPC
+      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ssmmessages'
+      VpcEndpointType: Interface
+      SubnetIds:
+        - !Ref PrivateSubnet1
+        - !Ref PrivateSubnet2
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+      PrivateDnsEnabled: true
+
+  # ==========================================================================
   # CloudWatch Logging
   # ==========================================================================
 
@@ -857,3 +1263,28 @@ Outputs:
     Value: !GetAtt PolicyConfigBucket.Arn
     Export:
       Name: !Sub '${AWS::StackName}-PolicyBucketArn'
+
+  # ECS Fargate Outputs (Phase 2.5)
+  ECSClusterName:
+    Description: ECS Cluster name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSClusterName'
+
+  ECSServiceName:
+    Description: ECS Service name
+    Value: !GetAtt ECSService.Name
+    Export:
+      Name: !Sub '${AWS::StackName}-ECSServiceName'
+
+  ECRRepositoryUri:
+    Description: ECR Repository URI
+    Value: !GetAtt ECRRepository.RepositoryUri
+    Export:
+      Name: !Sub '${AWS::StackName}-ECRRepositoryUri'
+
+  EFSFileSystemId:
+    Description: EFS File System ID
+    Value: !Ref EFSFileSystem
+    Export:
+      Name: !Sub '${AWS::StackName}-EFSFileSystemId'

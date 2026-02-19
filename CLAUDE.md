@@ -14,6 +14,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 | Type check | `mypy mcp_server/` |
 | Test with MCP Inspector | `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server` |
 | Run regression tests (promptfoo) | `cd tests/regression && npx promptfoo@latest eval` |
+| Deploy to ECS Fargate | `./scripts/deploy_ecs.sh` |
+| Deploy (image only) | `./scripts/deploy_ecs.sh --deploy-only` |
 
 **Critical Files:**
 - `mcp_server/stdio_server.py` - MCP entry point (Claude Desktop)
@@ -27,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
 
-**Phase**: Phase 1 + 1.9 Complete ✅ — Phase 2 starting (6 new tools + ECS Fargate)
+**Phase**: Phase 2.5 Complete ✅ — ECS Fargate deployment live at https://mcp.optimnow.io
 **Refactoring**: Deferred to Phase 3 (see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
 
 ## Development Commands
@@ -775,7 +777,64 @@ The IAM role/user needs read-only permissions (see `docs/IAM_PERMISSIONS.md`):
 
 **No write permissions required** for Phase 1.
 
-## Docker Deployment
+## Production Deployment (ECS Fargate)
+
+The production deployment runs on ECS Fargate behind an ALB at `https://mcp.optimnow.io`.
+
+**Architecture:**
+- **ECS Cluster**: `mcp-tagging-cluster-prod` (Fargate, Container Insights)
+- **Task Definition**: 512 CPU / 1024 MB, two containers:
+  - `mcp-server`: Application container from ECR, port 8080
+  - `redis`: Redis 7 Alpine sidecar, port 6379 (localhost)
+- **EFS**: Persistent storage for SQLite databases (`/mnt/efs`)
+- **ECR**: `382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod`
+- **ALB**: TLS termination with ACM certificate, IP-type target group
+- **Auto-scaling**: 1-4 tasks, CPU target 70%
+- **CloudFormation stack**: `mcp-tagging-prod` (all infrastructure as code)
+
+**Deploy new code:**
+```bash
+# Full build + push + deploy
+./scripts/deploy_ecs.sh
+
+# Just force a new deployment (e.g., after config change)
+./scripts/deploy_ecs.sh --deploy-only
+
+# Build on EC2 and push (when Docker Desktop isn't available locally)
+# SSH/SSM to EC2 i-013d9e55b30e1b804, then:
+cd /opt/tagging-mcp
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 382598791951.dkr.ecr.us-east-1.amazonaws.com
+docker build -t mcp-tagging-prod .
+docker tag mcp-tagging-prod:latest 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
+docker push 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
+aws ecs update-service --cluster mcp-tagging-cluster-prod --service mcp-tagging-service-prod --force-new-deployment --region us-east-1
+```
+
+**ECS Exec (debugging):**
+```bash
+# Get running task ID
+TASK_ID=$(aws ecs list-tasks --cluster mcp-tagging-cluster-prod --service mcp-tagging-service-prod --query 'taskArns[0]' --output text --region us-east-1)
+
+# Shell into MCP server container
+aws ecs execute-command --cluster mcp-tagging-cluster-prod --task $TASK_ID --container mcp-server --interactive --command "/bin/sh" --region us-east-1
+
+# Shell into Redis sidecar
+aws ecs execute-command --cluster mcp-tagging-cluster-prod --task $TASK_ID --container redis --interactive --command "/bin/sh" --region us-east-1
+```
+
+**Key ECS Environment Variables** (set in CloudFormation task definition):
+- `REDIS_URL=redis://localhost:6379/0` (sidecar)
+- `AUDIT_DB_PATH=/mnt/efs/audit_logs.db` (EFS)
+- `HISTORY_DB_PATH=/mnt/efs/compliance_history.db` (EFS)
+- `AUTH_ENABLED=true`
+- `SCHEDULER_ENABLED=false` (avoid duplicate cron with multiple tasks)
+- `API_KEYS` — injected from Secrets Manager
+
+**EC2 Fallback**: Instance `i-013d9e55b30e1b804` is retained. To revert to EC2:
+1. Update `infrastructure/cloudformation-production.yaml`: change `HTTPSListener` DefaultAction back to `!Ref MCPTargetGroup`
+2. Deploy the CloudFormation update
+
+## Docker Local Development
 
 The `docker-compose.yml` includes:
 - Redis service (port 6379)
@@ -851,7 +910,8 @@ Phase 1.9 separates core business logic from the MCP/HTTP transport layer. See [
 - `mcp_server/services/region_discovery.py` - AWS region discovery service
 - `mcp_server/clients/aws_client.py` - AWS API wrapper
 - `mcp_server/clients/regional_client_factory.py` - Regional client creation and caching
-- `infrastructure/cloudformation-production.yaml` - Production CloudFormation template
+- `infrastructure/cloudformation-production.yaml` - Production CloudFormation template (VPC + ALB + ECS Fargate + EFS + ECR)
+- `scripts/deploy_ecs.sh` - ECS Fargate deployment script (build → push → deploy)
 - `docs/TOOL_LOGIC_REFERENCE.md` - Detailed logic for each tool
 - `docs/TESTING_QUICK_START.md` - Testing guide
 - `docs/SECURITY_CONFIGURATION.md` - Production security configuration guide
@@ -909,6 +969,13 @@ Development mistakes encountered during this project. **Claude must check this s
 - **Python 3.10: `datetime.UTC` doesn't exist**: Use `from datetime import timezone` and `timezone.utc` instead. `datetime.UTC` is Python 3.11+ only.
 - **Docker buildx 0.17+ required for compose build**: On older EC2 instances, use `docker build -t image-name .` directly instead of `docker-compose build`.
 - **AI agents wrap single values in arrays**: Claude sometimes sends `severity: ["errors_only"]` instead of `"errors_only"`. Add auto-unwrapping for single-element string arrays in input validation.
+
+### Handler Defaults Must Match Function Validation
+
+- **Handler defaults must match tool function's valid set**: `schedule_compliance_audit` handler defaulted `notification_format` to `"markdown"` but the function only accepts `{"email", "slack", "both"}`. Always verify handler defaults against the function's validation logic. (`mcp_server/mcp_handler.py`, `mcp_server/stdio_server.py`)
+- **Schema enums must match function validation**: The MCP schema for `schedule_compliance_audit` had `enum: ["markdown", "json", "csv"]` but the function validates against `{"email", "slack", "both"}`. Keep schemas and function validation in sync.
+- **Handler must supply defaults when function params are required**: `generate_openops_workflow` defines `resource_types: list[str]` (required) but the handler passes `arguments.get("resource_types")` which is `None` when omitted. Use `arguments.get("resource_types") or ["all"]` in the handler.
+- **Don't use `aws_client.session`**: `AWSClient` doesn't expose a boto3 `Session` object. Use `boto3.client("service", region_name=aws_client.region)` to create ad-hoc clients for services not pre-initialized in AWSClient. (`mcp_server/tools/import_aws_tag_policy.py`)
 
 ### Documentation
 
