@@ -33,7 +33,7 @@ The viewer should think: *"I need this before my next budget review."*
 
 | Visual | Voiceover |
 |--------|-----------|
-| Text overlay on dark background: **"63% of my cloud budget can't be attributed to anyone."** | *"If I can't attribute a cost to a team, I can't optimize it, I can't justify it. And when the CFO asks for answers, I'm the one holding the bag."* |
+| Text overlay on dark background: **"63% of my cloud budget can't be attributed to anyone."** | *"If I can't attribute a cost to a team, I can't optimise it, I can't justify it. And when finance asks for answers, I'm the one who can't explain the spend."* |
 
 **Purpose**: Emotional hook. The viewer recognizes themselves in the situation. This is about political exposure, not dashboards.
 
@@ -43,7 +43,7 @@ The viewer should think: *"I need this before my next budget review."*
 
 | Visual | Voiceover |
 |--------|-----------|
-| Screen: Claude Desktop chat interface. User types the prompt below. Agent responds with real data. | *"One question. In return: 21% compliance, 107 violations, $45 of unattributed spend out of $71. Not a dashboard nobody looks at. A direct answer, with proof."* |
+| Screen: Claude Desktop chat interface. User types the prompt below. Agent responds with real data. | *"One question. In return: 21% compliance, 107 violations, $45 of unattributed spend out of $71. Not another dashboard. A straight answer, with the data behind it."* |
 
 **Prompt shown on screen:**
 
@@ -74,7 +74,7 @@ What's my current tag compliance and cost attribution gap?
 
 | Visual | Voiceover |
 |--------|-----------|
-| Same chat. User types the second prompt. Agent produces a structured remediation plan + a Cloud Custodian policy. | *"One more sentence, and I have a prioritized action plan AND an auto-remediation script ready to deploy. This isn't an insight. It's a decision that executes itself."* |
+| Same chat. User types the second prompt. Agent produces a structured remediation plan + a Cloud Custodian policy. | *"One more sentence, and I have a prioritised action plan and an auto-remediation script ready to deploy. This isn't just a report. It's a plan I can act on straight away."* |
 
 **Prompt shown on screen:**
 
@@ -129,7 +129,7 @@ policies:
 
 | Visual | Voiceover |
 |--------|-----------|
-| Text overlay: **"From visibility to action. In 2 questions."** | *"The problem with FinOps isn't visibility. It's action. And acting with proof, before someone else asks the question."* |
+| Text overlay: **"From visibility to action. In 2 questions."** | *"The problem with FinOps isn't visibility. It's acting on it. Having the data ready before you're asked for it."* |
 
 ---
 
@@ -147,7 +147,7 @@ In 2 questions to a FinOps agent:
 → Prioritized action plan + Cloud Custodian script ready to deploy
 
 This isn't another dashboard.
-It's a decision that executes itself.
+It's a plan you can act on immediately.
 
 #FinOps #CloudGovernance #AWS #CostOptimization #CloudCustodian
 ```
