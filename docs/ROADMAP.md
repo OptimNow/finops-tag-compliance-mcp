@@ -178,18 +178,20 @@ Phase 1 shipped as a monolithic FastAPI HTTP server where business logic was cou
 ✅ **Enhanced MCP Server** (14 total tools)
 - 6 new tools: remediation script generation, drift detection, scheduling, CSV export, AWS policy import
 - Improved caching and performance
-- OAuth 2.0 + PKCE authentication
+- API key authentication via Secrets Manager (OAuth 2.0 deferred to Phase 3)
 - **Agent Safety Enhancements** - Intent disambiguation, cost thresholds, dry run mode
 - **Automated Daily Compliance Snapshots** - Server-side scheduled scans for consistent trend tracking
 
-✅ **Production Infrastructure**
-- ECS Fargate deployment (2+ tasks)
-- Application Load Balancer
-- Amazon ElastiCache (Redis)
-- Amazon RDS (PostgreSQL for audit logs)
-- AWS Secrets Manager integration
-- CloudWatch monitoring and alarms
-- Auto-scaling policies
+✅ **Production Infrastructure** (actual — see design decisions below)
+- ECS Fargate deployment (1 task, auto-scaling 1-4)
+- Application Load Balancer with TLS (ACM certificate)
+- Redis 7 sidecar container (localhost:6379, not ElastiCache)
+- SQLite on EFS (not RDS PostgreSQL) for audit logs and compliance history
+- AWS Secrets Manager integration (API keys)
+- ECR private container registry
+- CloudWatch Container Insights
+- Auto-scaling policies (CPU target 70%)
+- VPC endpoints for private AWS API access
 
 ✅ **Enterprise Features**
 - Scheduled compliance audits
@@ -384,22 +386,37 @@ scheduled_compliance:
 - Daily snapshots (Phase 2.4) benefit most from persistent infrastructure
 - Deploying a stable, feature-complete application minimizes deployment iterations
 
-**Deliverables**:
-- ECS Fargate deployment (2+ tasks, auto-scaling)
-- Application Load Balancer with TLS
-- Amazon ElastiCache (Redis) replacing local Redis
-- Amazon RDS (PostgreSQL) replacing SQLite for audit logs and history
-- AWS Secrets Manager for API keys and configuration
-- CloudWatch monitoring, alarms, and dashboards
-- CI/CD pipeline for automated deployments
-- OAuth 2.0 + PKCE authentication (replacing API key auth)
+**Deliverables** (actual):
+- ✅ ECS Fargate deployment (1 task, auto-scaling 1-4)
+- ✅ Application Load Balancer with TLS (ACM certificate)
+- ✅ Redis 7 sidecar container (replaces standalone Redis on EC2)
+- ✅ SQLite on EFS persistent storage (kept SQLite, added durability)
+- ✅ AWS Secrets Manager for API key injection
+- ✅ ECR private container registry with lifecycle policy
+- ✅ ECS Exec for production debugging
+- ✅ Auto-import of AWS Organizations tag policy on startup
+- ✅ Manual deploy script (`scripts/deploy_ecs.sh`)
+- ❌ CI/CD pipeline (deferred — manual deploy script sufficient for current scale)
+- ❌ OAuth 2.0 + PKCE (deferred — API key auth via Secrets Manager is sufficient)
+- ❌ ElastiCache / RDS (deferred — Redis sidecar + SQLite on EFS is simpler and cheaper)
+
+**Design Decisions**:
+| Decision | Actual | Rationale |
+|----------|--------|-----------|
+| Redis | Sidecar (not ElastiCache) | Free, localhost, no VPC endpoint needed |
+| Database | SQLite on EFS (not RDS) | ~$0/month vs ~$15/month, sufficient for KB of data |
+| Auth | API keys (not OAuth) | Pragmatic for single-tenant, <5 users |
+| Tasks | 1 (not 2+) | Validate stability first, scale when needed |
+| Deploy | Manual script (not CI/CD) | `deploy_ecs.sh` is sufficient for weekly deploys |
 
 **Success Metrics**:
-- 99.9% uptime SLA achieved
-- <1 second response time for cached compliance checks
-- Zero-downtime deployments via blue/green ECS strategy
-- All secrets managed via Secrets Manager (no env vars)
-- All 14 tools functional in production environment
+- Production live at `https://mcp.optimnow.io`
+- All 14 tools functional
+- <5 second response time for most tools, <30s for full multi-region scan
+- Secrets managed via Secrets Manager (API keys injected at runtime)
+- Auto-scaling configured (1-4 tasks)
+- ECS circuit breaker with rollback enabled
+- Legacy EC2 resources removed from CloudFormation
 
 ### 🧪 UAT 2: Production Validation (Day 7)
 
@@ -408,20 +425,13 @@ scheduled_compliance:
 **Owner**: User (FinOps Engineer)
 
 **Scope**:
-- Deploy to ECS Fargate (CloudFormation/CDK stack)
-- **Same-results test**: Re-run the exact same tool queries from UAT 1 on production
-- **Infrastructure validation**: Verify ElastiCache (Redis), RDS (PostgreSQL), OAuth 2.0, ALB all functioning
-- **Performance check**: Confirm <1 second response time for cached queries
-- **Regression check (automated)**: Run `python run_tests.py` against production endpoint
+- Deploy to ECS Fargate via CloudFormation stack update
+- All 14 tools tested against `https://mcp.optimnow.io`
+- Infrastructure validated: Redis sidecar, SQLite on EFS, API key auth, ALB all functioning
+- Performance: <5s for most tools, <30s for full multi-region scan
+- Auto-import from AWS Organizations tag policy confirmed working
 
-**Pass Criteria**:
-- ✅ All 14 tools return same results as UAT 1 (same inputs → same outputs)
-- ✅ OAuth authentication flow works end-to-end
-- ✅ Data persists in RDS (audit logs, compliance history)
-- ✅ Cache hits via ElastiCache (second query faster than first)
-- ✅ Health endpoint reports all services healthy
-
-**If FAIL**: Roll back to EC2, Claude fixes issues, redeploy
+See [PHASE_2_UAT_PROTOCOL.md](./PHASE_2_UAT_PROTOCOL.md) for detailed test protocol.
 
 ### Phase 2.6: Multi-Tenant Cross-Account Client Deployment (~8-12 days)
 
@@ -737,29 +747,33 @@ See [PHASE-3-SPECIFICATION.md](./PHASE-3-SPECIFICATION.md)
 
 **Cost**: ~$40/month
 
-### Phase 2: ECS Fargate
+### Phase 2: ECS Fargate (Actual)
 ```
 ┌──────────────────────────────────────┐
-│ Application Load Balancer            │
-└────────┬──────────────┬──────────────┘
-         │              │
-┌────────▼────┐    ┌────▼────┐
-│ ECS Task 1  │    │ECS Task 2│
-└────────┬────┘    └────┬─────┘
-         │              │
-    ┌────▼──────────────▼────┐
-    │ ElastiCache (Redis)    │
-    └────────────────────────┘
-    ┌────────────────────────┐
-    │ RDS (PostgreSQL)       │
-    └────────────────────────┘
-         ↓ IAM Role
-    ┌─────────┐
-    │   AWS   │
-    └─────────┘
+│ Application Load Balancer (TLS)      │
+└────────────────┬─────────────────────┘
+                 │
+┌────────────────▼─────────────────────┐
+│ ECS Fargate Task                      │
+│  ┌──────────────┐  ┌──────────────┐  │
+│  │ mcp-server   │  │ redis        │  │
+│  │ (port 8080)  │  │ (port 6379)  │  │
+│  └──────┬───────┘  └──────────────┘  │
+│         │                             │
+│  ┌──────▼───────────────────────────┐ │
+│  │ EFS Volume (/mnt/efs)            │ │
+│  │  - audit_logs.db                 │ │
+│  │  - compliance_history.db         │ │
+│  │  - tagging_policy.json           │ │
+│  └─────────────────────────────────┘  │
+└────────────────┬─────────────────────┘
+                 │ VPC Endpoints
+            ┌────┴────┐
+            │   AWS   │
+            └─────────┘
 ```
 
-**Cost**: ~$150-200/month
+**Cost**: ~$123/month (1 task)
 
 ### Phase 2.6: Multi-Tenant Cross-Account (Production Client Deployment)
 ```
