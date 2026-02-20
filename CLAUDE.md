@@ -800,14 +800,8 @@ The production deployment runs on ECS Fargate behind an ALB at `https://mcp.opti
 # Just force a new deployment (e.g., after config change)
 ./scripts/deploy_ecs.sh --deploy-only
 
-# Build on EC2 and push (when Docker Desktop isn't available locally)
-# SSH/SSM to EC2 i-013d9e55b30e1b804, then:
-cd /opt/tagging-mcp
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 382598791951.dkr.ecr.us-east-1.amazonaws.com
-docker build -t mcp-tagging-prod .
-docker tag mcp-tagging-prod:latest 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
-docker push 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
-aws ecs update-service --cluster mcp-tagging-cluster-prod --service mcp-tagging-service-prod --force-new-deployment --region us-east-1
+# Push existing image only (skip build)
+./scripts/deploy_ecs.sh --push-only
 ```
 
 **ECS Exec (debugging):**
@@ -830,9 +824,8 @@ aws ecs execute-command --cluster mcp-tagging-cluster-prod --task $TASK_ID --con
 - `SCHEDULER_ENABLED=false` (avoid duplicate cron with multiple tasks)
 - `API_KEYS` — injected from Secrets Manager
 
-**EC2 Fallback**: Instance `i-013d9e55b30e1b804` is retained. To revert to EC2:
-1. Update `infrastructure/cloudformation-production.yaml`: change `HTTPSListener` DefaultAction back to `!Ref MCPTargetGroup`
-2. Deploy the CloudFormation update
+**Note**: EC2 instance and legacy target group were removed in Phase 2.5 cleanup.
+ECS Fargate is the sole compute platform.
 
 ## Docker Local Development
 

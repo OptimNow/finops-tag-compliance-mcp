@@ -6,20 +6,32 @@
 #   ./scripts/deploy_ecs.sh --push-only      # Push existing image only
 #   ./scripts/deploy_ecs.sh --deploy-only    # Force new deployment (no build)
 #
+# Environment variables (all have defaults from CloudFormation stack outputs):
+#   AWS_REGION       - AWS region (default: us-east-1)
+#   AWS_ACCOUNT_ID   - AWS account ID (default: auto-detected via STS)
+#   ECR_REPO         - ECR repository name (default: mcp-tagging-prod)
+#   ECS_CLUSTER      - ECS cluster name (default: mcp-tagging-cluster-prod)
+#   ECS_SERVICE      - ECS service name (default: mcp-tagging-service-prod)
+#   IMAGE_TAG        - Docker image tag (default: latest)
+#
 # Prerequisites:
 #   - AWS CLI v2 configured with appropriate permissions
 #   - Docker running (for build/push)
-#   - ECR repository exists: mcp-tagging-prod
+#   - ECR repository exists
 
 set -euo pipefail
 
-# Configuration
+# Configuration — all overridable via environment variables
 AWS_REGION="${AWS_REGION:-us-east-1}"
-AWS_ACCOUNT_ID="${AWS_ACCOUNT_ID:-382598791951}"
-ECR_REPO="mcp-tagging-prod"
-ECS_CLUSTER="mcp-tagging-cluster-prod"
-ECS_SERVICE="mcp-tagging-service-prod"
+ECR_REPO="${ECR_REPO:-mcp-tagging-prod}"
+ECS_CLUSTER="${ECS_CLUSTER:-mcp-tagging-cluster-prod}"
+ECS_SERVICE="${ECS_SERVICE:-mcp-tagging-service-prod}"
 IMAGE_TAG="${IMAGE_TAG:-latest}"
+
+# Auto-detect account ID if not set
+if [ -z "${AWS_ACCOUNT_ID:-}" ]; then
+    AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text --region "${AWS_REGION}")
+fi
 
 ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}"
 
@@ -36,6 +48,7 @@ done
 
 echo "=== MCP Tagging Server — ECS Fargate Deploy ==="
 echo "Region:  ${AWS_REGION}"
+echo "Account: ${AWS_ACCOUNT_ID}"
 echo "Cluster: ${ECS_CLUSTER}"
 echo "Service: ${ECS_SERVICE}"
 echo "ECR:     ${ECR_URI}:${IMAGE_TAG}"

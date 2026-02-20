@@ -8,11 +8,11 @@ Description: |
   - ECS Fargate in private subnets (MCP server + Redis sidecar)
   - EFS for SQLite persistence across task restarts
   - ECR for Docker image storage
-  - VPC endpoints for AWS APIs, ECR, and ECS Exec
+  - VPC endpoints for ECR, CloudWatch Logs, Secrets Manager, and ECS Exec
+  - NAT Gateway for Cost Explorer API access (no VPC endpoint available)
   - API key authentication via Secrets Manager
   - CloudWatch alarms for security monitoring
   - Auto-scaling (1-4 tasks based on CPU)
-  - EC2 instance retained as fallback (to be removed after stable migration)
 
   Requirements: 18.1-18.6, 19.6, 21.1-21.5, 23.2, 23.5
 
@@ -27,15 +27,6 @@ Parameters:
     Default: prod
     AllowedValues: [dev, staging, prod]
     Description: Environment name
-
-  InstanceType:
-    Type: String
-    Default: t3.medium
-    Description: EC2 instance type
-
-  KeyPairName:
-    Type: AWS::EC2::KeyPair::KeyName
-    Description: EC2 KeyPair for SSH access (via bastion only)
 
   ACMCertificateArn:
     Type: String
@@ -112,10 +103,8 @@ Metadata:
           - PrivateSubnet1CIDR
           - PrivateSubnet2CIDR
       - Label:
-          default: EC2 Configuration
+          default: DNS Configuration
         Parameters:
-          - InstanceType
-          - KeyPairName
           - DomainName
       - Label:
           default: Storage Configuration
@@ -393,19 +382,8 @@ Resources:
   # VPC Endpoints (Requirement 21.4)
   # ==========================================================================
 
-  # EC2 VPC Endpoint
-  EC2VPCEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcId: !Ref VPC
-      ServiceName: !Sub 'com.amazonaws.${AWS::Region}.ec2'
-      VpcEndpointType: Interface
-      SubnetIds:
-        - !Ref PrivateSubnet1
-        - !Ref PrivateSubnet2
-      SecurityGroupIds:
-        - !Ref VPCEndpointSecurityGroup
-      PrivateDnsEnabled: true
+  # Note: EC2 VPC Endpoint removed in Phase 2.5 cleanup — NAT Gateway handles
+  # EC2 API calls. Only endpoints required for Fargate operation are kept.
 
   # S3 Gateway Endpoint (free)
   S3VPCEndpoint:
@@ -481,27 +459,8 @@ Resources:
           TargetGroupArn: !Ref MCPTargetGroupFargate
 
   # Target Group
-  MCPTargetGroup:
-    Type: AWS::ElasticLoadBalancingV2::TargetGroup
-    Properties:
-      Name: !Sub '${ProjectName}-tg-${Environment}'
-      Port: 8080
-      Protocol: HTTP
-      VpcId: !Ref VPC
-      TargetType: instance
-      HealthCheckPath: /health
-      HealthCheckIntervalSeconds: 30
-      HealthCheckTimeoutSeconds: 5
-      HealthyThresholdCount: 2
-      UnhealthyThresholdCount: 3
-      Matcher:
-        HttpCode: '200'
-      Targets:
-        - Id: !Ref MCPServerInstance
-          Port: 8080
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-tg-${Environment}'
+  # Note: Legacy instance-type target group (MCPTargetGroup) removed in Phase 2.5 cleanup.
+  # ALB now uses MCPTargetGroupFargate (ip-type target group) exclusively.
 
   # ==========================================================================
   # Secrets Manager for API Keys (Requirement 19.6)
@@ -536,13 +495,10 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service:
-                - ec2.amazonaws.com
-                - ecs-tasks.amazonaws.com
+              Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/CloudWatchLogsFullAccess
-        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
       Tags:
         - Key: Application
           Value: !Ref ProjectName
@@ -621,86 +577,8 @@ Resources:
               - !Sub 'arn:aws:s3:::${PolicyBucketName}'
               - !Sub 'arn:aws:s3:::${PolicyBucketName}/*'
 
-  MCPServerInstanceProfile:
-    Type: AWS::IAM::InstanceProfile
-    Properties:
-      InstanceProfileName: !Sub '${ProjectName}-profile-${Environment}'
-      Roles:
-        - !Ref MCPServerRole
-
-  # ==========================================================================
-  # EC2 Instance in Private Subnet (Requirement 21.1)
-  # ==========================================================================
-
-  MCPServerInstance:
-    Type: AWS::EC2::Instance
-    Properties:
-      InstanceType: !Ref InstanceType
-      ImageId: !Sub '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
-      KeyName: !Ref KeyPairName
-      IamInstanceProfile: !Ref MCPServerInstanceProfile
-      SubnetId: !Ref PrivateSubnet1
-      SecurityGroupIds:
-        - !Ref MCPServerSecurityGroup
-      BlockDeviceMappings:
-        - DeviceName: /dev/xvda
-          Ebs:
-            VolumeSize: 20
-            VolumeType: gp3
-            Encrypted: true
-            DeleteOnTermination: true
-      UserData:
-        Fn::Base64: !Sub |
-          #!/bin/bash
-          set -e
-
-          # Update system
-          yum update -y
-
-          # Install Docker
-          yum install -y docker
-          systemctl start docker
-          systemctl enable docker
-          usermod -aG docker ec2-user
-
-          # Install Docker Compose
-          curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-          chmod +x /usr/local/bin/docker-compose
-
-          # Install jq for JSON parsing
-          yum install -y jq
-
-          # Create app directory
-          mkdir -p /opt/tagging-mcp
-          chown ec2-user:ec2-user /opt/tagging-mcp
-
-          # Create environment file with security settings
-          cat > /opt/tagging-mcp/.env << 'EOF'
-          # Production security settings
-          AUTH_ENABLED=true
-          CORS_ALLOWED_ORIGINS=${CORSAllowedOrigins}
-          TLS_ENABLED=false
-          CLOUDWATCH_ENABLED=true
-          CLOUDWATCH_LOG_GROUP=/mcp-tagging/${Environment}
-          EOF
-
-          # Fetch API key from Secrets Manager and add to env file
-          API_KEY=$(aws secretsmanager get-secret-value --secret-id ${APIKeySecret} --query SecretString --output text | jq -r '.primary_key')
-          echo "API_KEYS=$API_KEY" >> /opt/tagging-mcp/.env
-
-          # Set permissions
-          chmod 600 /opt/tagging-mcp/.env
-          chown ec2-user:ec2-user /opt/tagging-mcp/.env
-
-          # Signal completion
-          echo "Setup complete" > /opt/tagging-mcp/setup-complete.txt
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-server-${Environment}'
-        - Key: Application
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
+  # Note: EC2 instance and instance profile removed in Phase 2.5 cleanup.
+  # ECS Fargate is now the sole compute platform.
 
   # ==========================================================================
   # ECR Repository (Phase 2.5)
@@ -852,7 +730,7 @@ Resources:
       ClusterName: !Sub '${ProjectName}-cluster-${Environment}'
       ClusterSettings:
         - Name: containerInsights
-          Value: enabled
+          Value: disabled  # Disabled to save ~$5-15/mo; re-enable if needed for debugging
       Tags:
         - Key: Application
           Value: !Ref ProjectName
@@ -873,7 +751,7 @@ Resources:
       Volumes:
         - Name: efs-data
           EFSVolumeConfiguration:
-            FilesystemId: !Ref EFSFileSystem
+            FileSystemId: !Ref EFSFileSystem
             TransitEncryption: ENABLED
             AuthorizationConfig:
               AccessPointId: !Ref EFSAccessPoint
@@ -886,16 +764,8 @@ Resources:
           PortMappings:
             - ContainerPort: 6379
               Protocol: tcp
-          Command:
-            - redis-server
-            - --appendonly
-            - 'yes'
-            - --dir
-            - /data
-          MountPoints:
-            - SourceVolume: efs-data
-              ContainerPath: /data
-              ReadOnly: false
+          # No persistence — Redis is used as a cache only.
+          # SQLite on EFS handles durable data (audit logs, compliance history).
           HealthCheck:
             Command:
               - CMD-SHELL
@@ -1233,12 +1103,6 @@ Outputs:
     Value: !Ref SecurityAlertTopic
     Export:
       Name: !Sub '${AWS::StackName}-SecurityAlertTopicArn'
-
-  InstanceId:
-    Description: EC2 Instance ID
-    Value: !Ref MCPServerInstance
-    Export:
-      Name: !Sub '${AWS::StackName}-InstanceId'
 
   PrivateSubnet1Id:
     Description: Private Subnet 1 ID
