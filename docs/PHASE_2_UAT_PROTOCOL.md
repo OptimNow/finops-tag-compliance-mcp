@@ -1,6 +1,6 @@
 # Phase 2 UAT Protocol — FinOps Tag Compliance MCP Server
 
-**Version**: 2.0
+**Version**: 2.1
 **Date**: February 20, 2026
 **Target**: Production ECS Fargate at `https://mcp.optimnow.io`
 **Scope**: All 14 MCP tools + ECS infrastructure + Phase 2.5 migration validation
@@ -13,12 +13,17 @@ This protocol is designed for **two actors**:
 
 | Actor | Role |
 |-------|------|
-| **Human (Jean)** | Runs manual smoke tests via Claude Desktop or MCP Inspector. Signs off on acceptance criteria. |
-| **Claude** | Runs automated tests via HTTP API calls to production. Reports pass/fail for each test case. |
+| **Human (Jean)** | Asks Claude natural language questions via Claude Desktop. Signs off on acceptance criteria. |
+| **Claude** | Interprets questions, calls the right MCP tools, and reports results. Also runs automated HTTP tests. |
+
+**Two testing modes:**
+
+1. **Natural Language UAT (Section NL)** — Jean asks Claude plain English questions via Claude Desktop. Claude picks the right tool, calls it, and reports back. This validates the full end-to-end experience as a real user would use it.
+2. **Automated API Tests (Sections A-F)** — Claude runs structured HTTP tests against production for schema validation, math consistency, and edge cases.
 
 **Workflow:**
-1. Claude runs all automated tests (Sections A-F) and reports results
-2. Jean reviews results and runs any manual verification desired
+1. Jean runs through the Natural Language prompts (Section NL) via Claude Desktop
+2. Claude runs automated tests (Sections A-F) via HTTP API calls
 3. Both sign off on the Go/No-Go checklist (Section G)
 
 ---
@@ -44,6 +49,93 @@ r = requests.post('https://mcp.optimnow.io/mcp/tools/call',
 print(json.dumps(r.json(), indent=2))
 "
 ```
+
+---
+
+## NL. Natural Language UAT (30 prompts)
+
+These are the prompts Jean asks Claude via Claude Desktop. Claude picks the right MCP tool(s), calls them, and reports back. Jean validates the answer makes sense.
+
+**How to run**: Open Claude Desktop connected to `tagging-mcp-prod`. Ask each prompt below. Check the "Accept" column when the response is sensible, correct, and uses the right tool.
+
+### Compliance Scanning (Tools 1, 7, 8)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.1 | "What's my overall tag compliance score?" | `check_tag_compliance` | Returns a score (0-100%), resource count, and violation summary |
+| NL.2 | "How compliant are my EC2 instances and S3 buckets with our tagging policy?" | `check_tag_compliance` | Scans both types, shows per-type breakdown |
+| NL.3 | "Show me only the critical tagging errors, not warnings" | `check_tag_compliance` (severity: errors_only) | Only error-severity violations returned |
+| NL.4 | "Check compliance across all my AWS resources" | `check_tag_compliance` (all) | Scans all resource types, total_resources matches sum of individual types |
+| NL.5 | "Generate a compliance report in markdown format for my EC2 instances" | `generate_compliance_report` | Returns markdown with headings, tables, score |
+| NL.6 | "Has my compliance improved over the last 30 days?" | `get_violation_history` | Returns trend data with timestamps and scores |
+
+### Finding Problems (Tools 2, 3, 12)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.7 | "Which resources are missing required tags?" | `find_untagged_resources` | Returns list with resource IDs, types, and missing tags |
+| NL.8 | "Find untagged EC2 instances and tell me how much they cost" | `find_untagged_resources` (include_costs: true) | Includes cost estimates per resource |
+| NL.9 | "Check the tags on my S3 bucket finops-mcp-config-prod" | `validate_resource_tags` | Validates that specific bucket, shows compliant/non-compliant and tag details |
+| NL.10 | "Have any of my resource tags changed unexpectedly in the last 2 weeks?" | `detect_tag_drift` | Returns drift analysis with lookback_days=14, shows added/removed/changed |
+| NL.11 | "Detect tag drift on my EC2 instances over the past month" | `detect_tag_drift` | Filters to ec2:instance, 30-day lookback |
+
+### Cost Impact (Tool 4)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.12 | "How much of my cloud spend can't be attributed to a team because of missing tags?" | `get_cost_attribution_gap` | Returns total spend, attributable spend, gap amount and percentage |
+| NL.13 | "What's the cost attribution gap broken down by resource type?" | `get_cost_attribution_gap` (group_by: resource_type) | Shows per-type gap breakdown |
+
+### Tag Suggestions (Tool 5)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.14 | "What tags should I add to my S3 bucket finops-mcp-config-prod?" | `suggest_tags` | Returns suggestions with tag keys, values, and confidence scores |
+| NL.15 | "Suggest tags for one of my non-compliant EC2 instances" | `suggest_tags` (may call find_untagged first) | Provides concrete tag suggestions for a real instance |
+
+### Policy Management (Tools 6, 14)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.16 | "What's our current tagging policy? What tags are required?" | `get_tagging_policy` | Lists required tags (CostCenter, Owner, Environment) with allowed values |
+| NL.17 | "Import our AWS Organizations tag policy" | `import_aws_tag_policy` | Lists available policies or imports from AWS Orgs |
+| NL.18 | "Refresh the tagging policy from AWS Organizations policy p-95ouootqj0" | `import_aws_tag_policy` (policy_id) | Imports specific policy, shows required tags from AWS Orgs |
+
+### Remediation & Automation (Tools 9, 10, 11)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.19 | "Generate a Cloud Custodian policy to enforce tags on my EC2 instances" | `generate_custodian_policy` | Returns valid YAML with Custodian policy for EC2 |
+| NL.20 | "Create a Custodian dry-run policy for EC2 and S3 so I can preview what would be flagged" | `generate_custodian_policy` (dry_run: true) | All policies use notify action, not tag action |
+| NL.21 | "Generate an OpenOps workflow to auto-tag non-compliant resources" | `generate_openops_workflow` (auto_tag) | Returns workflow YAML with auto-tag remediation steps |
+| NL.22 | "Create an OpenOps notification workflow for non-compliant EC2 instances" | `generate_openops_workflow` (notify) | Returns workflow with notify strategy |
+| NL.23 | "Set up a daily compliance audit at 9 AM" | `schedule_compliance_audit` | Returns schedule ID, cron expression, next run time |
+| NL.24 | "Schedule a weekly compliance check for Monday at 2:30 PM Eastern time" | `schedule_compliance_audit` (weekly, US/Eastern) | Shows weekly schedule with correct timezone |
+
+### Export (Tool 13)
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.25 | "Export all my tagging violations as a CSV" | `export_violations_csv` | Returns CSV data with headers, row count, column count |
+| NL.26 | "Give me a CSV of EC2 instance tagging violations" | `export_violations_csv` (ec2:instance) | CSV filtered to EC2 only |
+
+### Multi-Step / Conversational
+
+| ID | Prompt to Ask Claude | Expected Tool(s) | Accept Criteria |
+|----|---------------------|-------------------|-----------------|
+| NL.27 | "How bad is our tagging situation? Give me the full picture." | Multiple: `check_tag_compliance`, `get_cost_attribution_gap`, `find_untagged_resources` | Combines compliance score, cost gap, and untagged resource count into a coherent summary |
+| NL.28 | "Find my worst-tagged resources and suggest how to fix them" | `find_untagged_resources` then `suggest_tags` | Identifies non-compliant resources, then provides tag suggestions for them |
+| NL.29 | "Save a compliance snapshot and then show me the trend" | `check_tag_compliance` (store_snapshot: true) then `get_violation_history` | Stores result, then shows history including the new data point |
+| NL.30 | "Generate a remediation plan: find what's wrong, create Custodian policies, and export violations" | `check_tag_compliance`, `generate_custodian_policy`, `export_violations_csv` | Orchestrates multiple tools into a coherent remediation workflow |
+
+### NL Sign-Off
+
+| Criteria | Pass/Fail |
+|----------|-----------|
+| Claude correctly identified the right tool for 25+ of 30 prompts | |
+| Responses were factually correct (scores, counts, resources match reality) | |
+| Multi-step prompts produced coherent, combined answers | |
+| No crashes, timeouts, or garbled responses | |
 
 ---
 
@@ -243,6 +335,15 @@ Validates the Phase 2.5 ECS migration is stable.
 
 ## G. Go/No-Go Checklist
 
+### Natural Language UAT
+
+| Criteria | Pass/Fail |
+|----------|-----------|
+| Claude picks the right tool for 25+ of 30 prompts | |
+| Responses are factually correct (match actual AWS data) | |
+| Multi-step prompts produce coherent combined answers | |
+| No crashes, timeouts, or garbled output | |
+
 ### Phase 1 Regression
 
 | Criteria | Pass/Fail |
@@ -285,10 +386,10 @@ Validates the Phase 2.5 ECS migration is stable.
 
 | | |
 |---|---|
-| **Total tests** | 77 |
-| **Passed** | ___ / 77 |
-| **Failed** | ___ / 77 |
-| **Skipped** | ___ / 77 |
+| **Total tests** | 107 (30 NL + 77 automated) |
+| **Passed** | ___ / 107 |
+| **Failed** | ___ / 107 |
+| **Skipped** | ___ / 107 |
 | **Decision** | ACCEPT / REJECT |
 | **Signed off by** | |
 | **Date** | |
