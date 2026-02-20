@@ -103,29 +103,29 @@ Ensures all original tools still work correctly after Phase 2 changes and ECS mi
 | ID | Test | Input | Pass Criteria |
 |----|------|-------|---------------|
 | B5.1 | S3 bucket | `resource_arn: "arn:aws:s3:::finops-mcp-config-prod"` | `resource_arn` and `resource_type` exist, `suggestions` is array, `current_tags` is object |
-| B5.2 | Suggestion structure | From B5.1 | Each suggestion has: `tag_name`, `suggested_value`, `confidence` (0.0-1.0) |
+| B5.2 | Suggestion structure | From B5.1 | Each suggestion has: `tag_key`, `suggested_value`, `confidence` (0.0-1.0) |
 
 ### Tool 6: get_tagging_policy
 
 | ID | Test | Input | Pass Criteria |
 |----|------|-------|---------------|
 | B6.1 | Returns policy | `{}` (no args) | `required_tags` is non-empty array, `optional_tags` is array |
-| B6.2 | Known tags | From B6.1 | Required tag names include `Environment`, `Owner`, `Application` |
+| B6.2 | Known tags | From B6.1 | Required tag names include `Environment`, `Owner`, `CostCenter` (from AWS Organizations policy) |
 | B6.3 | Tag structure | From B6.1 | Each tag has `name` and `description` fields |
 
 ### Tool 7: generate_compliance_report
 
 | ID | Test | Input | Pass Criteria |
 |----|------|-------|---------------|
-| B7.1 | JSON format | `resource_types: ["ec2:instance"], format: "json"` | `format == "json"`, `report_data` exists |
-| B7.2 | Markdown format | `resource_types: ["ec2:instance"], format: "markdown"` | `format == "markdown"`, `report_data` contains markdown syntax |
-| B7.3 | CSV format | `resource_types: ["ec2:instance"], format: "csv"` | `format == "csv"`, `report_data` exists |
+| B7.1 | JSON format | `resource_types: ["ec2:instance"], format: "json"` | `format == "json"`, `formatted_output` exists |
+| B7.2 | Markdown format | `resource_types: ["ec2:instance"], format: "markdown"` | `format == "markdown"`, `formatted_output` contains markdown syntax |
+| B7.3 | CSV format | `resource_types: ["ec2:instance"], format: "csv"` | `format == "csv"`, `formatted_output` exists |
 
 ### Tool 8: get_violation_history
 
 | ID | Test | Input | Pass Criteria |
 |----|------|-------|---------------|
-| B8.1 | Basic history | `days_back: 30, group_by: "day"` | `period_days` is number, `data_points` is array |
+| B8.1 | Basic history | `days_back: 30, group_by: "day"` | `days_back` is number, `history` is array |
 | B8.2 | Data point structure | From B8.1 (if data exists) | Each point has `timestamp` and `compliance_score` (0.0-1.0) |
 
 ---
@@ -188,12 +188,12 @@ Ensures all original tools still work correctly after Phase 2 changes and ECS mi
 |----|------|-------|---------------|
 | C14.1 | List policies | `{}` (no args) | `status` is string (either "listed" or "error"), `message` is non-empty string |
 | C14.2 | Timestamp | From C14.1 | `conversion_timestamp` exists |
-| C14.3 | Structure on list | From C14.1 | If `status == "listed"`: `available_policies` is array containing `p-95u05v7n5f`. If `status == "error"`: `message` explains the issue. |
-| C14.4 | Invalid policy ID | `policy_id: "p-invalid-does-not-exist"` | Returns JSON (does not crash), has `status` field |
-| C14.5 | Import by ID | `policy_id: "p-95u05v7n5f", save_to_file: true` | `status == "imported"`, `converted_policy` has `required_tags` array, `source == "aws_organizations"` |
-| C14.6 | Imported tags match AWS Orgs | From C14.5 | Required tag names include `CostCenter`, `Owner`, `Environment` (matching the AWS Orgs policy) |
-| C14.7 | Policy refresh workflow | After C14.5: call `get_tagging_policy` | Returned policy reflects AWS Orgs tags (CostCenter, Owner, Environment), not just the Docker-baked defaults |
-| C14.8 | Auto-import on startup | Delete `/mnt/efs/tagging_policy.json` via ECS Exec, restart task, check logs | Container logs show `AutoPolicy: source=aws_organizations`, policy file recreated on EFS |
+| C14.3 | Structure on list | From C14.1 | If `status == "listed"`: `available_policies` is array containing `p-95ouootqj0`. If `status == "error"`: `message` explains the issue. |
+| C14.4 | Invalid policy ID | `policy_id: "p-invalid-does-not-exist"` | Returns JSON (does not crash), has `error` or `status` field |
+| C14.5 | Import by ID | `policy_id: "p-95ouootqj0", save_to_file: true` | `status == "saved"`, `policy` has `required_tags` array |
+| C14.6 | Imported tags match AWS Orgs | From C14.5 | `policy.required_tags` names include `CostCenter`, `Owner`, `Environment` (matching the AWS Orgs policy) |
+| C14.7 | Policy refresh workflow | After C14.5: call `get_tagging_policy` | Returned policy reflects AWS Orgs tags (CostCenter, Owner, Environment) |
+| C14.8 | Auto-import on startup | Delete `/mnt/efs/tagging_policy.json` via ECS Exec, restart task, check logs | Container logs show auto-policy detection, policy file recreated on EFS |
 
 ---
 
