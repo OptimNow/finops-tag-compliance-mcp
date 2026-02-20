@@ -1295,6 +1295,13 @@ check_tag_compliance(cloud_provider="aws", filters={"region": "us-east-1"})
 - [ ] Credential rotation monitoring enabled
 - [ ] IAM trust relationships for multi-account scanning
 
+### Security Hardening (from Phase 2.5 review)
+
+- [ ] Replace `CloudWatchLogsFullAccess` with scoped inline policy (`logs:CreateLogStream`, `logs:PutLogEvents` on log group ARN)
+- [ ] Add AWS WAF to ALB with managed rule groups (Core Rule Set, Known Bad Inputs, IP Reputation)
+- [ ] Harden EFS access point: change from root (UID/GID 0) to non-root user, enable IAM authorization
+- [ ] Re-evaluate VPC endpoints vs NAT-only routing (current: ~$51/mo for 7 endpoints; may not be cost-justified at low traffic)
+
 ### Documentation
 
 - [ ] Multi-cloud API documentation

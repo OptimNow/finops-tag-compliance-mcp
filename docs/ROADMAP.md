@@ -710,6 +710,12 @@ multi_account:
 - **Tool 16: `generate_terraform_policy`** - Generate Terraform tag enforcement policies (AWS Config rules, Azure Policy, GCP Org Policy)
 - **Tool 17: `generate_config_rules`** - Generate cloud-native policy enforcement rules (AWS Config, Azure Policy, GCP Organization Constraints)
 
+✅ **Infrastructure Security Hardening** (from Phase 2.5 security review)
+- Replace `CloudWatchLogsFullAccess` managed policy with scoped inline policy (`logs:CreateLogStream`, `logs:PutLogEvents` scoped to log group)
+- Add AWS WAF with managed rule groups (Core Rule Set, Known Bad Inputs, IP Reputation) to ALB
+- Harden EFS access point: non-root UID/GID and IAM authorization enabled
+- Re-evaluate VPC endpoint costs vs NAT-only routing based on traffic profile
+
 ### Success Metrics
 
 - All 3 clouds supported with feature parity
