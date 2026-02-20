@@ -1386,9 +1386,9 @@ class AWSClient:
 
         elif service == "elasticfilesystem":
             if resource_part.startswith("file-system/"):
-                return "efs:file-system", resource_part.split("/")[1]
+                return "elasticfilesystem:file-system", resource_part.split("/")[1]
             else:
-                return "efs:file-system", resource_part
+                return "elasticfilesystem:file-system", resource_part
 
         elif service == "elasticloadbalancing":
             if resource_part.startswith("loadbalancer/"):
