@@ -1,7 +1,21 @@
 # Tagging Policy Configuration Guide
 
-**For:** FinOps Tag Compliance MCP Server  
+**For:** FinOps Tag Compliance MCP Server
 **Audience:** FinOps practitioners, cloud engineers, compliance teams
+
+---
+
+## Policy Sources (Priority Order)
+
+On startup, the MCP server determines which tagging policy to use:
+
+| Priority | Source | When |
+|----------|--------|------|
+| 1 | **Existing file** on EFS | `/mnt/efs/tagging_policy.json` already exists |
+| 2 | **AWS Organizations** import | File doesn't exist + `AUTO_IMPORT_AWS_POLICY=true` |
+| 3 | **Default policy** | Import fails/disabled + `FALLBACK_TO_DEFAULT_POLICY=true` |
+
+In production (ECS Fargate), the policy lives on EFS at `/mnt/efs/tagging_policy.json`. On first boot, it is auto-imported from your AWS Organizations tag policy.
 
 ---
 
@@ -24,51 +38,115 @@ For technical details about the policy format and schema, see the [Tagging Polic
 
 ## Deploy Your Policy
 
-### Local Deployment
+### ECS Fargate (Production)
 
-If you're running the MCP server locally with Docker:
+The production server at `https://mcp.optimnow.io` loads its policy from EFS.
 
-1. Save the policy JSON from the generator to `policies/tagging_policy.json` in your repository
-2. Restart Docker: `docker-compose restart`
-3. Test in Claude Desktop: "Show me my tagging policy"
+**Option A — Auto-import from AWS Organizations (recommended):**
 
-### Remote EC2 Deployment
+The server automatically imports your AWS Organizations tag policy on first boot. To force a re-import (e.g., after updating your AWS Orgs policy):
 
-If your MCP server is deployed on EC2:
-
-1. Save the policy JSON from the generator to `policies/tagging_policy.json` in your local repository
-
-2. Run the deploy script:
-   ```powershell
-   # Windows
-   .\scripts\deploy_policy.ps1
+1. **Via Claude Desktop** — ask Claude to call the `import_aws_tag_policy` tool:
    ```
+   Import my AWS Organizations tagging policy and save it
+   ```
+   Claude will call the tool, which fetches your AWS Orgs policy, converts it to MCP format, and saves it to `/mnt/efs/tagging_policy.json`.
 
-3. Verify the policy is in S3:
+2. **Via API call:**
    ```bash
-   aws s3 ls s3://finops-mcp-config/policies/
+   curl -X POST https://mcp.optimnow.io/mcp/tools/call \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_API_KEY" \
+     -d '{
+       "name": "import_aws_tag_policy",
+       "arguments": {"save_to_file": true}
+     }'
    ```
 
-4. Test in Claude Desktop: "Show me my tagging policy"
+3. **Via ECS Exec** — delete the cached file and restart:
+   ```bash
+   TASK_ID=$(aws ecs list-tasks --cluster mcp-tagging-cluster-prod \
+     --service mcp-tagging-service-prod --query 'taskArns[0]' --output text)
 
-> **Note:** If the deploy script fails with SSM errors, see the [Deployment Guide troubleshooting section](DEPLOYMENT.md#troubleshooting) for manual workarounds.
+   # Delete cached policy to force re-import on next restart
+   aws ecs execute-command --cluster mcp-tagging-cluster-prod \
+     --task $TASK_ID --container mcp-server --interactive \
+     --command "rm /mnt/efs/tagging_policy.json"
+
+   # Force new deployment (restarts task, triggers auto-import)
+   aws ecs update-service --cluster mcp-tagging-cluster-prod \
+     --service mcp-tagging-service-prod --force-new-deployment
+   ```
+
+**Option B — Upload a custom policy:**
+
+1. Generate the policy at https://tagpolgenerator.optimnow.io/
+2. Upload it to the ECS container via ECS Exec:
+   ```bash
+   TASK_ID=$(aws ecs list-tasks --cluster mcp-tagging-cluster-prod \
+     --service mcp-tagging-service-prod --query 'taskArns[0]' --output text)
+
+   # Copy policy via base64 encoding
+   POLICY_B64=$(base64 -w0 policies/tagging_policy.json)
+   aws ecs execute-command --cluster mcp-tagging-cluster-prod \
+     --task $TASK_ID --container mcp-server --interactive \
+     --command "echo $POLICY_B64 | base64 -d > /mnt/efs/tagging_policy.json"
+   ```
+
+### Local Development
+
+If you're running the MCP server locally:
+
+1. Save the policy JSON to `policies/tagging_policy.json` in the repository
+2. Restart the server: `docker-compose restart` or re-run `python -m mcp_server.stdio_server`
+3. Test in Claude Desktop: "Show me my tagging policy"
 
 ---
 
-## Converting AWS Organizations Tag Policies
+## Refreshing the Policy After AWS Orgs Changes
 
-If you already have an AWS Organizations tag policy, you can convert it to the MCP format:
+When you update your AWS Organizations tag policy, the MCP server **does not** automatically sync. You need to manually trigger a re-import:
 
-1. Go to https://tagpolgenerator.optimnow.io/
-2. Use the **Import** feature to upload your AWS Organizations policy
-3. Review and edit the converted policy
-4. Export and deploy using the steps above
+### Method 1: Use the `import_aws_tag_policy` MCP tool (simplest)
+
+In Claude Desktop, say:
+```
+Refresh my tagging policy from AWS Organizations
+```
+
+This calls the `import_aws_tag_policy` tool which:
+1. Fetches the latest policy from AWS Organizations
+2. Converts `@@assign` syntax to MCP format (expands `ALL_SUPPORTED` wildcards)
+3. Saves to `/mnt/efs/tagging_policy.json`
+4. Returns the converted policy for review
+
+You can also list available policies first:
+```
+List my AWS Organizations tag policies
+```
+
+Or import a specific policy by ID:
+```
+Import AWS Organizations tag policy p-95u05v7n5f
+```
+
+### Method 2: Delete cached file + restart
+
+```bash
+# Delete the EFS-cached policy
+aws ecs execute-command --cluster mcp-tagging-cluster-prod \
+  --task $TASK_ID --container mcp-server --interactive \
+  --command "rm /mnt/efs/tagging_policy.json"
+
+# Restart — auto-import will re-fetch from AWS Orgs
+./scripts/deploy_ecs.sh --deploy-only
+```
 
 ---
 
 ## Verifying Your Policy
 
-After deploying, verify the policy loaded correctly:
+After deploying or refreshing, verify the policy loaded correctly:
 
 **In Claude Desktop:**
 ```
@@ -77,12 +155,63 @@ Show me our tagging policy
 
 Claude should return your complete policy configuration with all required tags and their rules.
 
-**Direct API call (local):**
+**Direct API call:**
 ```bash
-curl http://localhost:8080/mcp/tools/call \
+curl -X POST https://mcp.optimnow.io/mcp/tools/call \
   -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -d '{"name": "get_tagging_policy", "arguments": {}}'
 ```
+
+---
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `POLICY_PATH` | `policies/tagging_policy.json` | Path to policy file (EFS: `/mnt/efs/tagging_policy.json`) |
+| `AUTO_IMPORT_AWS_POLICY` | `true` | Auto-import from AWS Orgs if file doesn't exist |
+| `AUTO_IMPORT_POLICY_ID` | *(none)* | Specific AWS Orgs policy ID (e.g., `p-95u05v7n5f`) |
+| `FALLBACK_TO_DEFAULT_POLICY` | `true` | Create default policy if import fails |
+
+---
+
+## Converting AWS Organizations Tag Policies
+
+The `import_aws_tag_policy` tool converts AWS Organizations format to MCP format:
+
+**AWS Organizations format:**
+```json
+{
+  "tags": {
+    "Environment": {
+      "tag_key": {"@@assign": "Environment"},
+      "tag_value": {"@@assign": ["production", "staging"]},
+      "enforced_for": {"@@assign": ["ec2:ALL_SUPPORTED"]}
+    }
+  }
+}
+```
+
+**MCP format (after conversion):**
+```json
+{
+  "version": "1.0",
+  "required_tags": [
+    {
+      "name": "Environment",
+      "allowed_values": ["production", "staging"],
+      "applies_to": ["ec2:instance", "ec2:volume"]
+    }
+  ]
+}
+```
+
+Key conversions:
+- `@@assign` values → `allowed_values`
+- `ALL_SUPPORTED` → expanded to specific resource types
+- `ec2:*` wildcards → expanded (`ec2:instance`, `ec2:volume`, etc.)
+- `enforced_for` → `applies_to`
 
 ---
 
@@ -90,13 +219,13 @@ curl http://localhost:8080/mcp/tools/call \
 
 ### "No tagging policy configured"
 
-**Cause:** Policy file not found or not mounted into container
+**Cause:** Policy file not found and auto-import failed
 
 **Fix:**
-1. Check file exists at `policies/tagging_policy.json`
-2. For local: Verify `docker-compose.yml` has the volume mount
-3. For EC2: Verify the policy was pulled from S3
-4. Restart the container
+1. Check EFS mount: `ls -la /mnt/efs/` via ECS Exec
+2. Check container logs for `AutoPolicy:` messages
+3. Verify IAM role has `organizations:ListPolicies` and `organizations:DescribePolicy` permissions
+4. Try manual import: call `import_aws_tag_policy` tool
 
 ### "Invalid policy format"
 
@@ -104,17 +233,27 @@ curl http://localhost:8080/mcp/tools/call \
 
 **Fix:**
 1. Validate JSON at [jsonlint.com](https://jsonlint.com)
-2. Check for missing commas, brackets, or quotes
-3. Re-export from the generator if needed
+2. Re-import from AWS Organizations
+3. Re-export from the generator if using a custom policy
 
 ### Policy changes not reflected
 
-**Cause:** Container using cached policy
+**Cause:** Server using cached policy in memory
 
 **Fix:**
-1. Local: `docker-compose restart`
-2. EC2: `docker restart tagging-mcp-server`
-3. Flush Redis cache if needed: `docker exec tagging-redis redis-cli FLUSHALL`
+1. Call `import_aws_tag_policy` with `save_to_file: true` to overwrite
+2. Or restart the ECS service: `./scripts/deploy_ecs.sh --deploy-only`
+3. Flush Redis cache if needed via ECS Exec: `redis-cli FLUSHALL`
+
+### Auto-import not working
+
+**Cause:** Missing IAM permissions or no AWS Orgs policy
+
+**Fix:**
+1. Check IAM role has `organizations:ListPolicies` and `organizations:DescribePolicy`
+2. Verify you have a tag policy: `aws organizations list-policies --filter TAG_POLICY`
+3. Check container logs for `AutoPolicy:` errors
+4. Set `AUTO_IMPORT_POLICY_ID` to your specific policy ID
 
 ---
 
@@ -124,10 +263,17 @@ curl http://localhost:8080/mcp/tools/call \
 
 Don't try to enforce 20 tags on day one. Start with 3-4 critical tags:
 - **CostCenter** - for cost allocation
-- **Owner** - for accountability  
+- **Owner** - for accountability
 - **Environment** - for risk management
 
 Add more tags as your organization matures.
+
+### Use AWS Organizations as Source of Truth
+
+Keep your tag policy in AWS Organizations and use auto-import. This ensures:
+- Single source of truth across all accounts
+- Tag enforcement at the Organizations level
+- MCP server stays in sync with a simple refresh
 
 ### Use Allowed Values Wisely
 
@@ -147,9 +293,9 @@ Set a quarterly reminder to review your tagging policy:
 ## Related Documentation
 
 - [Deployment Guide](DEPLOYMENT.md) - How to deploy the MCP server
-- [UAT Protocol](UAT_PROTOCOL.md) - Testing procedures
+- [UAT Protocol](PHASE_2_UAT_PROTOCOL.md) - Testing procedures
 - [Tagging Policy Generator](https://github.com/OptimNow/tagging-policy-generator) - Technical details and schema
 
 ---
 
-**Last Updated:** January 9, 2025
+**Last Updated:** February 20, 2026

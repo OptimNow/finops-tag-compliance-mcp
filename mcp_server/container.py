@@ -17,6 +17,8 @@ Phase 1.9: Core Library Extraction
 import logging
 from typing import Optional
 
+import boto3
+
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
 from .clients.regional_client_factory import RegionalClientFactory
@@ -158,7 +160,9 @@ class ServiceContainer:
                 aws_policy_id=s.auto_import_policy_id,
                 fallback_to_default=s.fallback_to_default_policy,
             )
-            aws_session = self._aws_client.session if self._aws_client else None
+            # AWSClient doesn't expose a boto3 Session; create one directly.
+            # ECS task role / instance profile provides credentials automatically.
+            aws_session = boto3.Session() if self._aws_client else None
             auto_result = await self._auto_policy_service.detect_and_load(
                 aws_session=aws_session,
             )
