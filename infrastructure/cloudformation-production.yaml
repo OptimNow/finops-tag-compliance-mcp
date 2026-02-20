@@ -751,7 +751,7 @@ Resources:
       Volumes:
         - Name: efs-data
           EFSVolumeConfiguration:
-            FileSystemId: !Ref EFSFileSystem
+            FilesystemId: !Ref EFSFileSystem  # CloudFormation uses FilesystemId (lowercase 's'), not FileSystemId
             TransitEncryption: ENABLED
             AuthorizationConfig:
               AccessPointId: !Ref EFSAccessPoint

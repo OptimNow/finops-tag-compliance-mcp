@@ -962,6 +962,7 @@ Development mistakes encountered during this project. **Claude must check this s
 - **Python 3.10: `datetime.UTC` doesn't exist**: Use `from datetime import timezone` and `timezone.utc` instead. `datetime.UTC` is Python 3.11+ only.
 - **Docker buildx 0.17+ required for compose build**: On older EC2 instances, use `docker build -t image-name .` directly instead of `docker-compose build`.
 - **AI agents wrap single values in arrays**: Claude sometimes sends `severity: ["errors_only"]` instead of `"errors_only"`. Add auto-unwrapping for single-element string arrays in input validation.
+- **CloudFormation EFSVolumeConfiguration uses `FilesystemId` (lowercase 's')**: The EFS resource itself uses `FileSystemId` (capital 'S'), but the ECS TaskDefinition's `EFSVolumeConfiguration` uses `FilesystemId`. CloudFormation may accept both but logs a validation warning. Always use `FilesystemId` in task definitions. (`infrastructure/cloudformation-production.yaml`)
 
 ### Handler Defaults Must Match Function Validation
 
