@@ -1600,6 +1600,7 @@ class MCPHandler:
             regions=arguments.get("regions"),
             min_cost_threshold=arguments.get("min_cost_threshold"),
             include_costs=include_costs,
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         # Build resource list - only include cost fields if costs were requested
@@ -1645,6 +1646,7 @@ class MCPHandler:
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arns=arguments["resource_arns"],
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         return {
@@ -1688,6 +1690,7 @@ class MCPHandler:
             time_period=arguments.get("time_period"),
             group_by=arguments.get("group_by"),
             filters=arguments.get("filters"),
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         breakdown = None
@@ -1720,6 +1723,7 @@ class MCPHandler:
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arn=arguments["resource_arn"],
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         return result.model_dump(mode="json")
