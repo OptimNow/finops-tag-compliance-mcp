@@ -939,6 +939,7 @@ Development mistakes encountered during this project. **Claude must check this s
 - **Multi-region conditions can silently disable features**: A `not use_tagging_api` condition blocked multi-region for "all" mode. Remove conditions that disable features without clear warnings.
 - **Free resources pollute compliance metrics**: VPC, Subnet, Security Groups inflate violation counts without financial impact. Use `config/resource_types.json` to separate cost-generating, free, and unattributable resources.
 - **Hide meaningless $0.00 cost columns**: When Tagging API provides no cost data, displaying "$0.00 Cost Impact" is misleading. Conditionally hide cost sections when all values are zero.
+- **Audit BOTH transport entry points when wiring services**: `stdio_server.py` and `mcp_handler.py` are independent entry points. Fixing one doesn't fix the other. When adding `multi_region_scanner` support, 5 of 8 HTTP handlers were missing it while stdio was correct. Always grep both files for the parameter name after wiring. (`mcp_server/mcp_handler.py`, `mcp_server/stdio_server.py`)
 
 ### Testing
 
@@ -946,6 +947,7 @@ Development mistakes encountered during this project. **Claude must check this s
 - **Unit tests that make real AWS calls will hang**: Always mock boto3 in unit tests. Use `asyncio.to_thread()` + mock.
 - **Property tests catch edge cases unit tests miss**: Use Hypothesis for validation logic — it generates 100+ test cases automatically and finds boundary conditions.
 - **Always test through the full HTTP stack**: Unit tests on services may pass while the HTTP handler has different validation. Use curl/Postman to validate real endpoints.
+- **Cross-verify multi-tool consistency during UAT**: `check_tag_compliance` and `find_untagged_resources` use different discovery methods (Tagging API vs service-specific APIs). Small count differences (e.g., 33 vs 29) may be explained by different discovery mechanisms, not bugs. Always document the reason for discrepancies.
 
 ### Performance & Caching
 
