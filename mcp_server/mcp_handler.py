@@ -1747,6 +1747,7 @@ class MCPHandler:
             filters=arguments.get("filters"),
             severity="all",
             history_service=self.history_service,
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         # Get actual cost attribution gap from cost service
