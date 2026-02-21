@@ -781,15 +781,28 @@ class MCPHandler:
                         "default": "daily",
                         "description": "Audit frequency.",
                     },
+                    "schedule_type": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "description": "Alias for 'schedule'. Audit frequency.",
+                    },
                     "time": {
                         "type": "string",
                         "default": "09:00",
                         "description": "Time of day in HH:MM format (24-hour).",
                     },
+                    "time_of_day": {
+                        "type": "string",
+                        "description": "Alias for 'time'. Time of day in HH:MM format (24-hour).",
+                    },
                     "timezone_str": {
                         "type": "string",
                         "default": "UTC",
                         "description": "Timezone (e.g. UTC, US/Eastern, Europe/London).",
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "Alias for 'timezone_str'. Timezone.",
                     },
                     "resource_types": {
                         "type": "array",
@@ -1833,10 +1846,14 @@ class MCPHandler:
 
     async def _handle_schedule_compliance_audit(self, arguments: dict) -> dict:
         """Handle schedule_compliance_audit tool invocation."""
+        # Accept alternate parameter names that AI agents commonly send
+        schedule = arguments.get("schedule") or arguments.get("schedule_type", "daily")
+        time_val = arguments.get("time") or arguments.get("time_of_day", "09:00")
+        tz = arguments.get("timezone_str") or arguments.get("timezone", "UTC")
         result = await schedule_compliance_audit(
-            schedule=arguments.get("schedule", "daily"),
-            time=arguments.get("time", "09:00"),
-            timezone_str=arguments.get("timezone_str", "UTC"),
+            schedule=schedule,
+            time=time_val,
+            timezone_str=tz,
             resource_types=arguments.get("resource_types"),
             recipients=arguments.get("recipients"),
             notification_format=arguments.get("notification_format", "email"),

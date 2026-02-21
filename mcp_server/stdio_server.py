@@ -586,6 +586,10 @@ async def schedule_compliance_audit(
     resource_types: list[str] | None = None,
     recipients: list[str] | None = None,
     notification_format: str = "email",
+    # Alternate parameter names AI agents commonly send
+    schedule_type: str | None = None,
+    time_of_day: str | None = None,
+    timezone: str | None = None,
 ) -> str:
     """Create a compliance audit schedule configuration.
 
@@ -600,14 +604,22 @@ async def schedule_compliance_audit(
         resource_types: Resource types to audit. If None, audits all types.
         recipients: Email addresses for notifications
         notification_format: Notification method: "email", "slack", or "both"
+        schedule_type: Alias for schedule
+        time_of_day: Alias for time
+        timezone: Alias for timezone_str
     """
     _ensure_initialized()
     from .tools import schedule_compliance_audit as _schedule
 
+    # Accept alternate parameter names as fallbacks
+    effective_schedule = schedule_type if schedule_type and schedule == "daily" else schedule
+    effective_time = time_of_day if time_of_day and time == "09:00" else time
+    effective_tz = timezone if timezone and timezone_str == "UTC" else timezone_str
+
     result = await _schedule(
-        schedule=schedule,
-        time=time,
-        timezone_str=timezone_str,
+        schedule=effective_schedule,
+        time=effective_time,
+        timezone_str=effective_tz,
         resource_types=resource_types,
         recipients=recipients,
         notification_format=notification_format,
