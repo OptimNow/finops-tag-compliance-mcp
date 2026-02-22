@@ -29,7 +29,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a **FinOps Tag Compliance MCP Server** - a remote Model Context Protocol server that provides intelligent AWS resource tagging validation and compliance checking to AI assistants like Claude Desktop. It goes beyond basic tag reading to provide schema validation, cost attribution analysis, and ML-powered tag suggestions.
 
-**Phase**: Phase 2.5 Complete ✅ — ECS Fargate deployment live at https://mcp.optimnow.io
+**Phase**: Phase 2 Complete ✅ (February 22, 2026) — 14 tools, ECS Fargate live at https://mcp.optimnow.io
 **Refactoring**: Deferred to Phase 3 (see [REFACTORING_PLAN.md](REFACTORING_PLAN.md))
 
 ## Development Commands
