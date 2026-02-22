@@ -5,7 +5,7 @@
 """MCP Protocol Handler for FinOps Tag Compliance Server.
 
 This module implements the Model Context Protocol (MCP) handler that exposes
-all 8 compliance tools to AI assistants like Claude.
+all 14 compliance tools to AI assistants like Claude.
 
 Requirements: 14.5, 15.3, 15.4, 15.5, 16.4
 """
@@ -38,11 +38,17 @@ from .services import (
 from .services.multi_region_scanner import MultiRegionScanner
 from .tools import (
     check_tag_compliance,
+    detect_tag_drift,
+    export_violations_csv,
     find_untagged_resources,
     generate_compliance_report,
+    generate_custodian_policy,
+    generate_openops_workflow,
     get_cost_attribution_gap,
     get_tagging_policy,
     get_violation_history,
+    import_aws_tag_policy,
+    schedule_compliance_audit,
     suggest_tags,
     validate_resource_tags,
 )
@@ -75,7 +81,7 @@ class MCPHandler:
     """
     MCP Protocol Handler for the FinOps Tag Compliance Server.
 
-    This handler manages the registration and invocation of all 8 MCP tools:
+    This handler manages the registration and invocation of all 14 MCP tools:
     1. check_tag_compliance - Scan resources and return compliance score
     2. find_untagged_resources - Find resources missing tags
     3. validate_resource_tags - Validate specific resources by ARN
@@ -84,6 +90,12 @@ class MCPHandler:
     6. get_tagging_policy - Return the policy configuration
     7. generate_compliance_report - Generate formatted reports
     8. get_violation_history - Return historical compliance data
+    9. generate_custodian_policy - Generate Cloud Custodian YAML policies
+    10. generate_openops_workflow - Generate OpenOps automation workflows
+    11. schedule_compliance_audit - Create audit schedule configurations
+    12. detect_tag_drift - Detect unexpected tag changes
+    13. export_violations_csv - Export violations as CSV
+    14. import_aws_tag_policy - Import AWS Organizations tag policies
 
     Requirements: 14.5
     """
@@ -124,7 +136,7 @@ class MCPHandler:
         self._register_tools()
 
     def _register_tools(self) -> None:
-        """Register all 8 MCP tools with their definitions."""
+        """Register all 14 MCP tools with their definitions."""
 
         # Tool 1: check_tag_compliance
         self._register_tool(
@@ -665,6 +677,268 @@ class MCPHandler:
             },
         )
 
+        # Tool 9: generate_custodian_policy
+        self._register_tool(
+            name="generate_custodian_policy",
+            handler=self._handle_generate_custodian_policy,
+            description=(
+                "Generate Cloud Custodian YAML policies from the tagging policy. "
+                "Creates enforceable policies for specific resource types and violation types. "
+                "Use dry_run=true (default) for notify-only policies."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "resource_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Resource types to generate policies for. If omitted, generates for all types.",
+                    },
+                    "violation_types": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": ["missing_tag", "invalid_value"],
+                        },
+                        "description": "Types of violations to enforce. If omitted, enforces all.",
+                    },
+                    "target_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific tag names to enforce. If omitted, enforces all required tags.",
+                    },
+                    "dry_run": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "If true (default), generates notify-only policies.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
+        # Tool 10: generate_openops_workflow
+        self._register_tool(
+            name="generate_openops_workflow",
+            handler=self._handle_generate_openops_workflow,
+            description=(
+                "Generate an OpenOps automation workflow for tag remediation. "
+                "Supports notify, auto_tag, and report strategies."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "resource_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Resource types to include. If omitted, includes all.",
+                    },
+                    "remediation_strategy": {
+                        "type": "string",
+                        "enum": ["notify", "auto_tag", "report"],
+                        "default": "notify",
+                        "description": "Remediation strategy: notify, auto_tag, or report.",
+                    },
+                    "threshold": {
+                        "type": "number",
+                        "minimum": 0.0,
+                        "maximum": 1.0,
+                        "description": "Compliance score threshold (0.0-1.0) to trigger workflow.",
+                    },
+                    "target_tags": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific tag names to target. If omitted, targets all required tags.",
+                    },
+                    "schedule": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "default": "daily",
+                        "description": "How often to run the workflow.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
+        # Tool 11: schedule_compliance_audit
+        self._register_tool(
+            name="schedule_compliance_audit",
+            handler=self._handle_schedule_compliance_audit,
+            description=(
+                "Create a compliance audit schedule configuration. "
+                "Generates cron expression and next run estimate. "
+                "Actual scheduling requires an external scheduler."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "schedule": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "default": "daily",
+                        "description": "Audit frequency.",
+                    },
+                    "schedule_type": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "description": "Alias for 'schedule'. Audit frequency.",
+                    },
+                    "time": {
+                        "type": "string",
+                        "default": "09:00",
+                        "description": "Time of day in HH:MM format (24-hour).",
+                    },
+                    "time_of_day": {
+                        "type": "string",
+                        "description": "Alias for 'time'. Time of day in HH:MM format (24-hour).",
+                    },
+                    "timezone_str": {
+                        "type": "string",
+                        "default": "UTC",
+                        "description": "Timezone (e.g. UTC, US/Eastern, Europe/London).",
+                    },
+                    "timezone": {
+                        "type": "string",
+                        "description": "Alias for 'timezone_str'. Timezone.",
+                    },
+                    "resource_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Resource types to audit. If omitted, audits all.",
+                    },
+                    "recipients": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Email addresses for notifications.",
+                    },
+                    "notification_format": {
+                        "type": "string",
+                        "enum": ["email", "slack", "both"],
+                        "default": "email",
+                        "description": "Notification method: email, slack, or both.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
+        # Tool 12: detect_tag_drift
+        self._register_tool(
+            name="detect_tag_drift",
+            handler=self._handle_detect_tag_drift,
+            description=(
+                "Detect unexpected tag changes since the last compliance scan. "
+                "Compares current tags against policy expectations. "
+                "Classifies drift by severity: critical, warning, or info."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "resource_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Resource types to check. Default: ec2:instance, s3:bucket, rds:db.",
+                    },
+                    "tag_keys": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Specific tag keys to monitor. If omitted, monitors all required tags.",
+                    },
+                    "lookback_days": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 90,
+                        "default": 7,
+                        "description": "Number of days to look back for baseline (1-90).",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
+        # Tool 13: export_violations_csv
+        self._register_tool(
+            name="export_violations_csv",
+            handler=self._handle_export_violations_csv,
+            description=(
+                "Export compliance violations as CSV data. "
+                "Runs a compliance scan and formats violations for spreadsheet analysis."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "resource_types": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "Resource types to scan. If omitted, scans all types.",
+                    },
+                    "severity": {
+                        "type": "string",
+                        "enum": ["all", "errors_only", "warnings_only"],
+                        "default": "all",
+                        "description": "Filter by severity level.",
+                    },
+                    "columns": {
+                        "type": "array",
+                        "items": {
+                            "type": "string",
+                            "enum": [
+                                "resource_id",
+                                "resource_type",
+                                "region",
+                                "violation_type",
+                                "tag_name",
+                                "severity",
+                                "current_value",
+                                "allowed_values",
+                                "cost_impact",
+                                "arn",
+                            ],
+                        },
+                        "description": "CSV columns to include. Default: resource_id, resource_type, region, violation_type, tag_name, severity.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
+        # Tool 14: import_aws_tag_policy
+        self._register_tool(
+            name="import_aws_tag_policy",
+            handler=self._handle_import_aws_tag_policy,
+            description=(
+                "Import and convert an AWS Organizations tag policy to MCP format. "
+                "If no policy_id is provided, lists all available tag policies."
+            ),
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "policy_id": {
+                        "type": "string",
+                        "description": "AWS Organizations policy ID (e.g. p-xxxxxxxx). If omitted, lists available policies.",
+                    },
+                    "save_to_file": {
+                        "type": "boolean",
+                        "default": True,
+                        "description": "Whether to save the converted policy to a file.",
+                    },
+                    "output_path": {
+                        "type": "string",
+                        "default": "policies/tagging_policy.json",
+                        "description": "File path to save the converted policy.",
+                    },
+                },
+                "required": [],
+                "additionalProperties": False,
+            },
+        )
+
         logger.info(f"Registered {len(self._tools)} MCP tools")
 
     def _register_tool(
@@ -822,6 +1096,43 @@ class MCPHandler:
                     required=False,
                     valid_options=InputValidator.VALID_HISTORY_GROUP_BY,
                 )
+
+            elif tool_name == "generate_custodian_policy":
+                InputValidator.validate_boolean(
+                    arguments.get("dry_run", True),
+                    field_name="dry_run",
+                    required=False,
+                )
+
+            elif tool_name == "generate_openops_workflow":
+                if arguments.get("threshold") is not None:
+                    threshold = arguments["threshold"]
+                    if not isinstance(threshold, (int, float)) or threshold < 0.0 or threshold > 1.0:
+                        raise ValidationError(
+                            field="threshold",
+                            message="threshold must be a number between 0.0 and 1.0",
+                        )
+
+            elif tool_name == "schedule_compliance_audit":
+                pass  # All parameters have defaults and are validated in tool
+
+            elif tool_name == "detect_tag_drift":
+                InputValidator.validate_integer(
+                    arguments.get("lookback_days", 7),
+                    field_name="lookback_days",
+                    required=False,
+                    minimum=1,
+                    maximum=90,
+                )
+
+            elif tool_name == "export_violations_csv":
+                InputValidator.validate_severity(
+                    arguments.get("severity", "all"),
+                    required=False,
+                )
+
+            elif tool_name == "import_aws_tag_policy":
+                pass  # All parameters are optional and validated in tool
 
             logger.debug(f"Input validation passed for tool: {tool_name}")
 
@@ -1302,6 +1613,7 @@ class MCPHandler:
             regions=arguments.get("regions"),
             min_cost_threshold=arguments.get("min_cost_threshold"),
             include_costs=include_costs,
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         # Build resource list - only include cost fields if costs were requested
@@ -1347,6 +1659,7 @@ class MCPHandler:
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arns=arguments["resource_arns"],
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         return {
@@ -1390,6 +1703,7 @@ class MCPHandler:
             time_period=arguments.get("time_period"),
             group_by=arguments.get("group_by"),
             filters=arguments.get("filters"),
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         breakdown = None
@@ -1422,6 +1736,7 @@ class MCPHandler:
             aws_client=self.aws_client,
             policy_service=self.policy_service,
             resource_arn=arguments["resource_arn"],
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         return result.model_dump(mode="json")
@@ -1449,6 +1764,7 @@ class MCPHandler:
             filters=arguments.get("filters"),
             severity="all",
             history_service=self.history_service,
+            multi_region_scanner=self.multi_region_scanner,
         )
 
         # Get actual cost attribution gap from cost service
@@ -1501,4 +1817,80 @@ class MCPHandler:
             db_path=db_path,
         )
 
+        return result.model_dump(mode="json")
+
+    async def _handle_generate_custodian_policy(self, arguments: dict) -> dict:
+        """Handle generate_custodian_policy tool invocation."""
+        result = await generate_custodian_policy(
+            policy_service=self.policy_service,
+            resource_types=arguments.get("resource_types"),
+            violation_types=arguments.get("violation_types"),
+            target_tags=arguments.get("target_tags"),
+            dry_run=arguments.get("dry_run", True),
+            compliance_service=self.compliance_service,
+        )
+        return result.model_dump(mode="json")
+
+    async def _handle_generate_openops_workflow(self, arguments: dict) -> dict:
+        """Handle generate_openops_workflow tool invocation."""
+        result = await generate_openops_workflow(
+            policy_service=self.policy_service,
+            resource_types=arguments.get("resource_types") or ["all"],
+            remediation_strategy=arguments.get("remediation_strategy", "notify"),
+            threshold=arguments.get("threshold", 0.8),
+            target_tags=arguments.get("target_tags"),
+            schedule=arguments.get("schedule", "daily"),
+            compliance_service=self.compliance_service,
+        )
+        return result.model_dump(mode="json")
+
+    async def _handle_schedule_compliance_audit(self, arguments: dict) -> dict:
+        """Handle schedule_compliance_audit tool invocation."""
+        # Accept alternate parameter names that AI agents commonly send
+        schedule = arguments.get("schedule") or arguments.get("schedule_type", "daily")
+        time_val = arguments.get("time") or arguments.get("time_of_day", "09:00")
+        tz = arguments.get("timezone_str") or arguments.get("timezone", "UTC")
+        result = await schedule_compliance_audit(
+            schedule=schedule,
+            time=time_val,
+            timezone_str=tz,
+            resource_types=arguments.get("resource_types"),
+            recipients=arguments.get("recipients"),
+            notification_format=arguments.get("notification_format", "email"),
+        )
+        return result.model_dump(mode="json")
+
+    async def _handle_detect_tag_drift(self, arguments: dict) -> dict:
+        """Handle detect_tag_drift tool invocation."""
+        result = await detect_tag_drift(
+            aws_client=self.aws_client,
+            policy_service=self.policy_service,
+            resource_types=arguments.get("resource_types"),
+            tag_keys=arguments.get("tag_keys"),
+            lookback_days=arguments.get("lookback_days", 7),
+            history_service=self.history_service,
+            compliance_service=self.compliance_service,
+            multi_region_scanner=self.multi_region_scanner,
+        )
+        return result.model_dump(mode="json")
+
+    async def _handle_export_violations_csv(self, arguments: dict) -> dict:
+        """Handle export_violations_csv tool invocation."""
+        result = await export_violations_csv(
+            compliance_service=self.compliance_service,
+            resource_types=arguments.get("resource_types"),
+            severity=arguments.get("severity", "all"),
+            columns=arguments.get("columns"),
+            multi_region_scanner=self.multi_region_scanner,
+        )
+        return result.model_dump(mode="json")
+
+    async def _handle_import_aws_tag_policy(self, arguments: dict) -> dict:
+        """Handle import_aws_tag_policy tool invocation."""
+        result = await import_aws_tag_policy(
+            aws_client=self.aws_client,
+            policy_id=arguments.get("policy_id"),
+            save_to_file=arguments.get("save_to_file", True),
+            output_path=arguments.get("output_path", "policies/tagging_policy.json"),
+        )
         return result.model_dump(mode="json")

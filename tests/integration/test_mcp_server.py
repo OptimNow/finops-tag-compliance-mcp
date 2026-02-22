@@ -184,15 +184,16 @@ class TestMCPServerEndpoints:
 class TestMCPToolDefinitions:
     """Test MCP tool definitions and listing."""
 
-    def test_list_tools_returns_8_tools(self, mcp_handler):
-        """Test that all 8 tools are registered."""
+    def test_list_tools_returns_14_tools(self, mcp_handler):
+        """Test that all 14 tools are registered (8 Phase 1 + 6 Phase 2)."""
         tools = mcp_handler.get_tool_definitions()
 
-        assert len(tools) == 8
+        assert len(tools) == 14
 
         # Verify all expected tools are present
         tool_names = {tool["name"] for tool in tools}
         expected_tools = {
+            # Phase 1 tools (1-8)
             "check_tag_compliance",
             "find_untagged_resources",
             "validate_resource_tags",
@@ -201,6 +202,13 @@ class TestMCPToolDefinitions:
             "get_tagging_policy",
             "generate_compliance_report",
             "get_violation_history",
+            # Phase 2 tools (9-14)
+            "generate_custodian_policy",
+            "generate_openops_workflow",
+            "schedule_compliance_audit",
+            "detect_tag_drift",
+            "export_violations_csv",
+            "import_aws_tag_policy",
         }
 
         assert tool_names == expected_tools

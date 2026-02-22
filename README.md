@@ -2,7 +2,7 @@
 
 > **Turn Claude into your AWS tagging compliance assistant** — Ask in plain English, get real-time insights on your cloud costs and compliance.
 
-**Status**: ✅ Phase 1 MVP Complete (January 2026) | **For**: FinOps Practitioners, Solution Architects, DevOps Engineers
+**Status**: ✅ Phase 2 Complete (February 2026) | **For**: FinOps Practitioners, Solution Architects, DevOps Engineers
 
 ---
 
@@ -80,11 +80,11 @@ This MCP server supports two transports: **stdio** (for Claude Desktop and MCP I
 
 Claude then translates those technical results into natural language you can understand and act on.
 
-### 8 Core Tools Claude Can Use
+### 14 Tools Claude Can Use
 
 When you're chatting with Claude, it automatically picks the right tool for your question:
 
-**check_tag_compliance** scans resources against your policy and calculates a compliance score. **find_untagged_resources** identifies resources missing required tags with cost impact. **validate_resource_tags** validates specific resources by ARN (great for CI/CD pipelines). **get_cost_attribution_gap** calculates how much spend is unattributable. **suggest_tags** provides ML-powered recommendations with confidence scores. **get_tagging_policy** shows your current policy configuration. **generate_compliance_report** creates formatted reports in JSON, CSV, or Markdown. **get_violation_history** shows compliance trends over time.
+**check_tag_compliance** scans resources against your policy and calculates a compliance score. **find_untagged_resources** identifies resources missing required tags with cost impact. **validate_resource_tags** validates specific resources by ARN (great for CI/CD pipelines). **get_cost_attribution_gap** calculates how much spend is unattributable. **suggest_tags** provides ML-powered recommendations with confidence scores. **get_tagging_policy** shows your current policy configuration. **generate_compliance_report** creates formatted reports in JSON, CSV, or Markdown. **get_violation_history** shows compliance trends over time. **detect_tag_drift** finds unexpected tag changes since last scan. **generate_custodian_policy** creates Cloud Custodian enforcement YAML. **generate_openops_workflow** builds automated remediation workflows. **schedule_compliance_audit** configures recurring audit schedules. **export_violations_csv** exports violations for spreadsheet analysis. **import_aws_tag_policy** imports policies from AWS Organizations.
 
 You don't need to memorize these—Claude figures out which tools to use based on what you're asking. But if you're curious about the implementation details, check out the [Tool Logic Reference](./docs/TOOL_LOGIC_REFERENCE.md).
 
@@ -123,7 +123,7 @@ npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
 ```
 
 The Inspector opens a browser UI where you can:
-- See all 8 registered tools with their JSON schemas
+- See all 14 registered tools with their JSON schemas
 - Execute any tool with custom arguments
 - View structured results and server notifications
 
@@ -201,13 +201,13 @@ Security features include input validation, budget enforcement to prevent runawa
 
 ## Roadmap
 
-**Phase 1 (Complete)**: AWS support with 8 tools, compliance history tracking, cost attribution, ML tag suggestions, Docker deployment on EC2.
+**Phase 1 (Complete - January 2026)**: AWS support with 8 tools, compliance history tracking, cost attribution, ML tag suggestions, Docker deployment on EC2.
 
-**Phase 2 (Months 3-4)**: Production scale on ECS Fargate with 16 total tools, high availability, ElastiCache Redis, RDS PostgreSQL, OAuth 2.0 authentication.
+**Phase 2 (Complete - February 2026)**: Production deployment on ECS Fargate with 14 tools, multi-region scanning across 17 AWS regions, CloudFormation infrastructure-as-code, ALB with TLS, auto-scaling, and comprehensive UAT validation.
 
-**Phase 3 (Months 5-6)**: Multi-cloud support for Azure and GCP with unified tagging policies and cross-cloud consistency checking.
+**Phase 3 (Planned)**: Multi-cloud support for Azure and GCP with unified tagging policies and cross-cloud consistency checking.
 
-**Phase 4 (Months 7-8)**: Automation integration—generate remediation scripts (Terraform, CloudFormation, Ansible), integrate with OpenOps and wiv.ai for automated workflows.
+**Phase 4 (Planned)**: Automation integration—generate remediation scripts (Terraform, CloudFormation, Ansible), integrate with OpenOps and wiv.ai for automated workflows.
 
 See the [full Roadmap](./docs/ROADMAP.md) for timelines and decision points.
 
@@ -300,6 +300,22 @@ finops-tag-compliance-mcp/
 ├── docker-compose.yml    # Local development setup
 └── Dockerfile            # Container image
 ```
+
+---
+
+## Project Stats
+
+| Metric | Value |
+|--------|-------|
+| Application code (`mcp_server/`) | ~24,000 lines across 14 tools, 10 services, 17 data models |
+| Test suite (`tests/`) | ~46,000 lines — unit, property-based, integration, and regression tests |
+| Config, docs, infrastructure | ~40,000 lines — CloudFormation, YAML, Markdown, shell scripts |
+| Total codebase | **~111,000 lines** across **852 files** |
+| Git history | 212 commits over 54 days (Dec 2025 – Feb 2026) |
+| Test-to-code ratio | 1.9:1 — nearly 2x more test code than application code |
+| Infrastructure | 1,161-line CloudFormation template (VPC, ALB, ECS Fargate, EFS, ECR) |
+| Multi-region coverage | 17 AWS regions scanned in parallel |
+| UAT validation | 14 tools, 100% pass rate across gradient-tagged test infrastructure |
 
 ---
 

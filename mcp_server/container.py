@@ -17,6 +17,8 @@ Phase 1.9: Core Library Extraction
 import logging
 from typing import Optional
 
+import boto3
+
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
 from .clients.regional_client_factory import RegionalClientFactory
@@ -28,6 +30,8 @@ from .services.history_service import HistoryService
 from .services.multi_region_scanner import MultiRegionScanner
 from .services.policy_service import PolicyService
 from .services.region_discovery_service import RegionDiscoveryService
+from .services.auto_policy_service import AutoPolicyService
+from .services.scheduler_service import SchedulerService
 from .services.security_service import (
     SecurityService,
     configure_security_logging,
@@ -89,6 +93,8 @@ class ServiceContainer:
         self._budget_tracker: Optional[BudgetTracker] = None
         self._loop_detector: Optional[LoopDetector] = None
         self._multi_region_scanner: Optional[MultiRegionScanner] = None
+        self._auto_policy_service: Optional[AutoPolicyService] = None
+        self._scheduler_service: Optional[SchedulerService] = None
 
     # ------------------------------------------------------------------
     # Lifecycle
@@ -144,6 +150,33 @@ class ServiceContainer:
         except Exception as e:
             logger.warning(f"ServiceContainer: failed to initialize AWS client: {e}")
             self._aws_client = None
+
+        # 4b. Auto-policy detection (Phase 2.4)
+        # If no policy file exists, try importing from AWS Organizations or create default
+        try:
+            self._auto_policy_service = AutoPolicyService(
+                policy_path=s.policy_path,
+                auto_import=s.auto_import_aws_policy,
+                aws_policy_id=s.auto_import_policy_id,
+                fallback_to_default=s.fallback_to_default_policy,
+            )
+            # AWSClient doesn't expose a boto3 Session; create one directly.
+            # ECS task role / instance profile provides credentials automatically.
+            aws_session = boto3.Session() if self._aws_client else None
+            auto_result = await self._auto_policy_service.detect_and_load(
+                aws_session=aws_session,
+            )
+            logger.info(
+                f"ServiceContainer: auto-policy detection complete "
+                f"(source={auto_result.source}, success={auto_result.success})"
+            )
+            if not auto_result.success:
+                logger.warning(
+                    f"ServiceContainer: auto-policy detection issue: {auto_result.message}"
+                )
+        except Exception as e:
+            logger.warning(f"ServiceContainer: auto-policy detection failed: {e}")
+            self._auto_policy_service = None
 
         # 5. Policy service
         try:
@@ -285,12 +318,62 @@ class ServiceContainer:
         else:
             logger.info("ServiceContainer: security monitoring is disabled")
 
+        # 10. Scheduler service (Phase 2.4)
+        if s.scheduler_enabled and self._compliance_service and self._history_service:
+            try:
+                # Create scan callback that runs a full compliance check
+                compliance_svc = self._compliance_service
+                history_svc = self._history_service
+
+                async def _scan_callback():
+                    """Run a full compliance scan for the scheduler."""
+                    return await compliance_svc.check_compliance(
+                        resource_types=["all"],
+                    )
+
+                async def _store_callback(result):
+                    """Store compliance result in history."""
+                    history_svc.store_scan_result(result)
+
+                self._scheduler_service = SchedulerService(
+                    scan_callback=_scan_callback,
+                    store_callback=_store_callback,
+                    schedule_hour=s.snapshot_schedule_hour,
+                    schedule_minute=s.snapshot_schedule_minute,
+                    schedule_timezone=s.snapshot_schedule_timezone,
+                    enabled=True,
+                )
+                started = await self._scheduler_service.start()
+                if started:
+                    logger.info(
+                        f"ServiceContainer: scheduler service started "
+                        f"(schedule: {s.snapshot_schedule_hour:02d}:{s.snapshot_schedule_minute:02d} "
+                        f"{s.snapshot_schedule_timezone})"
+                    )
+                else:
+                    logger.warning("ServiceContainer: scheduler service failed to start")
+            except Exception as e:
+                logger.warning(f"ServiceContainer: failed to initialize scheduler service: {e}")
+                self._scheduler_service = None
+        elif s.scheduler_enabled:
+            logger.warning(
+                "ServiceContainer: scheduler enabled but compliance/history service unavailable"
+            )
+        else:
+            logger.info("ServiceContainer: scheduler is disabled")
+
         self._initialized = True
         logger.info("ServiceContainer: all services initialized")
 
     async def shutdown(self) -> None:
         """Clean up connections and resources."""
         logger.info("ServiceContainer: shutting down")
+        # Stop scheduler first (Phase 2.4)
+        if self._scheduler_service:
+            try:
+                await self._scheduler_service.stop()
+            except Exception as e:
+                logger.warning(f"ServiceContainer: error stopping scheduler: {e}")
         if self._redis_cache:
             try:
                 await self._redis_cache.close()
@@ -350,3 +433,11 @@ class ServiceContainer:
     @property
     def multi_region_scanner(self) -> Optional[MultiRegionScanner]:
         return self._multi_region_scanner
+
+    @property
+    def auto_policy_service(self) -> Optional[AutoPolicyService]:
+        return self._auto_policy_service
+
+    @property
+    def scheduler_service(self) -> Optional[SchedulerService]:
+        return self._scheduler_service

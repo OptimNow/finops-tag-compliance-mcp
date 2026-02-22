@@ -284,11 +284,33 @@ class ComplianceService:
         filtered_resources = self._apply_resource_filters(filtered_by_state, filters)
         logger.info(f"Total resources after filtering: {len(filtered_resources)}")
 
+        # Filter out resources with no applicable policy rules.
+        # Resources whose resource_type has zero required tags in the policy are "out of scope"
+        # and should not be counted in compliance metrics. This prevents types like
+        # ec2:elastic-ip, secretsmanager:secret, kms:key (which have no policy rules)
+        # from inflating the resource count when scanning "all" resource types.
+        in_scope_resources = []
+        out_of_scope_count = 0
+
+        for resource in filtered_resources:
+            resource_type = resource.get("resource_type", "")
+            required_tags = self.policy_service.get_required_tags(resource_type)
+            if required_tags:
+                in_scope_resources.append(resource)
+            else:
+                out_of_scope_count += 1
+
+        if out_of_scope_count > 0:
+            logger.info(
+                f"Excluded {out_of_scope_count} resources with no applicable policy rules "
+                f"(out of scope for compliance)"
+            )
+
         # Validate each resource against policy and collect violations
         all_violations = []
         compliant_count = 0
 
-        for resource in filtered_resources:
+        for resource in in_scope_resources:
             violations = self.policy_service.validate_resource_tags(
                 resource_id=resource["resource_id"],
                 resource_type=resource["resource_type"],
@@ -303,14 +325,14 @@ class ComplianceService:
                 compliant_count += 1
 
         logger.info(
-            f"Found {len(all_violations)} violations across {len(filtered_resources)} resources"
+            f"Found {len(all_violations)} violations across {len(in_scope_resources)} resources"
         )
 
         # Apply severity filter to violations
         filtered_violations = self._filter_by_severity(all_violations, severity)
 
-        # Calculate compliance score
-        total_resources = len(filtered_resources)
+        # Calculate compliance score (only in-scope resources count)
+        total_resources = len(in_scope_resources)
         compliance_score = self._calculate_compliance_score(compliant_count, total_resources)
 
         # Calculate cost attribution gap (sum of cost impacts from violations)

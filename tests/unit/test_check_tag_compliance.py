@@ -227,6 +227,7 @@ class TestCheckTagComplianceMultiRegion:
             resource_types=["ec2:instance", "rds:db"],
             filters=None,
             severity="all",
+            force_refresh=False,
         )
         mock_compliance_service.check_compliance.assert_not_called()
 
@@ -256,6 +257,7 @@ class TestCheckTagComplianceMultiRegion:
             resource_types=["ec2:instance"],
             filters=filters,
             severity="all",
+            force_refresh=False,
         )
 
     @pytest.mark.asyncio
@@ -310,6 +312,7 @@ class TestCheckTagComplianceMultiRegion:
             resource_types=["all"],
             filters=None,
             severity="all",
+            force_refresh=False,
         )
         mock_compliance_service.check_compliance.assert_not_called()
 

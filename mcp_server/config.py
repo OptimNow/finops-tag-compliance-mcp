@@ -248,11 +248,64 @@ class CoreSettings(BaseSettings):
         validation_alias="TLS_ENABLED",
     )
 
+    # --- Phase 2.4: Auto-Policy Detection ---
+    auto_import_aws_policy: bool = Field(
+        default=True,
+        description=(
+            "On startup, if no policy file exists, attempt to import "
+            "a tag policy from AWS Organizations."
+        ),
+        validation_alias="AUTO_IMPORT_AWS_POLICY",
+    )
+    auto_import_policy_id: str | None = Field(
+        default=None,
+        description=(
+            "Specific AWS Organizations policy ID to import (e.g., 'p-abc12345'). "
+            "If not set, the first available tag policy is used."
+        ),
+        validation_alias="AUTO_IMPORT_POLICY_ID",
+    )
+    fallback_to_default_policy: bool = Field(
+        default=True,
+        description=(
+            "If no policy file exists and AWS import fails/disabled, "
+            "create a default policy with Owner/Environment/Application tags."
+        ),
+        validation_alias="FALLBACK_TO_DEFAULT_POLICY",
+    )
+
+    # --- Phase 2.4: Scheduled Compliance Snapshots ---
+    scheduler_enabled: bool = Field(
+        default=False,
+        description="Enable daily compliance snapshot scheduler",
+        validation_alias="SCHEDULER_ENABLED",
+    )
+    snapshot_schedule_hour: int = Field(
+        default=2,
+        ge=0,
+        le=23,
+        description="Hour to run the daily compliance snapshot (0-23, default: 2 = 02:00)",
+        validation_alias="SNAPSHOT_SCHEDULE_HOUR",
+    )
+    snapshot_schedule_minute: int = Field(
+        default=0,
+        ge=0,
+        le=59,
+        description="Minute to run the daily compliance snapshot (0-59, default: 0)",
+        validation_alias="SNAPSHOT_SCHEDULE_MINUTE",
+    )
+    snapshot_schedule_timezone: str = Field(
+        default="UTC",
+        description="Timezone for the snapshot schedule (default: UTC)",
+        validation_alias="SNAPSHOT_SCHEDULE_TIMEZONE",
+    )
+
     model_config = SettingsConfigDict(
         env_prefix="",  # No prefix for environment variables
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
+        extra="ignore",  # Ignore HTTP-specific settings when using CoreSettings
     )
 
     @field_validator("allowed_regions", mode="before")

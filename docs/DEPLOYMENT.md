@@ -7,7 +7,8 @@ This guide covers deploying the MCP server locally and to AWS (development or pr
 1. [Local Deployment](#1-local-deployment) - Run on your machine
 2. [AWS Deployment](#2-aws-deployment)
    - [2.1 Development](#21-development-deployment) - Simple EC2 with public IP
-   - [2.2 Production (Secured)](#22-production-secured-deployment) - ALB + HTTPS + API keys
+   - [2.2 Legacy Production (EC2)](#22-legacy-production-ec2--deprecated) - Deprecated (ALB + HTTPS + EC2)
+   - [2.3 Production (ECS Fargate)](#23-production-ecs-fargate--current) - Current production deployment
 3. [One-Click Tagging Policy Deployment](#3-one-click-tagging-policy-deployment) - Update policies remotely
 4. [Connecting Claude Desktop](#4-connecting-claude-desktop)
    - [4.1 Local (stdio)](#41-local-stdio)
@@ -125,7 +126,9 @@ aws cloudformation describe-stacks --stack-name tagging-mcp-server \
 
 ---
 
-### 2.2 Production (Secured) Deployment
+### 2.2 Legacy Production (EC2) — Deprecated
+
+> **Note**: EC2 deployment was replaced by ECS Fargate in Phase 2.5 (February 2026). See Section 2.3 for the current production deployment. This section is kept for historical reference.
 
 Full security: ALB with HTTPS, API key authentication, EC2 in private subnet, VPC endpoints.
 
@@ -328,7 +331,133 @@ curl https://mcp.yourdomain.com/health
 
 ---
 
+### 2.3 Production (ECS Fargate) — Current
+
+Production-grade deployment on ECS Fargate with Redis sidecar, EFS persistence, and auto-scaling.
+
+#### Architecture
+
+```
+Internet -> HTTPS:443 -> ALB (public subnets) -> HTTP:8080 -> ECS Fargate Task (private subnets) -> VPC Endpoints -> AWS APIs
+                                                    |
+                                                    +-- mcp-server container (port 8080)
+                                                    +-- redis sidecar container (localhost:6379)
+                                                    +-- EFS volume (/mnt/efs for SQLite DBs)
+```
+
+**Live URL**: `https://mcp.optimnow.io`
+
+**Key Components**:
+- **ECS Cluster**: `mcp-tagging-cluster-prod` (Fargate, Container Insights)
+- **Task Definition**: 512 CPU / 1024 MB, two containers (mcp-server + redis sidecar)
+- **ECR**: `382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod`
+- **EFS**: Encrypted file system for SQLite databases (audit_logs.db, compliance_history.db)
+- **ALB**: TLS termination with ACM certificate, IP-type target group
+- **Auto-scaling**: 1-4 tasks, CPU target 70%
+- **Secrets Manager**: API keys injected at runtime
+- **VPC Endpoints**: ECR API, ECR DKR, S3, CloudWatch Logs, Secrets Manager, SSM Messages, EC2
+
+#### Prerequisites
+
+1. AWS account with appropriate permissions
+2. ACM Certificate for your domain
+3. Docker installed locally (for building images)
+4. AWS CLI configured
+
+#### Deploy Infrastructure (CloudFormation)
+
+All infrastructure is defined in `infrastructure/cloudformation-production.yaml`.
+
+1. Go to CloudFormation -> Create stack -> Upload template
+2. Parameters:
+   - ProjectName: `mcp-tagging`
+   - Environment: `prod`
+   - ACMCertificateArn: ARN of your certificate
+3. Create stack (~15 minutes)
+
+#### Deploy Application Code
+
+Use the deploy script to build, push, and deploy:
+
+```bash
+# Full build + push + deploy
+./scripts/deploy_ecs.sh
+
+# Just force a new deployment (after config change)
+./scripts/deploy_ecs.sh --deploy-only
+
+# Push existing image only (skip build)
+./scripts/deploy_ecs.sh --push-only
+```
+
+**Manual deployment steps** (if not using the script):
+```bash
+# 1. ECR login
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 382598791951.dkr.ecr.us-east-1.amazonaws.com
+
+# 2. Build and push
+docker build -t mcp-tagging-prod .
+docker tag mcp-tagging-prod:latest 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
+docker push 382598791951.dkr.ecr.us-east-1.amazonaws.com/mcp-tagging-prod:latest
+
+# 3. Force new deployment
+aws ecs update-service --cluster mcp-tagging-cluster-prod --service mcp-tagging-service-prod --force-new-deployment --region us-east-1
+
+# 4. Wait for stability
+aws ecs wait services-stable --cluster mcp-tagging-cluster-prod --services mcp-tagging-service-prod --region us-east-1
+```
+
+#### Configure DNS
+
+Create a CNAME record pointing to the ALB:
+- Name: `mcp` (creates `mcp.yourdomain.com`)
+- Value: ALB DNS name (from CloudFormation Outputs: `LoadBalancerDNS`)
+
+#### Tagging Policy (Auto-Import from AWS Organizations)
+
+The server automatically imports your AWS Organizations tag policy on startup:
+
+- Set `AUTO_IMPORT_AWS_POLICY=true` in the task definition
+- Set `AUTO_IMPORT_POLICY_ID` to your AWS Organizations tag policy ID
+- The policy is fetched, converted, and saved to EFS on container start
+- Falls back to the default `policies/tagging_policy.json` if import fails
+
+To find your policy ID:
+```bash
+aws organizations list-policies --filter TAG_POLICY --query 'Policies[].{Id:Id,Name:Name}' --output table
+```
+
+#### ECS Exec (Debugging)
+
+```bash
+# Get running task ID
+TASK_ID=$(aws ecs list-tasks --cluster mcp-tagging-cluster-prod --service mcp-tagging-service-prod --query 'taskArns[0]' --output text --region us-east-1)
+
+# Shell into MCP server container
+aws ecs execute-command --cluster mcp-tagging-cluster-prod --task $TASK_ID --container mcp-server --interactive --command "/bin/sh" --region us-east-1
+
+# Shell into Redis sidecar
+aws ecs execute-command --cluster mcp-tagging-cluster-prod --task $TASK_ID --container redis --interactive --command "/bin/sh" --region us-east-1
+```
+
+#### Verify
+
+```bash
+# Health check
+curl https://mcp.optimnow.io/health
+
+# Test a tool
+curl -X POST https://mcp.optimnow.io/mcp/tools/call \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -d '{"name": "get_tagging_policy", "arguments": {}}'
+```
+
+---
+
 ## 3. One-Click Tagging Policy Deployment
+
+> **Recommended**: For ECS Fargate deployments, use automatic AWS Organizations tag policy import (see Section 2.3) instead of manual S3-based deployment. The steps below are for legacy EC2 deployments or manual policy override.
 
 Update your tagging policy from your local machine and deploy to EC2 with one command.
 
@@ -607,7 +736,16 @@ docker-compose build --no-cache
 docker-compose up -d
 ```
 
-### AWS (Dev or Prod)
+### AWS Production (ECS Fargate)
+
+```bash
+# From your local machine
+./scripts/deploy_ecs.sh
+```
+
+This builds the Docker image, pushes to ECR, and triggers a rolling ECS deployment. See Section 2.3 for details.
+
+### AWS Development (EC2 — Legacy)
 
 SSH/SSM to EC2:
 
