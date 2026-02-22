@@ -5,10 +5,13 @@
 """AWS client wrapper with rate limiting and backoff."""
 
 import asyncio
+import logging
 import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 import boto3
 from botocore.config import Config
@@ -1097,6 +1100,12 @@ class AWSClient:
                 if not pagination_token:
                     break
 
+            # Enrich EC2 instances with instance state so the compliance service
+            # safety net can filter out terminated/shutting-down instances.
+            # The Tagging API doesn't provide instance state, so we make a
+            # follow-up describe_instances call for any EC2 instances found.
+            resources = await self._enrich_ec2_instance_states(resources)
+
             return resources
 
         except AWSAPIError:
@@ -1105,6 +1114,80 @@ class AWSClient:
             raise AWSAPIError(
                 f"Failed to fetch resources via Resource Groups Tagging API: {str(e)}"
             ) from e
+
+    async def _enrich_ec2_instance_states(
+        self, resources: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """
+        Enrich EC2 instance resources with their actual instance state.
+
+        The Resource Groups Tagging API returns EC2 instances without state
+        information, which means terminated instances slip past the safety net
+        filter in ComplianceService. This method calls describe_instances to
+        fetch the actual state for each EC2 instance.
+
+        Args:
+            resources: List of resources from get_all_tagged_resources
+
+        Returns:
+            Same list with EC2 instances enriched with instance_state and instance_type
+        """
+        # Collect EC2 instance IDs that need enrichment
+        ec2_indices = []
+        instance_ids = []
+        for i, resource in enumerate(resources):
+            if resource.get("resource_type") == "ec2:instance" and not resource.get("instance_state"):
+                ec2_indices.append(i)
+                instance_ids.append(resource["resource_id"])
+
+        if not instance_ids:
+            return resources
+
+        logger.info(
+            f"Enriching {len(instance_ids)} EC2 instances with state from describe_instances"
+        )
+
+        try:
+            # describe_instances accepts up to 1000 instance IDs per call
+            state_map: dict[str, dict[str, str]] = {}
+            batch_size = 100
+            for start in range(0, len(instance_ids), batch_size):
+                batch = instance_ids[start : start + batch_size]
+                response = await self._call_with_backoff(
+                    "ec2",
+                    self.ec2.describe_instances,
+                    InstanceIds=batch,
+                )
+                for reservation in response.get("Reservations", []):
+                    for instance in reservation.get("Instances", []):
+                        iid = instance.get("InstanceId", "")
+                        state_map[iid] = {
+                            "instance_state": instance.get("State", {}).get("Name", "unknown"),
+                            "instance_type": instance.get("InstanceType", "unknown"),
+                        }
+
+            # Apply enrichment
+            enriched_count = 0
+            for idx in ec2_indices:
+                rid = resources[idx]["resource_id"]
+                if rid in state_map:
+                    resources[idx]["instance_state"] = state_map[rid]["instance_state"]
+                    resources[idx]["instance_type"] = state_map[rid]["instance_type"]
+                    enriched_count += 1
+
+            logger.info(
+                f"Enriched {enriched_count}/{len(instance_ids)} EC2 instances with state"
+            )
+
+        except Exception as e:
+            # Don't fail the whole scan if enrichment fails — the safety net
+            # filter will still work for instances that happen to have state.
+            logger.warning(
+                f"Failed to enrich EC2 instance states: {str(e)}. "
+                "Terminated instances may appear in compliance results."
+            )
+
+        return resources
 
     def _convert_resource_types_to_aws_format(self, resource_types: list[str]) -> list[str]:
         """
