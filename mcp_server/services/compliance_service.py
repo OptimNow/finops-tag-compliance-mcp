@@ -262,9 +262,10 @@ class ComplianceService:
                 f"Excluded {free_resource_count} free resources (VPC, Subnet, Security Group, etc.)"
             )
 
-        # Filter out terminated/shutting-down instances (safety net for Tagging API path).
-        # The EC2 direct API already filters these, but the Resource Groups Tagging API
-        # may still return recently-terminated resources without state information.
+        # Filter out terminated/shutting-down instances.
+        # The EC2 direct API filters these at the API level, and the Tagging API path
+        # now enriches EC2 instances with their actual state via describe_instances.
+        # This safety net catches any that slip through (e.g., if enrichment fails).
         filtered_by_state = []
         terminated_count = 0
 
