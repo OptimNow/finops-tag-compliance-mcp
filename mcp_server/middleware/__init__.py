@@ -1,6 +1,7 @@
 """Middleware for MCP server."""
 
 from .audit_middleware import audit_tool, audit_tool_sync
+from .correlation_middleware import CorrelationIDMiddleware
 from .auth_middleware import (
     APIKeyAuthMiddleware,
     AuthenticationError,
@@ -35,6 +36,7 @@ from .sanitization_middleware import (
 __all__ = [
     "audit_tool",
     "audit_tool_sync",
+    "CorrelationIDMiddleware",
     "APIKeyAuthMiddleware",
     "AuthenticationError",
     "hash_api_key",

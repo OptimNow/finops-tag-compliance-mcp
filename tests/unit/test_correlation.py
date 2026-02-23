@@ -6,8 +6,8 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
+from mcp_server.middleware.correlation_middleware import CorrelationIDMiddleware
 from mcp_server.utils.correlation import (
-    CorrelationIDMiddleware,
     generate_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,

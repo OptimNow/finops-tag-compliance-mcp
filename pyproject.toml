@@ -3,28 +3,27 @@ requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "tagging-mcp-server"
-version = "0.1.0"
-description = "Tagging MCP Server - AWS resource tagging validation and compliance checking"
+name = "finops-tag-compliance-mcp"
+version = "0.2.0"
+description = "FinOps Tag Compliance MCP Server - AWS resource tagging validation and compliance checking for Claude Desktop"
 readme = "README.md"
 requires-python = ">=3.11"
-license = {text = "MIT"}
+license = {text = "Apache-2.0"}
 authors = [
     {name = "OptimNow", email = "info@optimnow.com"}
 ]
-keywords = ["finops", "aws", "tagging", "compliance", "mcp"]
+keywords = ["finops", "aws", "tagging", "compliance", "mcp", "claude", "model-context-protocol"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
 ]
 
 dependencies = [
-    "fastapi>=0.104.0",
-    "uvicorn[standard]>=0.24.0",
     "pydantic>=2.0.0",
     "pydantic-settings>=2.0.0",
     "boto3>=1.28.0",
@@ -36,7 +35,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+http = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+]
 dev = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
     "pytest>=7.4.0",
     "pytest-asyncio>=0.21.0",
     "pytest-cov>=4.1.0",
@@ -53,9 +58,10 @@ dev = [
 finops-tag-compliance = "mcp_server.stdio_server:main"
 
 [project.urls]
-Homepage = "https://github.com/OptimNow/tagging-mcp-server"
-Repository = "https://github.com/OptimNow/tagging-mcp-server.git"
-Issues = "https://github.com/OptimNow/tagging-mcp-server/issues"
+Homepage = "https://mcp.optimnow.io"
+Documentation = "https://github.com/OptimNow/finops-tag-compliance-mcp"
+Repository = "https://github.com/OptimNow/finops-tag-compliance-mcp.git"
+Issues = "https://github.com/OptimNow/finops-tag-compliance-mcp/issues"
 
 [tool.setuptools]
 packages = ["mcp_server"]

@@ -1,5 +1,5 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 #!/usr/bin/env python3

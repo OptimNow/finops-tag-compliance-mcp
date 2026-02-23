@@ -21,14 +21,15 @@ from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 from . import __version__
-from .config import settings
+from .http_config import settings
 from .container import ServiceContainer
 from .mcp_handler import MCPHandler
 from .middleware.budget_middleware import set_budget_tracker
 from .models import HealthStatus
 from .models.audit import AuditStatus
 from .utils.cloudwatch_logger import CorrelationIDFilter, configure_cloudwatch_logging
-from .utils.correlation import CorrelationIDMiddleware, get_correlation_id
+from .middleware.correlation_middleware import CorrelationIDMiddleware
+from .utils.correlation import get_correlation_id
 from .utils.loop_detection import set_loop_detector
 from .services.security_service import set_security_service
 

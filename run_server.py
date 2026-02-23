@@ -34,7 +34,7 @@ except ImportError:
 
 import uvicorn
 
-from mcp_server.config import settings
+from mcp_server.http_config import settings
 
 
 def configure_logging(log_level: str) -> None:

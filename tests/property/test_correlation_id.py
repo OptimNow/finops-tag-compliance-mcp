@@ -23,8 +23,8 @@ from hypothesis import strategies as st
 from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
 from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
+from mcp_server.middleware.correlation_middleware import CorrelationIDMiddleware
 from mcp_server.utils.correlation import (
-    CorrelationIDMiddleware,
     generate_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
