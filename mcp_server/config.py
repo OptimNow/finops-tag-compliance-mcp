@@ -11,11 +11,6 @@ variables with sensible defaults.
 library (AWS, Redis, policy, databases, CloudWatch, budget, loop detection,
 security, timeouts). Usable by CLI, Lambda, stdio MCP, or any entry point.
 
-HTTP-specific settings (host, port, request sanitization, rate limiting) live
-in ``http_config.py`` as ``ServerSettings``.  Backward-compatible re-exports
-(``ServerSettings``, ``Settings``, ``get_settings``) are provided at the
-bottom of this file so existing imports continue to work.
-
 Requirements: 14.2
 """
 
@@ -330,8 +325,7 @@ def settings() -> CoreSettings:
     Get the global settings instance.
 
     Returns ``CoreSettings`` for protocol-agnostic consumers (container,
-    stdio_server).  HTTP entry points should import ``settings`` from
-    ``http_config`` instead to get ``ServerSettings``.
+    stdio_server).
     """
     global _core_settings
     if _core_settings is None:
