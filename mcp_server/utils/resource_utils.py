@@ -23,6 +23,18 @@ from .resource_type_config import (
 
 logger = logging.getLogger(__name__)
 
+# Resource types that have dedicated service API fetchers.
+# These APIs return ALL resources (including untagged), unlike the
+# Resource Groups Tagging API which only returns resources with ≥1 tag.
+DIRECT_FETCHER_TYPES = frozenset({
+    "ec2:instance",
+    "rds:db",
+    "s3:bucket",
+    "lambda:function",
+    "ecs:service",
+    "opensearch:domain",
+})
+
 
 # Re-export for backward compatibility
 # These now load from config/resource_types.json
