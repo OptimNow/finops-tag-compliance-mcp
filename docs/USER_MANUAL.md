@@ -471,11 +471,25 @@ The cost attribution gap shows:
 - Your AWS credentials may lack required permissions
 - See [IAM permissions guide](security/IAM_PERMISSIONS.md) for required policies
 
-### Slow responses
+### Slow responses and timeouts when using "all" mode
 
-- Large accounts may take longer to scan
-- Try filtering by resource type or region
-- Results are cached for 1 hour by default
+Broad or vague prompts (e.g. "check compliance for all resources", "what's my total cost attribution gap?") cause the server to scan all 42 resource types across every enabled AWS region. On a local MCP setup (stdio transport via Claude Desktop), this can take **30 seconds to 3+ minutes** depending on the tool:
+
+| Tool | "all" mode timing (local) |
+|------|---------------------------|
+| `find_untagged_resources` | ~8s |
+| `export_violations_csv` | ~30s |
+| `generate_compliance_report` | ~45s |
+| `check_tag_compliance` | ~50s |
+| `get_cost_attribution_gap` | ~3–4 min |
+
+**Tips to avoid timeouts:**
+- Be specific with resource types: `"Check compliance for EC2 and S3"` instead of `"Check compliance for all resources"`
+- Filter by region when possible: `"Check EC2 compliance in us-east-1"`
+- Use `check_tag_compliance` before `get_cost_attribution_gap` — it's faster and covers more ground
+- Results are cached for 1 hour by default; repeat scans are faster
+
+**Production deployment**: For faster performance on broad scans, deploy the server on AWS using the [managed production setup](https://github.com/OptimNow/finops-tag-compliance-deploy). The ECS Fargate deployment provides significantly better network throughput to AWS APIs and eliminates the latency bottleneck of local stdio transport.
 
 ### Claude doesn't see the tools
 
