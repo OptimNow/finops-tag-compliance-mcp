@@ -2,7 +2,7 @@
 
 > **Turn Claude into your AWS tagging compliance assistant** — Ask in plain English, get real-time insights on your cloud costs and compliance.
 
-[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/dba94ecd6ed44aa9b83d3e6a29b18d1d-acc33a893c37c354.jpg)](https://www.loom.com/share/dba94ecd6ed44aa9b83d3e6a29b18d1d)
+[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/dba94ecd6ed44aa9b83d3e6a29b18d1d-acc33a893c37c354-full-play.gif)](https://www.loom.com/share/dba94ecd6ed44aa9b83d3e6a29b18d1d)
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
