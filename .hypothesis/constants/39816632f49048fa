@@ -1,4 +1,0 @@
-# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\config.py
-# hypothesis_version: 6.148.8
-
-[100, 300, 3600, 8080, '.env', '/finops/mcp-server', '0.0.0.0', 'AUDIT_DB_PATH', 'AWS_DEFAULT_REGION', 'AWS_REGION', 'CLOUDWATCH_ENABLED', 'CLOUDWATCH_LOG_GROUP', 'DATABASE_PATH', 'DEBUG', 'Default AWS region', 'ENV', 'ENVIRONMENT', 'Enable debug mode', 'HISTORY_DB_PATH', 'HOST', 'INFO', 'LOG_LEVEL', 'MAX_IDENTICAL_CALLS', 'MCP_SERVER_HOST', 'MCP_SERVER_PORT', 'POLICY_FILE_PATH', 'POLICY_PATH', 'PORT', 'REDIS_PASSWORD', 'REDIS_TTL', 'REDIS_URL', 'Redis connection URL', 'audit_logs.db', 'development', 'us-east-1', 'utf-8']
