@@ -2,7 +2,7 @@
 
 This folder contains all technical documentation for the FinOps Tag Compliance MCP Server.
 
-## Core Documentation
+## Core documentation
 
 ### Specifications
 - **[SPECIFICATION.md](./SPECIFICATION.md)** - Overview and architecture for all phases
@@ -10,7 +10,7 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 - **[PHASE-2-SPECIFICATION.md](./PHASE-2-SPECIFICATION.md)** - Phase 2 (Production ECS + OAuth) specification
 - **[PHASE-3-SPECIFICATION.md](./PHASE-3-SPECIFICATION.md)** - Phase 3 (Multi-cloud Azure + GCP) specification
 
-### Deployment & Operations
+### Deployment & operations
 - **[DEPLOYMENT.md](./DEPLOYMENT.md)** - How to deploy to AWS EC2 or other cloud platforms
 - **[IAM_PERMISSIONS.md](./IAM_PERMISSIONS.md)** - AWS IAM permissions setup and troubleshooting
 
@@ -35,7 +35,7 @@ This folder contains all technical documentation for the FinOps Tag Compliance M
 - **[DIFFERENTIATION-FROM-AWS-NATIVE.md](./DIFFERENTIATION-FROM-AWS-NATIVE.md)** - How this differs from AWS native tools
 - **[MONETIZATION.md](./MONETIZATION.md)** - Monetization strategy and pricing
 
-## Quick Links
+## Quick links
 
 **Getting Started?** Start with the main [README.md](../README.md) in the root folder.
 

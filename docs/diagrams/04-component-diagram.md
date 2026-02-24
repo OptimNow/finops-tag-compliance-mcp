@@ -1,6 +1,6 @@
-# Component Diagram
+# Component diagram
 
-## 1. High-Level Component Architecture
+## 1. High-level component architecture
 
 This diagram shows the major logical components and their dependencies.
 
@@ -141,7 +141,7 @@ graph TB
     class Middleware,Utils,Config crosscut
 ```
 
-## 2. Component Dependency Matrix
+## 2. Component dependency matrix
 
 This table shows which components depend on each other.
 
@@ -164,9 +164,9 @@ This table shows which components depend on each other.
 | **Utilities** | - | All Components |
 | **Configuration** | Environment Variables | All Components |
 
-## 3. Component Interfaces
+## 3. Component interfaces
 
-### Presentation Layer Components
+### Presentation layer components
 
 ```mermaid
 classDiagram
@@ -189,7 +189,7 @@ classDiagram
     FastAPIServer --> MCPHandler
 ```
 
-### Service Layer Components
+### Service layer components
 
 ```mermaid
 classDiagram
@@ -250,7 +250,7 @@ classDiagram
     SuggestionService --> PolicyService
 ```
 
-### Integration Layer Components
+### Integration layer components
 
 ```mermaid
 classDiagram
@@ -280,7 +280,7 @@ classDiagram
     }
 ```
 
-## 4. Component Communication Patterns
+## 4. Component communication patterns
 
 ```mermaid
 graph LR
@@ -310,7 +310,7 @@ graph LR
     end
 ```
 
-## 5. Component Deployment Units
+## 5. Component deployment units
 
 Components are grouped into deployment units:
 
@@ -357,36 +357,36 @@ graph TB
     Clients --> AWS
 ```
 
-## Component Characteristics
+## Component characteristics
 
-### Stateless Components
+### Stateless components
 These components maintain no state between requests:
 - FastAPI Server
 - MCP Handler
 - Tool Handlers
 - Utility functions
 
-### Stateful Components
+### Stateful components
 These components maintain state or cached data:
 - Policy Service (in-memory cache)
 - Configuration (loaded once at startup)
 - Redis Cache Client (connection pool)
 - AWS Client (client initialization, connection pools)
 
-### Persistence Components
+### Persistence components
 These components interact with persistent storage:
 - Audit Service → SQLite Audit DB
 - History Service → SQLite History DB
 - Cache Client → Redis
 - Policy Service → tagging_policy.json file
 
-### External Integration Components
+### External integration components
 These components communicate with external systems:
 - AWS Client → AWS APIs
 - CloudWatch Logger → CloudWatch Logs
 - Metrics Service → Prometheus scraper
 
-## Component Scalability Considerations
+## Component scalability considerations
 
 | Component | Scalability | Notes |
 |-----------|-------------|-------|
@@ -399,7 +399,7 @@ These components communicate with external systems:
 | SQLite DBs | Vertical | Consider migration to managed DB for scale |
 | Policy Service | Horizontal | In-memory cache, file system read |
 
-## Component Testing Strategy
+## Component testing strategy
 
 ```mermaid
 graph TB
@@ -428,9 +428,9 @@ graph TB
     IT3 --> E2E2
 ```
 
-## Component Responsibilities Summary
+## Component responsibilities summary
 
-### Clear Separation of Concerns
+### Clear separation of concerns
 
 1. **Presentation Layer**: HTTP protocol, MCP protocol, request/response formatting
 2. **Application Layer**: Tool definitions, input validation, tool orchestration

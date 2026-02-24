@@ -1,8 +1,8 @@
-# System Diagrams
+# System diagrams
 
 This directory contains comprehensive system diagrams for the FinOps Tag Compliance MCP Server.
 
-## Diagram Index
+## Diagram index
 
 ### 📚 [00 - Diagram Best Practices](./00-diagram-best-practices.md)
 **Essential reading for understanding and creating system diagrams**
@@ -87,9 +87,9 @@ Contains 5 deployment options:
 
 ---
 
-## Quick Navigation
+## Quick navigation
 
-### By Use Case
+### By use case
 
 | I want to... | Use this diagram |
 |--------------|------------------|
@@ -100,7 +100,7 @@ Contains 5 deployment options:
 | **Set up infrastructure** | [Deployment Architecture](./05-deployment-architecture.md) |
 | **Learn about diagrams** | [Diagram Best Practices](./00-diagram-best-practices.md) |
 
-### By Audience
+### By audience
 
 | Audience | Recommended Diagrams |
 |----------|---------------------|
@@ -110,7 +110,7 @@ Contains 5 deployment options:
 | **New Team Members** | System Architecture → Component Diagram → Sequence Diagrams |
 | **Security Reviewers** | Deployment Architecture (Security section), Sequence Diagrams |
 
-### By Complexity
+### By complexity
 
 | Level | Diagrams |
 |-------|----------|
@@ -118,7 +118,7 @@ Contains 5 deployment options:
 | **Intermediate** | Component Diagram, State Machine Diagrams |
 | **Advanced** | Sequence Diagrams, Diagram Best Practices |
 
-## Diagram Technologies
+## Diagram technologies
 
 All diagrams use [Mermaid](https://mermaid.js.org/) syntax, which:
 - ✅ Can be viewed directly on GitHub
@@ -127,7 +127,7 @@ All diagrams use [Mermaid](https://mermaid.js.org/) syntax, which:
 - ✅ Can be rendered in most markdown viewers
 - ✅ Can be embedded in documentation
 
-### Viewing Diagrams
+### Viewing diagrams
 
 1. **On GitHub**: Diagrams render automatically in markdown files
 2. **VS Code**: Install the "Markdown Preview Mermaid Support" extension
@@ -145,14 +145,14 @@ When updating or adding diagrams:
 5. **Test rendering** on GitHub before committing
 6. **Add date/version** information in the document
 
-## Related Documentation
+## Related documentation
 
 - [Architecture Overview](../architecture/) - Written architecture documentation
 - [API Documentation](../api/) - API reference and specifications
 - [Deployment Guide](../deployment/) - Detailed deployment instructions
 - [Development Guide](../development/) - Developer setup and guidelines
 
-## Diagram Statistics
+## Diagram statistics
 
 - **Total Diagrams**: 20+ Mermaid diagrams
 - **Coverage**:

@@ -1,11 +1,11 @@
-# Tagging Policy Configuration Guide
+# Tagging policy configuration guide
 
 **For:** FinOps Tag Compliance MCP Server
 **Audience:** FinOps practitioners, cloud engineers, compliance teams
 
 ---
 
-## Policy Sources (Priority Order)
+## Policy sources (priority order)
 
 On startup, the MCP server determines which tagging policy to use:
 
@@ -19,7 +19,7 @@ By default the policy file lives at `policies/tagging_policy.json` in the reposi
 
 ---
 
-## Create Your Tagging Policy
+## Create your tagging policy
 
 Use the online Tagging Policy Generator to create, edit, and customize your tagging policy:
 
@@ -36,7 +36,7 @@ For technical details about the policy format and schema, see the [Tagging Polic
 
 ---
 
-## Deploy Your Policy
+## Deploy your policy
 
 ### Local (stdio MCP)
 
@@ -56,7 +56,7 @@ Import my AWS Organizations tagging policy and save it
 This calls the `import_aws_tag_policy` tool, which fetches your AWS Orgs policy,
 converts it to MCP format, and saves it to `policies/tagging_policy.json`.
 
-### Remote / Production Server
+### Remote / production server
 
 If you're running the MCP server on a remote host (e.g., ECS Fargate with EFS),
 the policy is loaded from the path configured via `POLICY_PATH`
@@ -99,7 +99,7 @@ when `AUTO_IMPORT_AWS_POLICY=true` (the default). To force a re-import:
 
 ---
 
-## Refreshing the Policy After AWS Orgs Changes
+## Refreshing the policy after AWS Orgs changes
 
 When you update your AWS Organizations tag policy, the MCP server **does not** automatically sync. You need to manually trigger a re-import.
 
@@ -135,7 +135,7 @@ the service. On restart, auto-import will re-fetch from AWS Organizations.
 
 ---
 
-## Verifying Your Policy
+## Verifying your policy
 
 After deploying or refreshing, verify the policy loaded correctly.
 
@@ -156,7 +156,7 @@ curl -X POST https://YOUR_SERVER/mcp/tools/call \
 
 ---
 
-## Environment Variables
+## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -167,7 +167,7 @@ curl -X POST https://YOUR_SERVER/mcp/tools/call \
 
 ---
 
-## Converting AWS Organizations Tag Policies
+## Converting AWS Organizations tag policies
 
 The `import_aws_tag_policy` tool converts AWS Organizations format to MCP format:
 
@@ -248,9 +248,9 @@ Key conversions:
 
 ---
 
-## Best Practices
+## Best practices
 
-### Start Small
+### Start small
 
 Don't try to enforce 20 tags on day one. Start with 3-4 critical tags:
 - **CostCenter** - for cost allocation
@@ -259,20 +259,20 @@ Don't try to enforce 20 tags on day one. Start with 3-4 critical tags:
 
 Add more tags as your organization matures.
 
-### Use AWS Organizations as Source of Truth
+### Use AWS Organizations as source of truth
 
 Keep your tag policy in AWS Organizations and use auto-import. This ensures:
 - Single source of truth across all accounts
 - Tag enforcement at the Organizations level
 - MCP server stays in sync with a simple refresh
 
-### Use Allowed Values Wisely
+### Use allowed values wisely
 
 Only use `allowed_values` when you truly need to restrict options:
 - ✅ Environment: `["production", "staging", "development"]` - limited set
 - ❌ Application: Don't restrict - too many possible values
 
-### Review Regularly
+### Review regularly
 
 Set a quarterly reminder to review your tagging policy:
 - Are all required tags still necessary?
@@ -281,7 +281,7 @@ Set a quarterly reminder to review your tagging policy:
 
 ---
 
-## Related Documentation
+## Related documentation
 
 - [User Manual](USER_MANUAL.md) - How to use the MCP tools
 - [UAT Protocol](UAT_OPEN_SOURCE.md) - Testing procedures

@@ -1,4 +1,4 @@
-# UAT Results — Open-Source Stdio MCP Server
+# UAT results — open-source stdio MCP server
 
 **Version:** 0.2.0
 **Date:** 2026-02-24
@@ -9,12 +9,12 @@
 
 ---
 
-## Independent Data Verification
+## Independent data verification
 
 All Tier 2 results were cross-checked against direct AWS CLI calls
 (bypassing MCP entirely) to verify data accuracy.
 
-### Verification 1: EC2 Instance Count & Tags
+### Verification 1: EC2 instance count & tags
 
 **AWS CLI** (`aws ec2 describe-instances`):
 
@@ -32,7 +32,7 @@ All Tier 2 results were cross-checked against direct AWS CLI calls
 - Violations: 1 + 3 + 3 = **7** → MCP reported: **7** ✅
 - Compliance score: 2/5 = **0.40** → MCP reported: **0.40** ✅
 
-### Verification 2: Untagged Resources
+### Verification 2: untagged resources
 
 **AWS CLI** confirms the 3 non-compliant instances and their missing tags:
 
@@ -44,7 +44,7 @@ All Tier 2 results were cross-checked against direct AWS CLI calls
 
 **Verdict: 100% match** ✅
 
-### Verification 3: EC2 Cost Total
+### Verification 3: EC2 cost total
 
 **AWS CLI** (`aws ce get-cost-and-usage`):
 - Jan 25 – Feb 1: $10.48
@@ -55,7 +55,7 @@ All Tier 2 results were cross-checked against direct AWS CLI calls
 
 **Verdict: Match within rounding** ✅
 
-### Verification 4: S3 Bucket Count & Tags
+### Verification 4: S3 bucket count & tags
 
 **AWS CLI** (`aws s3api list-buckets`): **21 buckets**
 
@@ -74,7 +74,7 @@ Sample tag verification (6 of 21 buckets checked):
 
 **Verdict: All sampled buckets correctly classified** ✅
 
-### Verification 5: Tag Suggestion Quality
+### Verification 5: tag suggestion quality
 
 **MCP suggested:** Owner = `jean@optimnow.io` for i-036091f3268a9fe5b (confidence 0.28)
 
@@ -83,7 +83,7 @@ The suggestion is correct — it found the pattern from 2/2 similar resources.
 
 **Verdict: Correct suggestion** ✅
 
-### Verification 6: Per-Instance EC2 Cost Split
+### Verification 6: per-instance EC2 cost split
 
 **AWS CLI** (`aws ce get-cost-and-usage-with-resources`, Feb 10–24 only — API limits lookback to 14 days):
 
@@ -108,7 +108,7 @@ The 30-day *total* ($58.22) was verified in Verification 3 above.
 
 ---
 
-## Tier 1 — Offline Tests (No AWS Required)
+## Tier 1 — offline tests (no AWS required)
 
 | Test | Description | Result | Notes |
 |------|-------------|--------|-------|
@@ -135,7 +135,7 @@ The 30-day *total* ($58.22) was verified in Verification 3 above.
 
 ---
 
-## Tier 2 — Live Tests (AWS Account 382598791951)
+## Tier 2 — live tests (AWS account 382598791951)
 
 | Test | Description | Result | Data Verified? | Notes |
 |------|-------------|--------|----------------|-------|
@@ -156,7 +156,7 @@ The 30-day *total* ($58.22) was verified in Verification 3 above.
 
 ---
 
-## Data Accuracy Summary
+## Data accuracy summary
 
 | Metric | MCP Value | Independent CLI Value | Match? |
 |--------|-----------|----------------------|--------|
@@ -177,7 +177,7 @@ The 30-day *total* ($58.22) was verified in Verification 3 above.
 
 ---
 
-## Overall Results
+## Overall results
 
 | Tier | Total | Passed | Failed | Pass Rate |
 |------|-------|--------|--------|-----------|
@@ -189,7 +189,7 @@ The 30-day *total* ($58.22) was verified in Verification 3 above.
 
 ---
 
-## Per-Tool Independent Verification Matrix
+## Per-tool independent verification matrix
 
 | # | Tool | Tested? | Independently Verified? | Method |
 |---|------|---------|------------------------|--------|
@@ -221,7 +221,7 @@ are covered by unit tests with mocked AWS responses.
 
 ---
 
-## Known Issues
+## Known issues
 
 1. **T1.10 — Oversized list validation**: Sending 200 identical resource types
    gets deduplicated to 1 item before the max-size check. The validation
@@ -237,7 +237,7 @@ are covered by unit tests with mocked AWS responses.
 
 ---
 
-## Sign-Off
+## Sign-off
 
 **Result:** PASS
 **Date:** 2026-02-24

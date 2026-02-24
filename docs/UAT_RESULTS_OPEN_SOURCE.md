@@ -1,4 +1,4 @@
-# UAT Results — Open-Source Stdio MCP Server
+# UAT results — open-source stdio MCP server
 
 **Date:** 2026-02-23
 **Tester:** Claude Code (automated)
@@ -7,7 +7,7 @@
 
 ---
 
-## Tier 1 — Offline Tests (No AWS Required)
+## Tier 1 — offline tests (no AWS required)
 
 | ID | Test | Result | Notes |
 |----|------|--------|-------|
@@ -32,7 +32,7 @@
 
 ---
 
-## Tier 1 Summary
+## Tier 1 summary
 
 | Status | Count |
 |--------|-------|
@@ -46,13 +46,13 @@ The single blocked test (T1.01) is a `pyproject.toml` configuration issue — th
 
 ---
 
-## Tier 2 — Live Tests (AWS Required)
+## Tier 2 — live tests (AWS required)
 
 > Not executed in this session. Requires manual testing in Claude Desktop with real AWS credentials and resources. See `docs/UAT_OPEN_SOURCE.md` for the full protocol.
 
 ---
 
-## Issues Found During UAT
+## Issues found during UAT
 
 ### Issue 1: Python version constraint too restrictive
 - **Test:** T1.01
@@ -60,12 +60,12 @@ The single blocked test (T1.01) is a `pyproject.toml` configuration issue — th
 - **Impact:** Blocks pip install on Python 3.10 systems
 - **Fix:** Change to `requires-python = ">=3.10"` or verify if any 3.11+ features are actually used
 
-### Issue 2: Stale http_config docstring references (FIXED)
+### Issue 2: stale http_config docstring references (FIXED)
 - **Test:** T1.13
 - **Problem:** `mcp_server/config.py` had docstring references to deleted `http_config.py`
 - **Fix:** Commit `53e4dd1` cleaned up docstrings
 
-### Issue 3: Pre-existing test failure
+### Issue 3: pre-existing test failure
 - **Test:** T1.11
 - **Problem:** `test_scan_and_validate_all_resource_types` expects `get_all_tagged_resources` called once but it's called 36 times
 - **Impact:** Pre-existing, not caused by repo split
@@ -73,7 +73,7 @@ The single blocked test (T1.01) is a `pyproject.toml` configuration issue — th
 
 ---
 
-## Commits on Branch
+## Commits on branch
 
 ```
 b71fcf5 refactor: decouple HTTP from core for open-source split

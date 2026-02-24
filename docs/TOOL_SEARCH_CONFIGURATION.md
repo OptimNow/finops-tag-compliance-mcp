@@ -1,10 +1,10 @@
-# Tool Search Configuration Guide
+# Tool search configuration guide
 
 **NEW: January 2026** - Optimize your MCP server usage with Claude's Advanced Tool Use features
 
 ---
 
-## Table of Contents
+## Table of contents
 
 1. [What is Tool Search?](#what-is-tool-search)
 2. [Benefits](#benefits)
@@ -17,18 +17,18 @@
 
 ---
 
-## What is Tool Search?
+## What is tool search?
 
 **Tool Search** is a new feature in Claude's Advanced Tool Use capabilities that enables **dynamic tool discovery**. Instead of loading all tool definitions upfront (which consumes tokens), Claude discovers and loads tools on-demand only when needed.
 
-### The Problem It Solves
+### The problem it solves
 
 With the traditional approach, when Claude connects to your MCP server with 8 tools:
 - All 8 tool definitions with full JSON schemas are loaded into context immediately
 - This consumes ~10-15K tokens just describing the tools
 - You pay for this token usage on every API call, even if you only use 1-2 tools
 
-### The Solution
+### The solution
 
 With Tool Search enabled:
 - Only the most frequently used tools are loaded upfront (~2-3 tools)
@@ -40,12 +40,12 @@ With Tool Search enabled:
 
 ## Benefits
 
-### 1. **Cost Savings**
+### 1. **Cost savings**
 - 85% reduction in token usage for tool definitions
 - Example: From 150K to 17K tokens per request in large tool libraries
 - For this MCP server: ~10-12K token savings per conversation
 
-### 2. **Better Performance**
+### 2. **Better performance**
 - **Claude Opus 4.5**: Improved from 79.5% to 88.1% tool selection accuracy
 - **Claude Opus 4**: Improved from 49% to 74%
 - Faster response times with less context to process
@@ -55,23 +55,23 @@ With Tool Search enabled:
 - Multi-cloud support in Phase 3 won't bloat your context
 - Your token costs stay constant even as we expand the tool library
 
-### 4. **Zero Breaking Changes**
+### 4. **Zero breaking changes**
 - Your MCP server continues to work with both old and new clients
 - Purely a client-side optimization
 - Users can opt-in gradually
 
 ---
 
-## How It Works
+## How it works
 
-### Traditional Approach (Without Tool Search)
+### Traditional approach (without tool search)
 
 ```
 Claude Desktop connects → Load ALL 8 tools → Use 1-2 tools → Done
                           (~15K tokens)
 ```
 
-### With Tool Search Enabled
+### With tool search enabled
 
 ```
 Claude Desktop connects → Load 3 core tools → Use check_tag_compliance → Done
@@ -81,7 +81,7 @@ Later in conversation → Need generate_report → Discover tool → Load → Us
                                                (~1K tokens)
 ```
 
-### Tool Discovery Process
+### Tool discovery process
 
 1. You mark tools with `defer_loading: true` in your client configuration
 2. Claude receives a lightweight tool list (names + brief descriptions only)
@@ -91,9 +91,9 @@ Later in conversation → Need generate_report → Discover tool → Load → Us
 
 ---
 
-## Quick Start
+## Quick start
 
-### Step 1: Add Beta Header
+### Step 1: Add beta header
 
 If you're using the Claude API directly, add this header to your requests:
 
@@ -105,7 +105,7 @@ If you're using the Claude API directly, add this header to your requests:
 
 If you're using Claude Desktop, this is handled automatically with the MCP connector configuration.
 
-### Step 2: Configure Tool Loading
+### Step 2: Configure tool loading
 
 Edit your Claude Desktop MCP configuration file:
 
@@ -216,7 +216,7 @@ Create a new configuration file alongside your `mcp_bridge.py` script:
 
 After updating the configuration, restart Claude Desktop for the changes to take effect.
 
-### Step 4: Verify It's Working
+### Step 4: Verify it's working
 
 Ask Claude:
 > "Check tag compliance for my EC2 instances"
@@ -228,9 +228,9 @@ You should notice:
 
 ---
 
-## Recommended Configuration
+## Recommended configuration
 
-### Keep Loaded (Always Available)
+### Keep loaded (always available)
 
 These 3 core tools should **NOT** have `defer_loading: true`:
 
@@ -240,7 +240,7 @@ These 3 core tools should **NOT** have `defer_loading: true`:
 | `find_untagged_resources` | Core functionality, frequently requested |
 | `get_tagging_policy` | Referenced frequently to understand requirements |
 
-### Defer Loading (Load On-Demand)
+### Defer loading (load on-demand)
 
 These 5 tools can have `defer_loading: true`:
 
@@ -254,7 +254,7 @@ These 5 tools can have `defer_loading: true`:
 
 **Token Savings:** ~10-12K tokens per conversation (75-80% reduction)
 
-### Alternative: Conservative Configuration
+### Alternative: Conservative configuration
 
 If you want to be more conservative, only defer the least-used tools:
 
@@ -274,9 +274,9 @@ If you want to be more conservative, only defer the least-used tools:
 
 ---
 
-## Advanced Configuration
+## Advanced configuration
 
-### Configuration by Use Case
+### Configuration by use case
 
 **For Initial Compliance Assessment:**
 ```json
@@ -316,7 +316,7 @@ Use this when you primarily track compliance trends over time.
 ```
 Use this when you primarily fix tagging violations.
 
-### Disabling Specific Tools
+### Disabling specific tools
 
 You can completely disable tools you never use:
 
@@ -339,7 +339,7 @@ This is useful if:
 
 ## Troubleshooting
 
-### "Tool not found" Error
+### "Tool not found" error
 
 **Symptom:** Claude says a tool is not available, even though your server provides it.
 
@@ -350,7 +350,7 @@ This is useful if:
 4. **stdio:** Check that `python -m mcp_server.stdio_server` runs without errors
 5. **HTTP:** Check your MCP server is running: `curl http://SERVER:8080/health`
 
-### Tools Loading Slowly
+### Tools loading slowly
 
 **Symptom:** First time using a deferred tool takes 2-3 seconds.
 
@@ -358,7 +358,7 @@ This is useful if:
 
 **To fix:** Move frequently-used tools to `defer_loading: false`.
 
-### Configuration Not Taking Effect
+### Configuration not taking effect
 
 **Symptom:** Changes to `defer_loading` don't seem to work.
 
@@ -372,7 +372,7 @@ This is useful if:
 - **Windows:** `%APPDATA%\Claude\logs`
 - **macOS:** `~/Library/Logs/Claude`
 
-### Beta Header Not Recognized
+### Beta header not recognized
 
 **Symptom:** Error about unsupported beta feature.
 
@@ -383,9 +383,9 @@ This is useful if:
 
 ---
 
-## Technical Details
+## Technical details
 
-### How defer_loading Works
+### How defer_loading works
 
 When `defer_loading: true`:
 
@@ -403,7 +403,7 @@ When `defer_loading: true`:
    - Tool is used normally
    - No difference in functionality
 
-### Token Usage Breakdown
+### Token usage breakdown
 
 **Without Tool Search (8 tools, all loaded):**
 ```
@@ -431,7 +431,7 @@ New total: 7,250 tokens
 Still 58% savings!
 ```
 
-### MCP Protocol Changes
+### MCP protocol changes
 
 The Tool Search feature uses an extension to the MCP protocol:
 
@@ -497,7 +497,7 @@ When Claude needs the full definition, it calls `tools/get`:
 
 ---
 
-## Feedback & Support
+## Feedback & support
 
 Have questions or suggestions about Tool Search configuration?
 

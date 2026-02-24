@@ -1,14 +1,14 @@
-# The Art of System Diagrams: A Guide That Won't Put You to Sleep
+# The art of system diagrams: a guide that won't put you to sleep
 
-## Let's Talk About Diagrams
+## Let's talk about diagrams
 
 You know that feeling when you join a new project and someone says "here's how the system works" and then shows you a whiteboard photo from 2019 with half the components crossed out? Yeah, we've all been there. Good diagrams are like good coffee – when you have them, everything's better. When you don't, you're going to have a bad time.
 
 This guide is your companion to creating diagrams that people will actually look at, understand, and (dare we dream?) even update. No, seriously – we're going to make diagrams so clear that future you will thank present you.
 
-## The Magnificent Seven (Well, Actually Thirteen, But Who's Counting?)
+## The magnificent seven (well, actually thirteen, but who's counting?)
 
-### Architecture Diagrams: The 10,000 Foot View
+### Architecture diagrams: the 10,000 foot view
 
 Think of architecture diagrams as the map you'd want if you were dropped into a strange city. You don't need to know which sandwich shop is on which corner (yet), but you definitely want to know where the neighborhoods are, how they connect, and where not to wander alone at night.
 
@@ -18,7 +18,7 @@ Use color intentionally. Blue for services, pink for data stores, yellow for ext
 
 **Example**: Check out `01-system-architecture.md` to see how we organized our FinOps system. Spoiler: it has layers, external systems, and exactly zero crossing arrows that make you dizzy.
 
-### State Machine Diagrams: Life's a Journey
+### State machine diagrams: life's a journey
 
 Remember those "Choose Your Own Adventure" books? State machines are like that, except instead of turning to page 47 when you decide to enter the spooky cave, you're showing what happens when a tool invocation succeeds or when AWS decides to throttle you (again).
 
@@ -30,7 +30,7 @@ Pro tip: If your state machine looks like spaghetti, you probably have too many 
 
 **Example**: Our `02-state-machine-diagrams.md` has four different state machines, including one that shows what happens during the tool invocation lifecycle. It's got more states than a road trip across the US, but each one is there for a reason.
 
-### Sequence Diagrams: The Play-by-Play
+### Sequence diagrams: the play-by-play
 
 If architecture diagrams are the map of your city, sequence diagrams are the step-by-step directions from your GPS. "In 100 meters, turn left at the ComplianceService. Then proceed straight to the AWS Client. Your destination is on the right."
 
@@ -42,7 +42,7 @@ Think of it this way: if your system is an orchestra, the sequence diagram is th
 
 **Example**: Head over to `03-sequence-diagrams.md` to see five complete workflows, including one that shows our retry logic when AWS gets grumpy. Spoiler alert: exponential backoff is your friend.
 
-### Component Diagrams: The Org Chart for Code
+### Component diagrams: the org chart for code
 
 Your codebase has an organizational structure, just like your company does. Some components are the managers (they coordinate but don't do much heavy lifting), some are the workers (doing the actual business logic), and some are the interns fetching coffee (I mean, making HTTP requests to external APIs).
 
@@ -54,7 +54,7 @@ Group related components together like you'd organize your kitchen – all the c
 
 **Example**: Our `04-component-diagram.md` shows the clean layers of our system. Notice how the business logic doesn't know anything about HTTP? That's not an accident – that's good architecture.
 
-### Deployment Diagrams: Where the Rubber Meets the Road
+### Deployment diagrams: where the rubber meets the road
 
 So you've designed this beautiful, elegant system in your IDE. Congratulations! Now it needs to run somewhere that isn't your laptop. This is where deployment diagrams come in – they show how your pristine, theoretical architecture actually exists in the messy, real world of containers, load balancers, and that one EC2 instance nobody dares to restart.
 
@@ -66,9 +66,9 @@ Also, and this is crucial, show your monitoring and logging infrastructure. Beca
 
 **Example**: Check out `05-deployment-architecture.md` where we show five different ways to deploy our system, from "Docker Compose on my laptop" to "enterprise Kubernetes cluster with all the bells and whistles." Choose your own adventure based on your budget and pain tolerance.
 
-## The Extended Family of Diagrams
+## The extended family of diagrams
 
-### Data Flow Diagrams: Follow the Money (Er, Data)
+### Data flow diagrams: follow the money (er, data)
 
 Ever wonder where your data comes from, where it goes, and what horrible transformations it suffers along the way? DFDs are your answer. They're like tracking a package through FedEx, except the package is your compliance data and FedEx is your carefully architected system.
 
@@ -76,49 +76,49 @@ Start with the 10,000-foot view (Level 0) – data comes in from users, magic ha
 
 These diagrams are particularly useful when someone asks "wait, where does this data get validated?" and you can just point at the circle labeled "Input Validation" like a boss.
 
-### Entity Relationship Diagrams: Database Drama
+### Entity relationship diagrams: database drama
 
 If your system has a database (and let's face it, it probably does), you need an ERD. These diagrams show your tables, their relationships, and the cardinality that makes database nerds happy. One user has many sessions, one session has many events, one event has one correlation ID. It's like a family tree, except way less awkward at Thanksgiving.
 
 The crow's foot notation might look weird at first (seriously, why do we use bird feet?), but once you learn it, you'll see why every database diagram uses it. One-to-many, many-to-many, optional relationships – it's all there in those little forked lines.
 
-### Use Case Diagrams: What Users Actually Want
+### Use case diagrams: what users actually want
 
 Sometimes you need to step back from the technical details and remember why you're building this thing in the first place. Use case diagrams show what users (or external systems) want to accomplish with your system. No implementation details, no technical jargon – just "FinOps Engineer wants to check compliance" and "System needs to generate reports."
 
 These diagrams are perfect for requirements gathering and for explaining to non-technical stakeholders what your system does without making their eyes glaze over. Stick figures and ovals – it's literally that simple.
 
-### Activity Diagrams: The Flowchart's Sophisticated Cousin
+### Activity diagrams: the flowchart's sophisticated cousin
 
 Remember flowcharts from school? Activity diagrams are like flowcharts went to college, got a degree, and now use terms like "swimlane" and "fork node." They show step-by-step processes, decision points, and parallel activities.
 
 Use swimlanes to show when different actors or systems are responsible for different steps. It's like tracking a relay race – you can see exactly when the baton passes from the API to the service layer to the database.
 
-### Class Diagrams: For When You're Feeling Object-Oriented
+### Class diagrams: for when you're feeling object-oriented
 
 If you're building an object-oriented system (looking at you, Java and C++ developers), class diagrams show your classes, their attributes, their methods, and how they relate to each other through inheritance, composition, and those other relationships you learned about in your software engineering class.
 
 The key is showing the public interface without drowning in details. Nobody needs to see every private helper method. Focus on what other classes can call and how the pieces fit together.
 
-### Network Diagrams: It's Always DNS
+### Network diagrams: it's always DNS
 
 When your app is slow, it's usually the network. When things aren't connecting, it's usually DNS. When you need to debug either, you'll be glad you have a network diagram showing all your subnets, security groups, routing tables, and that one mysterious IP address that everyone's afraid to change.
 
 Show your VPCs, your load balancers, your NAT gateways, your security zones. Document which ports are open and which are locked down tighter than Fort Knox. Future DevOps-you will appreciate it.
 
-### Infrastructure Diagrams: The Cloud Bill Explainer
+### Infrastructure diagrams: the cloud bill explainer
 
 Cloud infrastructure is complex, expensive, and changes more often than you'd like to admit. Infrastructure diagrams show your EC2 instances, your RDS databases, your S3 buckets, your Lambda functions, and all the other AWS services that keep Jeff Bezos in rockets.
 
 Use the official AWS (or GCP, or Azure) icons because they're recognizable and professional-looking. Show which regions and availability zones things are in. Document your auto-scaling policies. And maybe, just maybe, annotate the monthly costs so when your CFO asks why the cloud bill is so high, you can point at this diagram and say "because we're using all of this."
 
-### C4 Model: The Matryoshka Doll of Diagrams
+### C4 model: the Matryoshka doll of diagrams
 
 The C4 Model is beautifully simple: create four levels of diagrams, each zooming in further than the last. Context (the system and its surroundings), Containers (the high-level technical pieces), Components (the logical components within containers), and Code (class diagrams, if you're feeling ambitious).
 
 It's like those nesting dolls – open one diagram, find another diagram inside. Start at the context level when talking to executives. Zoom to containers when talking to architects. Go to components when talking to developers. The code level? That's usually overkill, but it's there if you need it.
 
-## Choosing Your Weapon: A Practical Guide
+## Choosing your weapon: a practical guide
 
 Here's the thing about diagrams – you don't need all of them. You need the *right* ones for what you're trying to communicate. It's like cooking: you don't use every kitchen tool for every meal. Sometimes a knife and cutting board are enough. Other times you need the food processor, the stand mixer, and that weird gadget your aunt got you that you're still not sure how to use.
 
@@ -134,27 +134,27 @@ Here's the thing about diagrams – you don't need all of them. You need the *ri
 
 The best diagram is the one that answers the question you're asking right now. Don't create diagrams just to have them. Create them because they make your life easier.
 
-## The Gospel of Good Diagrams
+## The gospel of good diagrams
 
-### Clarity Beats Completeness Every Time
+### Clarity beats completeness every time
 
 You've seen them. Those diagrams with 47 boxes, 183 arrows, text so small you need a magnifying glass, and a legend that's longer than the diagram itself. These diagrams are technically complete – they show everything! They're also completely useless because nobody can understand them.
 
 The best diagram is like a good tweet – concise, clear, and to the point. If your diagram is getting complicated, that's a sign you need two diagrams, not one bigger diagram. Split by concern, split by layer, split by whatever makes sense. Just split.
 
-### Consistency Is Your Friend
+### Consistency is your friend
 
 Pick a notation style and stick with it. If blue boxes are services in one diagram, don't make them databases in another diagram. If dashed lines mean "optional" here, don't use them to mean "async" over there. Your brain is pattern-matching, looking for consistency. Don't make it work harder than it needs to.
 
 This goes for naming too. If you call it "ComplianceService" in your code, call it "ComplianceService" in your diagrams. Don't suddenly decide it's now "Compliance Checker" because that sounds friendlier. Consistency across code, docs, and diagrams is how you stay sane.
 
-### Know Your Audience
+### Know your audience
 
 A diagram for your fellow developers can include technical details like "uses Redis for caching with 1-hour TTL" and "implements exponential backoff on retries." A diagram for executives should say "cache layer for performance" and maybe not mention the retry logic at all unless someone asks.
 
 It's not about dumbing things down – it's about relevance. Your CEO doesn't need to know about your state machine. Your new junior developer really, really does.
 
-### Living Documentation or Dead Weight?
+### Living documentation or dead weight?
 
 Here's an uncomfortable truth: most diagrams are created once and then forgotten. They sit in your docs folder, slowly diverging from reality, until someone new joins the team and gets led astray by them. Don't be that project.
 
@@ -162,7 +162,7 @@ Treat diagrams like code. Store them in version control (that's why we use Merma
 
 Better yet, automate diagram generation where you can. Some tools can generate architecture diagrams from your code, infrastructure diagrams from your Terraform, and database diagrams from your schema. It's not magic – it's just smart tooling.
 
-### Colors: Use Them, Don't Abuse Them
+### Colors: use them, don't abuse them
 
 Color is powerful. Color can guide the eye, group related things, and show patterns. Color can also be overwhelming, distracting, and meaningless.
 
@@ -174,15 +174,15 @@ Three to five colors, max. Use them purposefully:
 
 Don't use red just because you like red. Don't use rainbow gradients because they look cool. And for the love of accessibility, make sure there's enough contrast for people to actually see what you've done.
 
-### The Legend Is Not Optional
+### The legend is not optional
 
 You've created a diagram with purple dotted lines, orange circles with stars, and some symbols that might be cloud-native hieroglyphics. Cool! Now tell me what they mean.
 
 A legend is like the Rosetta Stone for your diagram. Without it, people are guessing. With it, they're understanding. Don't make people guess.
 
-## Seven Deadly Sins of Diagramming
+## Seven deadly sins of diagramming
 
-### 1. The "Everything" Diagram
+### 1. The "everything" diagram
 
 **The Sin:** Trying to show your entire system in one diagram because "it's all connected, man."
 
@@ -190,7 +190,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Multiple focused diagrams, each with a clear purpose. It's okay to have six diagrams. It's not okay to have one incomprehensible mess.
 
-### 2. The Time Capsule
+### 2. The time capsule
 
 **The Sin:** Creating diagrams during the initial design phase and then never updating them again.
 
@@ -198,7 +198,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Diagrams are documentation. Documentation needs maintenance. Put diagram updates in your definition of done.
 
-### 3. The Implementation Detail Disaster
+### 3. The implementation detail disaster
 
 **The Sin:** Showing every class, every method, every parameter in your high-level architecture diagram.
 
@@ -206,7 +206,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Match the abstraction level to the diagram type. Architecture diagrams stay high-level. Save the details for class diagrams.
 
-### 4. The Notation Chaos
+### 4. The notation chaos
 
 **The Sin:** Using different symbols for the same concept across different diagrams, or making up your own notation that nobody else recognizes.
 
@@ -214,7 +214,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Stick to standard notations (UML, C4, etc.). If you must customize, document it once in a central place.
 
-### 5. The Mystery Diagram
+### 5. The mystery diagram
 
 **The Sin:** Creating a diagram with custom symbols, colors, and connections but no legend explaining what anything means.
 
@@ -222,7 +222,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Always include a legend. Always. No exceptions. Even if it seems obvious to you.
 
-### 6. The Rainbow Explosion
+### 6. The rainbow explosion
 
 **The Sin:** Using seventeen different colors because your diagramming tool has seventeen different colors and you want to try them all.
 
@@ -230,7 +230,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Three to five colors with clear, consistent meanings. That's it. That's the rule.
 
-### 7. The Spaghetti Junction
+### 7. The spaghetti junction
 
 **The Sin:** Arrows crossing arrows crossing more arrows until your diagram looks like a plate of pasta dropped on the floor.
 
@@ -238,7 +238,7 @@ A legend is like the Rosetta Stone for your diagram. Without it, people are gues
 
 **The Redemption:** Rearrange components to minimize crossings. Use layering. Or just split into multiple diagrams. Sometimes the best solution to spaghetti is separate plates.
 
-## Your Diagram Checklist (Yes, Just One List, I Promise)
+## Your diagram checklist (yes, just one list, I promise)
 
 Before you call your diagram done, run through these questions:
 
@@ -260,7 +260,7 @@ Before you call your diagram done, run through these questions:
 
 **Will you remember to update it?** Maybe add a reminder in your team's definition of done.
 
-## Tools of the Trade
+## Tools of the trade
 
 **Text-Based (Recommended):**
 - **Mermaid** – What we use. Write diagrams in markdown, see them rendered on GitHub. Magic.
@@ -279,7 +279,7 @@ Before you call your diagram done, run through these questions:
 **Cloud-Specific:**
 - Use official icon sets from AWS, Azure, GCP. They're free, recognizable, and make your diagrams look legit.
 
-## The Philosophy of Diagrams
+## The philosophy of diagrams
 
 Here's the real secret: diagrams aren't about completeness, they're about communication. A perfect diagram that nobody reads is less useful than a quick sketch that helps your teammate understand how the cache works.
 
@@ -287,7 +287,7 @@ Start simple. Add complexity only when needed. Update regularly. And remember �
 
 Your system is complex. Your diagrams don't have to be.
 
-## Go Forth and Diagram
+## Go forth and diagram
 
 Now you know the tools, the techniques, and the traps to avoid. You're armed with more diagram types than you'll probably ever need, and you know how to pick the right one for the job.
 
@@ -299,7 +299,7 @@ Future you is already grateful.
 
 *P.S. – If you found this guide helpful and create diagrams that your team actually uses, you're officially a documentation hero. If you also keep them updated? You're a legend. We salute you.* 🎨
 
-## Further Reading (For When You're Ready to Go Deep)
+## Further reading (for when you're ready to go deep)
 
 - [C4 Model](https://c4model.com/) – Simon Brown's excellent hierarchical approach
 - [UML Specification](https://www.omg.org/spec/UML/) – If you need the official standard (warning: dry)

@@ -1,4 +1,4 @@
-# System Architecture Diagram
+# System architecture diagram
 
 ## Overview
 This diagram shows the high-level architecture of the FinOps Tag Compliance MCP Server, including all major components, data stores, and external integrations.
@@ -157,21 +157,21 @@ graph TB
     class AWS,EC2,RDS,S3,Lambda,CostExplorer,ResourceGroups,CloudWatch awsStyle
 ```
 
-## Key Components
+## Key components
 
-### 1. Client Layer
+### 1. Client layer
 - **Claude Desktop**: AI assistant that invokes MCP tools via HTTP
 
-### 2. API Gateway Layer
+### 2. API gateway layer
 - **FastAPI Server**: HTTP server exposing MCP protocol endpoints
 - **Middleware Stack**: CORS, sanitization, correlation, budget, loop detection, security
 
-### 3. MCP Protocol Layer
+### 3. MCP protocol layer
 - **MCP Handler**: Manages tool registry and invocation
 - **Tool Definitions**: Defines 8 available tools with schemas
 - **Input Validation**: Validates all tool inputs
 
-### 4. Business Logic Layer
+### 4. Business logic layer
 8 core services handling different aspects:
 - Compliance checking and validation
 - Policy management
@@ -182,14 +182,14 @@ graph TB
 - Security monitoring
 - Metrics aggregation
 
-### 5. Tool Handlers
+### 5. Tool handlers
 8 MCP tools that map to service functions
 
-### 6. Integration Layer
+### 6. Integration layer
 - **AWS Client**: Wrapper around boto3 with rate limiting
 - **Redis Cache Client**: Async cache interface
 
-### 7. External Systems
+### 7. External systems
 - **AWS Services**: EC2, RDS, S3, Lambda, Cost Explorer, Resource Groups
 - **Data Stores**: Redis (cache), SQLite (audit & history)
 - **Observability**: CloudWatch Logs, Prometheus metrics
@@ -198,7 +198,7 @@ graph TB
 - **tagging_policy.json**: Defines required and optional tags
 - **Environment Config**: Runtime configuration from env vars
 
-## Data Flow Patterns
+## Data flow patterns
 
 1. **Synchronous Flow**: Client → FastAPI → MCP Handler → Tool → Service → AWS → Response
 2. **Caching Flow**: Service checks Redis before calling AWS

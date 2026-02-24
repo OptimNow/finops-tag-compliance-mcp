@@ -1,4 +1,4 @@
-# Tool Logic Reference
+# Tool logic reference
 
 This document describes the internal logic used by each of the 8 MCP tools. Understanding how these tools work can help you interpret results and troubleshoot unexpected behavior.
 

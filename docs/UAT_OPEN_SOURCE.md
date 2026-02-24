@@ -1,4 +1,4 @@
-# UAT Protocol — Open-Source Stdio MCP Server
+# UAT protocol — open-source stdio MCP server
 
 ## FinOps Tag Compliance MCP Server
 
@@ -26,25 +26,25 @@ Tests are split into two tiers:
 
 ## Prerequisites
 
-### 1. Python Environment
+### 1. Python environment
 
 - **Python 3.10+** required
 - Verify: `python --version`
 
-### 2. Install the Package (Editable Mode)
+### 2. Install the package (editable mode)
 
 ```bash
 cd /path/to/finops-tag-compliance-mcp
 pip install -e .
 ```
 
-### 3. AWS Credentials (Tier 2 Only)
+### 3. AWS credentials (Tier 2 only)
 
 - AWS credentials configured (`aws configure` or env vars)
 - IAM role with read-only permissions (see `docs/security/IAM_PERMISSIONS.md`)
 - Some tagged and untagged EC2/RDS/S3/Lambda resources in your account
 
-### 4. Claude Desktop Configuration (Tier 2 Only)
+### 4. Claude Desktop configuration (Tier 2 only)
 
 Edit your Claude Desktop config:
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
@@ -71,9 +71,9 @@ Restart Claude Desktop after saving. You should see the hammer icon with 14 tool
 
 ---
 
-## Tier 1 — Offline Tests (No AWS Required)
+## Tier 1 — offline tests (no AWS required)
 
-### T1.01: Package installs from source
+### T1.01: package installs from source
 
 ```bash
 pip install -e .
@@ -84,7 +84,7 @@ pip install -e .
 
 ---
 
-### T1.02: Server module imports cleanly
+### T1.02: server module imports cleanly
 
 ```python
 python -c "from mcp_server.stdio_server import mcp; print('OK')"
@@ -95,7 +95,7 @@ python -c "from mcp_server.stdio_server import mcp; print('OK')"
 
 ---
 
-### T1.03: Server starts and responds to MCP initialize
+### T1.03: server starts and responds to MCP initialize
 
 ```bash
 echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}' | python -m mcp_server.stdio_server
@@ -106,7 +106,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.04: All 14 tools are registered
+### T1.04: all 14 tools are registered
 
 ```bash
 # After initialize + initialized notification, send tools/list
@@ -132,7 +132,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.05: Tool schemas have required parameters and descriptions
+### T1.05: tool schemas have required parameters and descriptions
 
 **Expected:** Every tool has:
 - A non-empty `description`
@@ -168,7 +168,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.09: Input validation rejects invalid ARNs
+### T1.09: input validation rejects invalid ARNs
 
 ```python
 # Call validate_resource_tags with resource_arns=["not-an-arn"]
@@ -179,7 +179,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.10: Input validation rejects oversized lists
+### T1.10: input validation rejects oversized lists
 
 ```python
 # Call check_tag_compliance with resource_types containing 200 items
@@ -190,7 +190,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.11: Unit tests pass (1000+)
+### T1.11: unit tests pass (1000+)
 
 ```bash
 pytest tests/unit --ignore=tests/unit/test_aws_client.py -q
@@ -201,7 +201,7 @@ pytest tests/unit --ignore=tests/unit/test_aws_client.py -q
 
 ---
 
-### T1.12: Property tests collect without import errors
+### T1.12: property tests collect without import errors
 
 ```bash
 pytest tests/property --collect-only -q
@@ -212,7 +212,7 @@ pytest tests/property --collect-only -q
 
 ---
 
-### T1.13: No private infrastructure references in codebase
+### T1.13: no private infrastructure references in codebase
 
 ```bash
 grep -r "mcp_handler\|http_config\|middleware/auth\|deploy_ecs\|mcp_bridge\|382598" mcp_server/ tests/ --include="*.py"
@@ -223,7 +223,7 @@ grep -r "mcp_handler\|http_config\|middleware/auth\|deploy_ecs\|mcp_bridge\|3825
 
 ---
 
-### T1.14: No secrets in codebase
+### T1.14: no secrets in codebase
 
 ```bash
 grep -ri "api_key.*=\|password.*=\|secret.*=\|token.*=" mcp_server/ --include="*.py" | grep -v "def \|#\|test\|example\|param\|Optional"
@@ -251,7 +251,7 @@ grep -ri "api_key.*=\|password.*=\|secret.*=\|token.*=" mcp_server/ --include="*
 
 ---
 
-### T1.17: Error sanitization hides internal paths
+### T1.17: error sanitization hides internal paths
 
 **Expected:** When a tool returns an error, the error message contains a user-friendly code (e.g., `internal_error`) but no file paths, stack traces, or sensitive details.
 **Pass:** [ ]
@@ -270,95 +270,95 @@ grep -ri "api_key.*=\|password.*=\|secret.*=\|token.*=" mcp_server/ --include="*
 
 ---
 
-## Tier 2 — Live Tests (AWS Required)
+## Tier 2 — live tests (AWS required)
 
 > **Prerequisites:** Complete steps 2-4 in the Prerequisites section above.
 
-### T2.01: Check tag compliance for EC2
+### T2.01: check tag compliance for EC2
 
 **Prompt:** `Check tag compliance for my EC2 instances`
 **Expected:** Compliance score, violation list, resource details.
 
 ---
 
-### T2.02: Find untagged resources
+### T2.02: find untagged resources
 
 **Prompt:** `Find all untagged resources`
 **Expected:** List of resources missing required tags with resource type and region.
 
 ---
 
-### T2.03: Cost attribution gap
+### T2.03: cost attribution gap
 
 **Prompt:** `What's our cost attribution gap?`
 **Expected:** Total spend, attributable amount, gap amount and percentage.
 
 ---
 
-### T2.04: View tagging policy
+### T2.04: view tagging policy
 
 **Prompt:** `Show me our tagging policy`
 **Expected:** Full policy with required tags, allowed values, and applicable resource types.
 
 ---
 
-### T2.05: Validate specific resource
+### T2.05: validate specific resource
 
 **Prompt:** `Validate tags for arn:aws:ec2:us-east-1:<ACCOUNT>:instance/<ID>`
 **Expected:** Detailed per-tag validation results (compliant/missing/invalid).
 
 ---
 
-### T2.06: Suggest tags
+### T2.06: suggest tags
 
 **Prompt:** `Suggest tags for arn:aws:ec2:us-east-1:<ACCOUNT>:instance/<ID>`
 **Expected:** Tag suggestions with confidence scores and reasoning.
 
 ---
 
-### T2.07: Generate compliance report
+### T2.07: generate compliance report
 
 **Prompt:** `Generate a compliance report for EC2 and S3`
 **Expected:** Summary with scores, violation counts, and recommendations.
 
 ---
 
-### T2.08: Multi-region scanning
+### T2.08: multi-region scanning
 
 **Prompt:** `Check compliance for EC2 instances across all regions`
 **Expected:** Results from multiple regions, regional breakdown shown.
 
 ---
 
-### T2.09: Compliance history
+### T2.09: compliance history
 
 **Prompt:** `Show me compliance trends for the last 30 days`
 **Expected:** Historical data or "no history yet" for first run.
 
 ---
 
-### T2.10: Export violations
+### T2.10: export violations
 
 **Prompt:** `Export compliance violations as CSV`
 **Expected:** CSV-formatted output with resource IDs, violation types, severity.
 
 ---
 
-### T2.11: Filter by severity
+### T2.11: filter by severity
 
 **Prompt:** `Show me only critical tagging errors for EC2`
 **Expected:** Only ERROR-severity violations returned.
 
 ---
 
-### T2.12: Generate remediation workflow
+### T2.12: generate remediation workflow
 
 **Prompt:** `Generate an OpenOps workflow to fix tagging issues`
 **Expected:** Valid workflow configuration with remediation steps.
 
 ---
 
-## Results Summary
+## Results summary
 
 | Tier | Total | Passed | Failed | Pass Rate |
 |------|-------|--------|--------|-----------|

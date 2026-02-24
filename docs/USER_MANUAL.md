@@ -1,8 +1,8 @@
-# User Manual: Tag Compliance MCP Server
+# User manual: Tag Compliance MCP Server
 
 A practical guide for FinOps practitioners to use the Tag Compliance MCP Server with Claude Desktop.
 
-## Table of Contents
+## Table of contents
 
 1. [Getting Started](#getting-started)
 2. [Available Tools](#available-tools)
@@ -15,7 +15,7 @@ A practical guide for FinOps practitioners to use the Tag Compliance MCP Server 
 
 ---
 
-## Getting Started
+## Getting started
 
 ### What is this tool?
 
@@ -31,7 +31,7 @@ The Tag Compliance MCP Server helps you manage AWS resource tagging through natu
 2. Claude Desktop configured to connect to the server (stdio recommended for local use -- no Docker or bridge needed)
 3. AWS credentials with read access to your resources
 
-### Quick Test
+### Quick test
 
 After setup, try asking Claude:
 
@@ -39,7 +39,7 @@ After setup, try asking Claude:
 
 You should see a response listing your required and optional tags.
 
-### Tool Search Optimization (Optional)
+### Tool search optimization (optional)
 
 **NEW: January 2026** - Reduce your token costs by 85% with Claude's Tool Search feature!
 
@@ -56,7 +56,7 @@ This is **completely optional** - your MCP server works perfectly without it. Bu
 
 ---
 
-## Available Tools
+## Available tools
 
 The MCP server provides 8 tools for tag compliance management:
 
@@ -214,9 +214,9 @@ What's the trend in tag violations?
 
 ---
 
-## Common Workflows
+## Common workflows
 
-### Workflow 1: Initial Assessment
+### Workflow 1: Initial assessment
 
 Start with a broad compliance check to understand your current state:
 
@@ -234,7 +234,7 @@ Start with a broad compliance check to understand your current state:
 
 ---
 
-### Workflow 2: Remediation Planning
+### Workflow 2: Remediation planning
 
 Focus on fixing the most impactful violations:
 
@@ -249,7 +249,7 @@ Focus on fixing the most impactful violations:
 
 ---
 
-### Workflow 3: Ongoing Monitoring
+### Workflow 3: Ongoing monitoring
 
 Track compliance over time:
 
@@ -264,7 +264,7 @@ Track compliance over time:
 
 ---
 
-### Workflow 4: Team Accountability
+### Workflow 4: Team accountability
 
 Identify ownership gaps:
 
@@ -279,9 +279,9 @@ Identify ownership gaps:
 
 ---
 
-## Example Prompts
+## Example prompts
 
-### Basic Queries
+### Basic queries
 
 | What you want | Example prompt |
 |---------------|----------------|
@@ -290,7 +290,7 @@ Identify ownership gaps:
 | Find violations | "Which resources have tag violations?" |
 | Cost impact | "How much is untagged spend costing me?" |
 
-### Resource-Specific Queries
+### Resource-specific queries
 
 | Resource Type | Example prompt |
 |---------------|----------------|
@@ -304,7 +304,7 @@ Identify ownership gaps:
 | Bedrock | "Check compliance for my Bedrock agents and knowledge bases" |
 | DynamoDB | "Find untagged DynamoDB tables" |
 
-### Advanced Queries
+### Advanced queries
 
 | Scenario | Example prompt |
 |----------|----------------|
@@ -318,9 +318,9 @@ Identify ownership gaps:
 
 ---
 
-## Understanding Results
+## Understanding results
 
-### Compliance Score
+### Compliance score
 
 The compliance score is calculated as:
 
@@ -333,7 +333,7 @@ Score = (Compliant Resources / Total Resources) × 100
 - **50-69%**: Fair - Significant gaps exist
 - **Below 50%**: Poor - Immediate action needed
 
-### Violation Types
+### Violation types
 
 | Type | Description | Severity |
 |------|-------------|----------|
@@ -341,7 +341,7 @@ Score = (Compliant Resources / Total Resources) × 100
 | `invalid_value` | Tag value not in allowed list | Error |
 | `invalid_format` | Tag value doesn't match regex pattern | Warning |
 
-### Cost Attribution Gap
+### Cost attribution gap
 
 The cost attribution gap shows:
 
@@ -387,30 +387,30 @@ The cost attribution gap shows:
 
 ---
 
-## Tips for FinOps Practitioners
+## Tips for FinOps practitioners
 
-### Start Small
+### Start small
 Begin with one resource type (like EC2) before scanning everything. This helps you understand the results and plan remediation.
 
-### Focus on Cost Impact
+### Focus on cost impact
 Use the cost attribution gap tool to prioritize. A $500/month untagged instance matters more than a $5/month Lambda function.
 
-### Automate Reporting
+### Automate reporting
 Set up a weekly routine to generate compliance reports. Track trends over time to show improvement.
 
-### Customize Your Policy
+### Customize your policy
 The default policy is a starting point. Customize `policies/tagging_policy.json` to match your organization's actual requirements.
 
-### Tag at Creation
+### Tag at creation
 The best time to tag is when resources are created. Use this tool to catch what slips through and establish better processes.
 
 ---
 
-## Customizing Output Formatting
+## Customizing output formatting
 
 The MCP server returns structured data, and Claude decides how to present it (bullet points, tables, charts, etc.). You can customize this by instructing Claude on your preferred format.
 
-### One-Time Formatting Request
+### One-time formatting request
 
 Add formatting instructions to your prompt:
 
@@ -426,7 +426,7 @@ Find untagged resources and show them in a markdown table with columns for Resou
 Show me the cost attribution gap with a bar chart visualization.
 ```
 
-### Persistent Formatting Preferences
+### Persistent formatting preferences
 
 To make Claude always use your preferred format, start your conversation with a formatting instruction:
 
@@ -438,7 +438,7 @@ For all tag compliance results in this conversation, please:
 - Use charts/graphs when showing trends or comparisons
 ```
 
-### Example Formatting Prompts
+### Example formatting prompts
 
 | Format | Example Prompt |
 |--------|----------------|
@@ -448,13 +448,13 @@ For all tag compliance results in this conversation, please:
 | Executive summary | "Give me a brief executive summary with key metrics, then detailed tables" |
 | Grouped | "Show violations grouped by resource type in separate tables" |
 
-### Claude Desktop System Prompt (Advanced)
+### Claude Desktop system prompt (advanced)
 
 For organization-wide formatting preferences, you can add instructions to Claude Desktop's system prompt. Edit your Claude Desktop config to include formatting preferences that apply to all conversations.
 
 ---
 
-## Getting Help
+## Getting help
 
 - **Deployment issues**: See [Deployment Guide](DEPLOYMENT.md)
 - **Policy configuration**: See [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md)

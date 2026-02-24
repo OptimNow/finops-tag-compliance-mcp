@@ -1,4 +1,4 @@
-# Resource Type Configuration
+# Resource type configuration
 
 This document explains how AWS resource types are categorized and configured for compliance scanning and cost attribution.
 
@@ -12,19 +12,19 @@ AWS has hundreds of resource types, but not all are relevant for FinOps tag comp
 
 This configuration allows you to control which resources are scanned and how costs are attributed.
 
-## Configuration File
+## Configuration file
 
 The configuration is stored in `config/resource_types.json` and loaded at server startup.
 
-### Environment Variable Override
+### Environment variable override
 
 ```bash
 export RESOURCE_TYPES_CONFIG_PATH=/custom/path/resource_types.json
 ```
 
-## Resource Categories
+## Resource categories
 
-### 1. Cost-Generating Resources
+### 1. Cost-generating resources
 
 Resources that generate direct AWS costs. These are:
 - Scanned for tag compliance
@@ -39,7 +39,7 @@ Resources that generate direct AWS costs. These are:
 | `ec2:natgateway` | ~$32/month + data |
 | `ec2:elastic-ip` | $3.65/month (unattached) |
 
-### 2. Free Resources
+### 2. Free resources
 
 Resources that are taggable but have no direct cost. These are:
 - Excluded from compliance scans by default
@@ -56,7 +56,7 @@ Resources that are taggable but have no direct cost. These are:
 | `logs:log-group` | Free; costs are on ingestion/storage |
 | `cloudwatch:alarm` | Nearly free ($0.10/alarm after first 10) |
 
-### 3. Unattributable Services
+### 3. Unattributable services
 
 Services that have costs but NO taggable resources. These are:
 - Excluded from attribution gap calculation
@@ -70,7 +70,7 @@ Services that have costs but NO taggable resources. These are:
 | `AWS Cost Explorer` | Service fee |
 | `AWS Data Transfer` | Cross-service, not tied to specific resources |
 
-## Service Name Mapping
+## Service name mapping
 
 Maps resource types to Cost Explorer service names for cost attribution.
 
@@ -83,9 +83,9 @@ Maps resource types to Cost Explorer service names for cost attribution.
 }
 ```
 
-## Maintenance Guide
+## Maintenance guide
 
-### Adding a New Cost-Generating Resource
+### Adding a new cost-generating resource
 
 1. Edit `config/resource_types.json`
 2. Add to appropriate category in `cost_generating_resources`:
@@ -103,7 +103,7 @@ Maps resource types to Cost Explorer service names for cost attribution.
    ```
 4. Restart the server
 
-### Adding a New Free Resource
+### Adding a new free resource
 
 1. Edit `config/resource_types.json`
 2. Add to appropriate category in `free_resources`:
@@ -120,7 +120,7 @@ Maps resource types to Cost Explorer service names for cost attribution.
    }
    ```
 
-### Adding a New Unattributable Service
+### Adding a new unattributable service
 
 1. Edit `config/resource_types.json`
 2. Add to appropriate category in `unattributable_services`:
@@ -131,9 +131,9 @@ Maps resource types to Cost Explorer service names for cost attribution.
    ]
    ```
 
-## How to Find Service Names
+## How to find service names
 
-### From Cost Explorer Console
+### From Cost Explorer console
 
 1. Go to AWS Cost Explorer
 2. Group by "Service"
@@ -149,7 +149,7 @@ aws ce get-cost-and-usage \
   --group-by Type=DIMENSION,Key=SERVICE
 ```
 
-## AWS Documentation References
+## AWS documentation references
 
 - [Resource Groups Tagging API - Supported Services](https://docs.aws.amazon.com/resourcegroupstagging/latest/APIReference/supported-services.html)
 - [AWS Pricing Calculator](https://calculator.aws/)

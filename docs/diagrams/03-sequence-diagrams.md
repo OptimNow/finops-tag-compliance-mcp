@@ -1,6 +1,6 @@
-# Sequence Diagrams
+# Sequence diagrams
 
-## 1. Full Compliance Check Workflow
+## 1. Full compliance check workflow
 
 This sequence diagram shows the complete flow for a compliance check, including caching, AWS API calls, and history storage.
 
@@ -111,7 +111,7 @@ sequenceDiagram
     Note over User,ADB: Total Round Trip: ~2-5 seconds<br/>Cached: ~100-200ms
 ```
 
-## 2. Tag Suggestion Workflow
+## 2. Tag suggestion workflow
 
 This sequence diagram shows how the system generates intelligent tag suggestions for a resource.
 
@@ -176,7 +176,7 @@ sequenceDiagram
     Note over User,PS: Suggestion Quality Improves<br/>with More Tagged Resources
 ```
 
-## 3. Cost Attribution Gap Analysis Workflow
+## 3. Cost attribution gap analysis workflow
 
 This sequence diagram shows how cost attribution gaps are calculated.
 
@@ -261,7 +261,7 @@ sequenceDiagram
     Note over User,CE: Cost Explorer API Calls<br/>Can Take 3-10 seconds
 ```
 
-## 4. Violation History Trend Analysis Workflow
+## 4. Violation history trend analysis workflow
 
 This sequence diagram shows how historical compliance trends are retrieved and analyzed.
 
@@ -328,7 +328,7 @@ sequenceDiagram
     Note over User,DB: Historical Analysis<br/>Enables Tracking Progress
 ```
 
-## 5. Error Handling and Retry Flow
+## 5. Error handling and retry flow
 
 This sequence diagram shows how the system handles AWS API errors and implements retry logic.
 
@@ -402,34 +402,34 @@ sequenceDiagram
     Note over User,API_AWS: Retry Strategy:<br/>Exponential Backoff<br/>2s, 4s, 8s delays
 ```
 
-## Key Sequence Flow Insights
+## Key sequence flow insights
 
-### 1. Compliance Check Flow
+### 1. Compliance check flow
 - **Duration**: 2-5 seconds (cache miss), 100-200ms (cache hit)
 - **Bottlenecks**: AWS API calls, Cost Explorer queries
 - **Optimization**: Redis caching reduces AWS API calls by ~80%
 
-### 2. Tag Suggestion Flow
+### 2. Tag suggestion flow
 - **Duration**: 3-7 seconds
 - **Complexity**: Analyzes resource metadata, naming patterns, and similar resources
 - **Accuracy**: Improves as more resources become tagged
 
-### 3. Cost Attribution Flow
+### 3. Cost attribution flow
 - **Duration**: 3-10 seconds
 - **Cost**: Expensive due to Cost Explorer API calls
 - **Grouping**: Allows breakdown by resource type, region, or account
 
-### 4. History Flow
+### 4. History flow
 - **Duration**: 100-500ms
 - **Data Source**: SQLite local database
 - **Analysis**: Supports day/week/month grouping for trend analysis
 
-### 5. Error Handling Flow
+### 5. Error handling flow
 - **Retry Logic**: Exponential backoff (2s, 4s, 8s)
 - **Max Retries**: 3 attempts
 - **Error Sanitization**: Removes sensitive data from user-facing errors
 
-## Timing Summary
+## Timing summary
 
 | Workflow | Average Duration | Cache Impact |
 |----------|-----------------|--------------|
@@ -439,7 +439,7 @@ sequenceDiagram
 | History Analysis | 100-500ms | N/A |
 | Policy Retrieval | 10-50ms | In-memory cache |
 
-## Parallelization Opportunities
+## Parallelization opportunities
 
 Several operations can be parallelized:
 1. **Resource scanning across regions** - Multiple AWS API calls in parallel

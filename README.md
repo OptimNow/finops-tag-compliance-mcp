@@ -2,6 +2,8 @@
 
 > **Turn Claude into your AWS tagging compliance assistant** — Ask in plain English, get real-time insights on your cloud costs and compliance.
 
+[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/dba94ecd6ed44aa9b83d3e6a29b18d1d-with-play.gif)](https://www.loom.com/share/dba94ecd6ed44aa9b83d3e6a29b18d1d)
+
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
@@ -14,7 +16,7 @@
 
 ---
 
-## Table of Contents
+## Table of contents
 
 - [The Problem](#the-problem)
 - [What Is MCP?](#what-is-mcp)
@@ -33,7 +35,7 @@
 
 ---
 
-## The Problem
+## The problem
 
 According to the FinOps Foundation's 2025 report, **43% of cloud costs lack proper tagging**. For large enterprises, that translates to billions in annual spend that cannot be attributed to a team, project, or cost center — the so-called "attribution gap."
 
@@ -48,7 +50,7 @@ The AWS Console can show you *what* tags exist, but it doesn't tell you whether 
 
 ---
 
-## What Is MCP?
+## What is MCP?
 
 **[Model Context Protocol (MCP)](https://modelcontextprotocol.io)** is an open standard that lets AI assistants like Claude connect to external tools and data sources. Think of it as giving Claude a phone line to your infrastructure.
 
@@ -60,7 +62,7 @@ MCP servers expose "tools" that Claude invokes automatically based on what you a
 
 ---
 
-## What Is This?
+## What is this?
 
 An MCP server that gives Claude real-time access to your AWS tagging compliance data. Instead of writing boto3 scripts or clicking through the AWS Console, just ask Claude in natural language:
 
@@ -71,7 +73,7 @@ An MCP server that gives Claude real-time access to your AWS tagging compliance 
 
 Behind the scenes, this MCP server queries your AWS environment, validates resources against your tagging policy, calculates cost impacts, and returns structured insights that Claude translates into natural language.
 
-### Beyond Simple Tag Reading
+### Beyond simple tag reading
 
 The [official AWS MCP](https://github.com/awslabs/mcp) can read your resource tags — but that's like having a librarian who can tell you which books exist, not whether they're organized correctly.
 
@@ -79,7 +81,7 @@ This MCP server goes deeper. It **validates** tags against your organization's p
 
 ---
 
-## Quick Start
+## Quick start
 
 ```bash
 # Install
@@ -161,7 +163,7 @@ Define required and optional tags in a simple JSON file (`policies/tagging_polic
 pip install finops-tag-compliance-mcp
 ```
 
-### Install from Source
+### Install from source
 
 ```bash
 git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
@@ -220,7 +222,7 @@ Add to your `claude_desktop_config.json`:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 - Linux: `~/.config/Claude/claude_desktop_config.json`
 
-### Environment Variables
+### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -235,7 +237,7 @@ Add to your `claude_desktop_config.json`:
 
 Redis is optional. Without it, results are not cached between invocations.
 
-### Tagging Policy
+### Tagging policy
 
 Define your organization's tagging rules in `policies/tagging_policy.json`:
 
@@ -318,7 +320,7 @@ The services layer has zero knowledge of MCP. You can import `ComplianceService`
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 finops-tag-compliance-mcp/
@@ -363,7 +365,7 @@ ruff check mcp_server/ tests/
 mypy mcp_server/
 ```
 
-### Testing Strategy
+### Testing strategy
 
 - **Unit tests** (`tests/unit/`): Fast, isolated, mock all AWS calls
 - **Property tests** (`tests/property/`): Hypothesis-based generative testing for invariants

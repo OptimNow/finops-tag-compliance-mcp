@@ -1,43 +1,43 @@
-# Testing Quick Start Guide
+# Testing quick start guide
 
-## Running Tests
+## Running tests
 
-### All Tests
+### All tests
 ```bash
 python run_tests.py
 ```
 
-### By Type
+### By type
 ```bash
 python run_tests.py --unit          # Unit tests only
 python run_tests.py --property      # Property tests only
 python run_tests.py --integration   # Integration tests only
 ```
 
-### Fast Mode (Skip Slow Tests)
+### Fast mode (skip slow tests)
 ```bash
 python run_tests.py --fast
 ```
 
-### With Coverage Report
+### With coverage report
 ```bash
 python run_tests.py --coverage
 ```
 
-### Specific Tests
+### Specific tests
 ```bash
 python run_tests.py --keyword "compliance"  # Tests matching keyword
 python run_tests.py --markers "unit"        # Tests with marker
 ```
 
-### Debug Mode
+### Debug mode
 ```bash
 python run_tests.py --verbose       # Verbose output
 python run_tests.py --failfast      # Stop on first failure
 python run_tests.py --pdb           # Drop into debugger on failure
 ```
 
-## Using pytest Directly
+## Using pytest directly
 
 ```bash
 # All tests
@@ -65,7 +65,7 @@ pytest tests/ -x
 pytest tests/ --pdb
 ```
 
-## Test Structure
+## Test structure
 
 ```
 tests/
@@ -74,9 +74,9 @@ tests/
 └── integration/    # End-to-end tests (real dependencies)
 ```
 
-## Writing Tests
+## Writing tests
 
-### Unit Test Example
+### Unit test example
 ```python
 # tests/unit/test_compliance.py
 import pytest
@@ -89,7 +89,7 @@ class TestComplianceService:
         assert 0.0 <= result <= 1.0
 ```
 
-### Property Test Example
+### Property test example
 ```python
 # tests/property/test_compliance.py
 from hypothesis import given, strategies as st
@@ -105,7 +105,7 @@ class TestComplianceProperties:
         assert 0.0 <= score <= 1.0
 ```
 
-## Available Fixtures
+## Available fixtures
 
 ```python
 # Environment
@@ -165,7 +165,7 @@ python run_tests.py --pdb
 rm -rf .hypothesis/
 ```
 
-## CI/CD Integration
+## CI/CD integration
 
 GitHub Actions example:
 ```yaml
@@ -190,6 +190,6 @@ In the Inspector you can:
 
 This is useful for debugging tool definitions and testing changes before deploying to Claude Desktop.
 
-## More Information
+## More information
 
 See `tests/README.md` for comprehensive documentation.

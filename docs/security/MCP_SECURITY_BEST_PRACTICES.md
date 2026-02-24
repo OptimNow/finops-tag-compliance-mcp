@@ -1,8 +1,8 @@
-# MCP Security Best Practices
+# MCP security best practices
 
 This document provides security guidance for deploying the FinOps Tag Compliance MCP Server, based on lessons learned from real-world MCP security incidents and vulnerabilities discovered in 2025.
 
-## Executive Summary
+## Executive summary
 
 The Model Context Protocol (MCP) initially shipped without mandatory authentication, prioritizing interoperability over security. This design decision has led to significant security incidents:
 
@@ -13,16 +13,16 @@ The Model Context Protocol (MCP) initially shipped without mandatory authenticat
 
 OAuth 2.1 support was added to MCP in mid-2025, but thousands of servers deployed without authentication remain in production. This document helps you avoid these pitfalls.
 
-## Threat Model
+## Threat model
 
-### What This Server Accesses
+### What this server accesses
 
 The FinOps Tag Compliance MCP Server has **read-only access** to:
 - AWS resource metadata (EC2, RDS, S3, Lambda, ECS instances)
 - AWS Cost Explorer data
 - Resource tags and compliance status
 
-### Potential Impact of Compromise
+### Potential impact of compromise
 
 | Asset | Risk if Exposed |
 |-------|-----------------|
@@ -35,9 +35,9 @@ While read-only, this information enables targeted attacks against your infrastr
 
 ---
 
-## Transport Security
+## Transport security
 
-### Stdio Transport (Recommended for Local Use)
+### Stdio transport (recommended for local use)
 
 **Use case**: Claude Desktop, MCP Inspector, local development
 
@@ -57,7 +57,7 @@ While read-only, this information enables targeted attacks against your infrastr
 python -m mcp_server.stdio_server
 ```
 
-### HTTP Transport (Production-Ready with Security Features)
+### HTTP transport (production-ready with security features)
 
 **Use case**: Remote deployment, multi-user access, CI/CD integration
 
@@ -85,7 +85,7 @@ CORS_ALLOWED_ORIGINS=https://claude.ai
 CLOUDWATCH_METRICS_ENABLED=true
 ```
 
-### Stdio-to-HTTP Bridge (Remote Server with Claude Desktop)
+### Stdio-to-HTTP bridge (remote server with Claude Desktop)
 
 **Use case**: Running the MCP server on a remote machine (EC2, cloud VM) while using Claude Desktop locally.
 
@@ -146,9 +146,9 @@ CLOUDWATCH_METRICS_ENABLED=true
 
 ---
 
-## Authentication Requirements
+## Authentication requirements
 
-### The Localhost Bypass Vulnerability (Clawdbot Lesson)
+### The localhost bypass vulnerability (Clawdbot lesson)
 
 A critical vulnerability pattern was discovered in MCP deployments:
 
@@ -159,9 +159,9 @@ A critical vulnerability pattern was discovered in MCP deployments:
 
 **This affected hundreds of real deployments**, exposing credentials and sensitive data.
 
-### Authentication Options
+### Authentication options
 
-#### Option A: OAuth 2.1 (Recommended for Multi-User)
+#### Option A: OAuth 2.1 (recommended for multi-user)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -179,7 +179,7 @@ A critical vulnerability pattern was discovered in MCP deployments:
 **Pros**: Standard protocol, integrates with enterprise IdP, token expiration
 **Cons**: Complex setup, requires IdP infrastructure
 
-#### Option B: API Key Authentication (Simpler)
+#### Option B: API key authentication (simpler)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -195,7 +195,7 @@ A critical vulnerability pattern was discovered in MCP deployments:
 **Pros**: Simple to implement, no external dependencies
 **Cons**: Key rotation burden, no user-level audit trail
 
-#### Option C: Mutual TLS (Highest Security)
+#### Option C: Mutual TLS (highest security)
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -213,9 +213,9 @@ A critical vulnerability pattern was discovered in MCP deployments:
 
 ---
 
-## Reverse Proxy Configuration
+## Reverse proxy configuration
 
-### Unsafe Configuration (Vulnerable to Localhost Bypass)
+### Unsafe configuration (vulnerable to localhost bypass)
 
 ```nginx
 # DANGEROUS: Trusts all connections as localhost
@@ -228,7 +228,7 @@ server {
 }
 ```
 
-### Safe Configuration
+### Safe configuration
 
 ```nginx
 server {
@@ -281,9 +281,9 @@ server {
 
 ---
 
-## Network Architecture
+## Network architecture
 
-### Recommended AWS Deployment
+### Recommended AWS deployment
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -331,7 +331,7 @@ server {
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Security Group Rules
+### Security group rules
 
 **ALB Security Group**:
 ```
@@ -352,9 +352,9 @@ Outbound:
 
 ---
 
-## CORS Configuration
+## CORS configuration
 
-### Current State (Insecure)
+### Current state (insecure)
 
 ```python
 # mcp_server/main.py - CURRENT
@@ -368,7 +368,7 @@ CORSMiddleware(
 
 This allows any website to make requests to your MCP server from a user's browser.
 
-### Recommended Configuration
+### Recommended configuration
 
 ```python
 # Restrict to known origins
@@ -383,7 +383,7 @@ CORSMiddleware(
 )
 ```
 
-### For Internal-Only Deployment
+### For internal-only deployment
 
 ```python
 # No CORS needed if not accessed from browsers
@@ -395,9 +395,9 @@ CORSMiddleware(
 
 ---
 
-## AWS Credential Security
+## AWS credential security
 
-### Current Implementation (Good)
+### Current implementation (good)
 
 This server uses **read-only IAM permissions**:
 - `ec2:Describe*` - Read EC2 instance metadata
@@ -446,50 +446,50 @@ This server uses **read-only IAM permissions**:
 
 ---
 
-## Deployment Checklist
+## Deployment checklist
 
-### Before Production Deployment
+### Before production deployment
 
-#### Authentication & Authorization
+#### Authentication & authorization
 - [ ] Authentication mechanism implemented (OAuth 2.1, API key, or mTLS)
 - [ ] Reverse proxy configured with auth BEFORE proxying
 - [ ] Localhost bypass vulnerability mitigated
 
-#### Network Security
+#### Network security
 - [ ] TLS/HTTPS enforced (no plaintext HTTP)
 - [ ] Server deployed in private subnet (no public IP)
 - [ ] Security groups restrict inbound to load balancer only
 - [ ] VPC endpoints configured for AWS API access
 
-#### Application Security
+#### Application security
 - [ ] CORS restricted to known origins (not `*`)
 - [ ] Request sanitization enabled (`REQUEST_SANITIZATION_ENABLED=true`)
 - [ ] Budget tracking enabled (`BUDGET_TRACKING_ENABLED=true`)
 - [ ] Loop detection enabled (`LOOP_DETECTION_ENABLED=true`)
 - [ ] Security monitoring enabled (`SECURITY_MONITORING_ENABLED=true`)
 
-#### Credential Management
+#### Credential management
 - [ ] AWS credentials via instance profile (not env vars or files)
 - [ ] No hardcoded secrets in code or config files
 - [ ] API keys stored in secrets manager (if using API key auth)
 - [ ] Key rotation schedule established (90 days recommended)
 
-#### Monitoring & Logging
+#### Monitoring & logging
 - [ ] CloudWatch logging enabled for security events
 - [ ] CloudTrail enabled for AWS API audit trail
 - [ ] Alerts configured for security events (budget exhausted, injection attempts)
 - [ ] Access logs enabled on load balancer
 
-#### Incident Response
+#### Incident response
 - [ ] Runbook documented for credential rotation
 - [ ] Contact list for security incidents
 - [ ] Backup/restore procedure tested
 
 ---
 
-## Incident Response
+## Incident response
 
-### If Compromise Suspected
+### If compromise suspected
 
 1. **Immediate Actions** (first 15 minutes)
    ```bash
@@ -535,7 +535,7 @@ This server uses **read-only IAM permissions**:
 
 ---
 
-## Security Configuration Reference
+## Security configuration reference
 
 See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for detailed configuration options including:
 
@@ -547,7 +547,7 @@ See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for detailed configur
 
 ---
 
-## Related Documentation
+## Related documentation
 
 - [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) - Detailed security settings
 - [IAM_PERMISSIONS.md](IAM_PERMISSIONS.md) - Required AWS IAM permissions
@@ -557,7 +557,7 @@ See [SECURITY_CONFIGURATION.md](SECURITY_CONFIGURATION.md) for detailed configur
 
 ---
 
-## Version History
+## Version history
 
 | Version | Date | Changes |
 |---------|------|---------|

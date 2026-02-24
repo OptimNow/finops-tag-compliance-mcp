@@ -1,4 +1,4 @@
-# Error Sanitization Implementation Guide
+# Error sanitization implementation guide
 
 ## Overview
 
@@ -10,7 +10,7 @@ This document describes the error sanitization system implemented for the FinOps
 
 The error sanitization system consists of three main components:
 
-### 1. Detection Layer
+### 1. Detection layer
 Identifies sensitive information patterns in error messages:
 - File paths (Unix, Windows, Docker)
 - AWS credentials (Access Keys, Secret Keys)
@@ -20,22 +20,22 @@ Identifies sensitive information patterns in error messages:
 - Stack traces
 - Container paths
 
-### 2. Redaction Layer
+### 2. Redaction layer
 Automatically redacts detected sensitive information:
 - Replaces patterns with `[REDACTED]` (customizable)
 - Preserves non-sensitive text
 - Maintains readability of error messages
 
-### 3. Response Layer
+### 3. Response layer
 Converts exceptions into user-safe responses:
 - Maps exception types to error codes
 - Generates user-friendly messages
 - Preserves full details for internal logging
 - Includes correlation IDs for tracing
 
-## Usage Patterns
+## Usage patterns
 
-### Pattern 1: Global Exception Handler (Automatic)
+### Pattern 1: Global exception handler (automatic)
 
 The global exception handler in `main.py` automatically sanitizes all unhandled exceptions:
 
@@ -55,7 +55,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 **Result**: All unhandled exceptions are automatically sanitized before being sent to users.
 
-### Pattern 2: Explicit Sanitization in Services
+### Pattern 2: Explicit sanitization in services
 
 Services can explicitly sanitize exceptions:
 
@@ -73,7 +73,7 @@ except Exception as exc:
 
 **Result**: Services can provide context-specific error handling while maintaining security.
 
-### Pattern 3: AWS-Specific Error Handling
+### Pattern 3: AWS-specific error handling
 
 AWS errors are handled with AWS-specific error codes:
 
@@ -91,7 +91,7 @@ except Exception as exc:
 
 **Result**: AWS errors are mapped to appropriate error codes and user messages.
 
-### Pattern 4: Database Error Handling
+### Pattern 4: Database error handling
 
 Database errors are handled with database-specific error codes:
 
@@ -109,7 +109,7 @@ except Exception as exc:
 
 **Result**: Database errors are mapped to appropriate error codes and user messages.
 
-### Pattern 5: Safe Response Creation
+### Pattern 5: Safe response creation
 
 Create guaranteed-safe error responses:
 
@@ -126,9 +126,9 @@ response = create_safe_error_response(
 
 **Result**: Error responses are guaranteed to contain no sensitive information.
 
-## Sensitive Information Patterns
+## Sensitive information patterns
 
-### File Paths
+### File paths
 - **Unix/Linux**: `/home/user/app/main.py`, `/etc/config.json`
 - **Windows**: `C:\Users\user\app\main.py`, `D:\Projects\app\config.json`
 - **Docker**: `/app/service.py`, `/src/main.py`, `/workspace/code.py`
@@ -140,21 +140,21 @@ response = create_safe_error_response(
 - **API Keys**: `api_key = "key123"`, `token: abc123`
 - **Database Credentials**: `user: admin`, `password: secret`
 
-### Connection Strings
+### Connection strings
 - **MySQL**: `mysql://user:password@host:port/db`
 - **PostgreSQL**: `postgres://user:password@host:port/db`
 - **MongoDB**: `mongodb://user:password@host:port/db`
 - **Redis**: `redis://user:password@host:port`
 
-### Network Information
+### Network information
 - **Internal IPs**: `192.168.x.x`, `10.x.x.x`, `172.16-31.x.x`
 - **Localhost**: `127.0.0.1`, `localhost`
 
-### Stack Traces
+### Stack traces
 - **Python**: `File "/app/service.py", line 123, in process`
 - **Function calls**: `at module.function()`
 
-## Error Code Mapping
+## Error code mapping
 
 | Exception Type | Error Code | User Message |
 |---|---|---|
@@ -172,7 +172,7 @@ response = create_safe_error_response(
 | BudgetExhaustedError | `budget_exceeded` | "The tool call budget for this session has been exceeded." |
 | LoopDetectedError | `loop_detected` | "A repeated tool call pattern was detected. Please try a different approach." |
 
-## AWS Error Code Mapping
+## AWS error code mapping
 
 | AWS Error | Error Code | User Message |
 |---|---|---|
@@ -183,7 +183,7 @@ response = create_safe_error_response(
 | RequestLimitExceeded | `rate_limit` | "AWS API rate limit exceeded. Please try again later." |
 | ServiceUnavailable | `service_unavailable` | "The AWS service is temporarily unavailable. Please try again later." |
 
-## Database Error Code Mapping
+## Database error code mapping
 
 | Database Error | Error Code | User Message |
 |---|---|---|
@@ -193,25 +193,25 @@ response = create_safe_error_response(
 | table does not exist | `not_found` | "Database table not found." |
 | database is locked | `database_locked` | "Database is temporarily locked. Please try again." |
 
-## Logging Strategy
+## Logging strategy
 
-### Internal Logging (Full Details)
+### Internal logging (full details)
 - Full error messages with all details
 - Sensitive information included
 - Stack traces included
 - Correlation IDs for tracing
 - Logged to CloudWatch and local logs
 
-### User Response (Sanitized)
+### User response (sanitized)
 - User-friendly error messages
 - No sensitive information
 - No stack traces
 - Error codes for machine-readable handling
 - Correlation IDs for support
 
-## Example: Error Flow
+## Example: Error flow
 
-### Scenario: AWS API Call Fails
+### Scenario: AWS API call fails
 
 **Internal Error**:
 ```
@@ -273,9 +273,9 @@ python -m pytest tests/unit/test_error_sanitization.py --cov=mcp_server.utils.er
 - Database error handling
 - Integration scenarios
 
-## Best Practices
+## Best practices
 
-### 1. Always Use Sanitization for User-Facing Errors
+### 1. Always use sanitization for user-facing errors
 ```python
 # ✅ Good
 try:
@@ -291,7 +291,7 @@ except Exception as exc:
     return JSONResponse(status_code=500, content={"error": str(exc)})
 ```
 
-### 2. Log Full Details Internally
+### 2. Log full details internally
 ```python
 # ✅ Good
 try:
@@ -309,7 +309,7 @@ except Exception as exc:
     return JSONResponse(status_code=500, content={"error": str(exc)})
 ```
 
-### 3. Use Specialized Handlers for Known Error Types
+### 3. Use specialized handlers for known error types
 ```python
 # ✅ Good
 try:
@@ -326,7 +326,7 @@ except Exception as exc:
     return JSONResponse(status_code=500, content=sanitized.to_dict())
 ```
 
-### 4. Include Correlation IDs for Tracing
+### 4. Include correlation IDs for tracing
 ```python
 # ✅ Good
 try:
@@ -354,7 +354,7 @@ This implementation satisfies **Requirement 16.5**:
 ✅ **Audit Trail**: Full errors are logged internally for debugging and security analysis
 ✅ **Correlation IDs**: All errors include correlation IDs for tracing
 
-## Future Enhancements
+## Future enhancements
 
 Potential improvements for future versions:
 

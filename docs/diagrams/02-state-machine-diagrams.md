@@ -1,6 +1,6 @@
-# State Machine Diagrams
+# State machine diagrams
 
-## 1. Tool Invocation Lifecycle State Machine
+## 1. Tool invocation lifecycle state machine
 
 This diagram shows the complete lifecycle of an MCP tool invocation, from request to response, including all validation, security, and error handling states.
 
@@ -114,7 +114,7 @@ stateDiagram-v2
     end note
 ```
 
-## 2. Resource Compliance Status State Machine
+## 2. Resource compliance status state machine
 
 This diagram shows the different states a resource can be in from a compliance perspective.
 
@@ -199,7 +199,7 @@ stateDiagram-v2
     end note
 ```
 
-## 3. Cache State Machine
+## 3. Cache state machine
 
 This diagram shows the lifecycle of cached data in the Redis cache.
 
@@ -273,7 +273,7 @@ stateDiagram-v2
     end note
 ```
 
-## 4. Budget Tracking State Machine
+## 4. Budget tracking state machine
 
 This diagram shows how the session budget is tracked and enforced.
 
@@ -345,9 +345,9 @@ stateDiagram-v2
     end note
 ```
 
-## State Transition Summary
+## State transition summary
 
-### Tool Invocation States
+### Tool invocation states
 1. **Request States**: RequestReceived, InputSanitization, SecurityValidation
 2. **Validation States**: BudgetCheck, LoopDetection, SchemaValidation
 3. **Execution States**: ToolExecution, ServiceCall, AWSAPICall
@@ -355,30 +355,30 @@ stateDiagram-v2
 5. **Finalization States**: ResultFormatting, AuditLogging, ResponseSuccess
 6. **Error States**: RequestError, SecurityBlocked, ValidationError, AWSError
 
-### Compliance States
+### Compliance states
 1. **Discovery**: Discovered, Scanning
 2. **Evaluation**: PolicyEvaluation
 3. **Compliance Levels**: FullyCompliant, PartiallyCompliant, NonCompliant, Untagged
 4. **Remediation**: ViolationLogged, RemediationSuggested, AwaitingRemediation
 
-### Cache States
+### Cache states
 1. **Lookup**: CacheQuery, KeyGeneration, CacheLookup
 2. **Hit/Miss**: CacheHit, CacheMiss, TTLCheck
 3. **Data Operations**: DataFetch, DataProcessing, CacheWrite
 4. **Degradation**: CacheError, WriteError
 
-### Budget States
+### Budget states
 1. **Active**: BudgetActive, WithinBudget
 2. **Warning**: BudgetWarning
 3. **Exceeded**: BudgetExceeded, RateLimited
 4. **Recovery**: AwaitingReset, BudgetReset
 
-## State Machine Properties
+## State machine properties
 
-### Deterministic Transitions
+### Deterministic transitions
 All state machines are deterministic - given the same input and current state, they always transition to the same next state.
 
-### Error Recovery
+### Error recovery
 Each state machine includes error states with recovery paths, ensuring system resilience.
 
 ### Observability
