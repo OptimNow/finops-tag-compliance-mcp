@@ -24,6 +24,53 @@ Tests are split into two tiers:
 
 ---
 
+## Prerequisites
+
+### 1. Python Environment
+
+- **Python 3.10+** required
+- Verify: `python --version`
+
+### 2. Install the Package (Editable Mode)
+
+```bash
+cd /path/to/finops-tag-compliance-mcp
+pip install -e .
+```
+
+### 3. AWS Credentials (Tier 2 Only)
+
+- AWS credentials configured (`aws configure` or env vars)
+- IAM role with read-only permissions (see `docs/security/IAM_PERMISSIONS.md`)
+- Some tagged and untagged EC2/RDS/S3/Lambda resources in your account
+
+### 4. Claude Desktop Configuration (Tier 2 Only)
+
+Edit your Claude Desktop config:
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "python",
+      "args": ["-m", "mcp_server.stdio_server"],
+      "cwd": "/path/to/finops-tag-compliance-mcp",
+      "env": {
+        "AWS_REGION": "us-east-1"
+      }
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving. You should see the hammer icon with 14 tools.
+
+**Quick verification:** Ask Claude "Show me our tagging policy" — you should get a response with policy details.
+
+---
+
 ## Tier 1 — Offline Tests (No AWS Required)
 
 ### T1.01: Package installs from source
@@ -143,13 +190,13 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
 
 ---
 
-### T1.11: Unit tests pass (158+)
+### T1.11: Unit tests pass (1000+)
 
 ```bash
 pytest tests/unit --ignore=tests/unit/test_aws_client.py -q
 ```
 
-**Expected:** ≥158 tests pass. Only pre-existing `test_scan_and_validate_all_resource_types` may fail.
+**Expected:** ≥1000 tests pass. One pre-existing failure (`test_cache_failure_does_not_break_multi_region_scan`) may occur due to MagicMock logging.
 **Pass:** [ ]
 
 ---
@@ -215,8 +262,9 @@ grep -ri "api_key.*=\|password.*=\|secret.*=\|token.*=" mcp_server/ --include="*
 
 **Expected:**
 - `name = "finops-tag-compliance-mcp"`
+- `requires-python = ">=3.10"`
 - `license` = Apache-2.0
-- No `fastapi` or `uvicorn` in core dependencies (only in optional `[http]`)
+- No `fastapi` or `uvicorn` in core dependencies
 - Entry point `finops-tag-compliance` defined
 **Pass:** [ ]
 
@@ -224,11 +272,7 @@ grep -ri "api_key.*=\|password.*=\|secret.*=\|token.*=" mcp_server/ --include="*
 
 ## Tier 2 — Live Tests (AWS Required)
 
-> **Prerequisites:**
-> - AWS credentials configured (`aws configure` or env vars)
-> - IAM role with read-only permissions (see docs/security/IAM_PERMISSIONS.md)
-> - Claude Desktop connected via stdio config
-> - Some tagged and untagged EC2/RDS/S3/Lambda resources
+> **Prerequisites:** Complete steps 2-4 in the Prerequisites section above.
 
 ### T2.01: Check tag compliance for EC2
 

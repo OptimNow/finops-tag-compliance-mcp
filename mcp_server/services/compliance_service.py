@@ -4,6 +4,7 @@
 
 """Compliance service with violation caching."""
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -15,11 +16,9 @@ from ..models.violations import Violation
 from ..services.policy_service import PolicyService
 from ..utils.resource_type_config import get_resource_type_config
 from ..utils.resource_utils import (
-    DIRECT_FETCHER_TYPES,
     expand_all_to_supported_types,
     extract_account_from_arn,
     fetch_resources_by_type,
-    fetch_resources_via_tagging_api,
 )
 
 logger = logging.getLogger(__name__)
@@ -230,47 +229,31 @@ class ComplianceService:
         if expanded_resource_types != resource_types:
             logger.info(f"Expanded 'all' to {len(expanded_resource_types)} resource types")
 
-        # Collect all resources using a two-strategy approach:
+        # Fetch all resource types in parallel using direct service API fetchers.
+        # Every cost-generating type has a dedicated fetcher that returns ALL
+        # resources (including untagged), eliminating the Tagging API blind spot.
         #
-        # 1. Direct fetchers (EC2, RDS, S3, Lambda, ECS, OpenSearch) — call
-        #    individual service APIs that return ALL resources including those
-        #    with zero tags (the Tagging API misses those).
-        #
-        # 2. Tagging API batch — one call for all remaining types, instead of
-        #    N individual calls.  The Tagging API only returns resources with
-        #    ≥1 tag, but there is no alternative for these types.
-        #
-        # This gives 7 API calls (6 direct + 1 batch) instead of 36.
+        # asyncio.gather() runs all fetchers concurrently. Each fetcher failure
+        # is isolated — one type failing doesn't block others.
         all_resources = []
 
-        direct_types = [t for t in expanded_resource_types if t in DIRECT_FETCHER_TYPES]
-        tagging_types = [t for t in expanded_resource_types if t not in DIRECT_FETCHER_TYPES]
-
-        # Strategy 1: Direct fetchers (catches untagged resources)
-        for resource_type in direct_types:
+        async def _fetch_one(resource_type: str) -> tuple[str, list[dict]]:
+            """Fetch a single resource type, returning (type, resources)."""
             try:
                 resources = await self._fetch_resources_by_type(resource_type, filters)
-                all_resources.extend(resources)
                 logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
+                return resource_type, resources
             except Exception as e:
                 logger.error(f"Failed to fetch resources of type {resource_type}: {str(e)}")
-                continue
+                return resource_type, []
 
-        # Strategy 2: One Tagging API batch call for everything else
-        if tagging_types:
-            try:
-                resources = await fetch_resources_via_tagging_api(
-                    self.aws_client, tagging_types, filters
-                )
-                all_resources.extend(resources)
-                logger.info(
-                    f"Fetched {len(resources)} resources for {len(tagging_types)} "
-                    f"types via Tagging API batch"
-                )
-            except Exception as e:
-                logger.error(f"Failed batch Tagging API call: {str(e)}")
-                # Don't silently lose 30 types — log prominently
-                logger.error(f"Types affected: {tagging_types}")
+        # Run all fetchers in parallel
+        results = await asyncio.gather(
+            *[_fetch_one(rt) for rt in expanded_resource_types]
+        )
+
+        for resource_type, resources in results:
+            all_resources.extend(resources)
 
         logger.info(f"Total resources fetched before filtering: {len(all_resources)}")
 

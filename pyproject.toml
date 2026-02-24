@@ -7,7 +7,7 @@ name = "finops-tag-compliance-mcp"
 version = "0.2.0"
 description = "FinOps Tag Compliance MCP Server - AWS resource tagging validation and compliance checking for Claude Desktop"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.10"
 license = {text = "Apache-2.0"}
 authors = [
     {name = "OptimNow", email = "info@optimnow.com"}

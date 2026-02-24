@@ -872,15 +872,13 @@ class TestAllResourceTypeSupport:
     async def test_scan_and_validate_all_resource_types(
         self, compliance_service, mock_aws_client, mock_policy_service
     ):
-        """Test scanning all resources via two-strategy approach.
+        """Test scanning all resources via parallel direct fetchers.
 
-        The implementation uses:
-        1. Direct fetchers for 6 types (EC2, RDS, S3, Lambda, ECS, OpenSearch)
-           — these catch untagged resources
-        2. One batch Tagging API call for all remaining types (~30)
-           — efficient but only returns resources with ≥1 tag
+        All cost-generating resource types have dedicated service API fetchers
+        that run in parallel via asyncio.gather(). No Tagging API is used.
+        This catches ALL resources including those with zero tags.
         """
-        # Resources returned by direct fetchers (EC2, Lambda)
+        # Resources returned by direct fetchers (EC2, Lambda, DynamoDB)
         ec2_resources = [
             {
                 "resource_id": "i-123",
@@ -901,9 +899,7 @@ class TestAllResourceTypeSupport:
                 "arn": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
             },
         ]
-
-        # Resource returned by batch Tagging API (DynamoDB)
-        tagging_api_resources = [
+        dynamodb_resources = [
             {
                 "resource_id": "table/MyTable",
                 "resource_type": "dynamodb:table",
@@ -914,20 +910,17 @@ class TestAllResourceTypeSupport:
             },
         ]
 
-        # Mock direct fetchers — return resources for EC2 and Lambda, empty for others
+        # Mock direct fetchers — return resources for EC2, Lambda, DynamoDB
         async def mock_fetch_by_type(resource_type, filters):
             if resource_type == "ec2:instance":
                 return ec2_resources
             elif resource_type == "lambda:function":
                 return lambda_resources
+            elif resource_type == "dynamodb:table":
+                return dynamodb_resources
             return []
 
         compliance_service._fetch_resources_by_type = AsyncMock(side_effect=mock_fetch_by_type)
-
-        # Mock batch Tagging API call
-        mock_aws_client.get_all_tagged_resources = AsyncMock(
-            return_value=tagging_api_resources
-        )
 
         # DynamoDB table has violation, others are compliant
         def validate_side_effect(resource_id, resource_type, region, tags, cost_impact):
@@ -951,11 +944,10 @@ class TestAllResourceTypeSupport:
             resource_types=["all"], filters=None, severity="all"
         )
 
-        # Verify direct fetchers were called (6 types)
-        assert compliance_service._fetch_resources_by_type.call_count == 6
-
-        # Verify batch Tagging API was called once for the remaining types
-        mock_aws_client.get_all_tagged_resources.assert_called_once()
+        # All types go through direct fetchers (one call per expanded type)
+        from mcp_server.utils.resource_utils import get_supported_resource_types
+        expected_types = len(get_supported_resource_types())
+        assert compliance_service._fetch_resources_by_type.call_count == expected_types
 
         # 3 resources total, 2 compliant, 1 violation
         assert result.total_resources == 3
@@ -994,7 +986,6 @@ class TestAllResourceTypeSupport:
             return []
 
         compliance_service._fetch_resources_by_type = AsyncMock(side_effect=mock_fetch_by_type)
-        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[])
         mock_policy_service.validate_resource_tags.return_value = []
 
         result = await compliance_service._scan_and_validate(
@@ -1011,9 +1002,8 @@ class TestAllResourceTypeSupport:
         """Test that 'all' resource type queries use caching."""
         mock_cache.get.return_value = None
 
-        # Mock both fetching strategies so _scan_and_validate succeeds
+        # Mock direct fetchers so _scan_and_validate succeeds
         compliance_service._fetch_resources_by_type = AsyncMock(return_value=[])
-        mock_aws_client.get_all_tagged_resources = AsyncMock(return_value=[])
 
         await compliance_service.check_compliance(
             resource_types=["all"], filters=None, severity="all"
@@ -1031,7 +1021,11 @@ class TestAllResourceTypeSupport:
     async def test_free_resources_filtered_from_compliance_scan(
         self, compliance_service, mock_aws_client, mock_policy_service
     ):
-        """Test that free resources (VPC, Subnet, Security Group, etc.) are filtered out."""
+        """Test that free resources (VPC, Subnet, Security Group, etc.) are filtered out.
+
+        Free resources are returned by their direct fetchers but should be
+        excluded from compliance scoring since they have no direct cost.
+        """
         # EC2 instance returned by direct fetcher
         ec2_resources = [
             {
@@ -1054,18 +1048,8 @@ class TestAllResourceTypeSupport:
                 "arn": "arn:aws:s3:::my-bucket",
             },
         ]
-
-        async def mock_fetch_by_type(resource_type, filters):
-            if resource_type == "ec2:instance":
-                return ec2_resources
-            elif resource_type == "s3:bucket":
-                return s3_resources
-            return []
-
-        compliance_service._fetch_resources_by_type = AsyncMock(side_effect=mock_fetch_by_type)
-
-        # Free resources returned by batch Tagging API (these should be filtered)
-        tagging_api_resources = [
+        # Free resources returned by direct fetchers (these should be filtered)
+        vpc_resources = [
             {
                 "resource_id": "vpc-123",
                 "resource_type": "ec2:vpc",  # FREE - should be filtered
@@ -1074,6 +1058,8 @@ class TestAllResourceTypeSupport:
                 "cost_impact": 0.0,
                 "arn": "arn:aws:ec2:us-east-1:123456789012:vpc/vpc-123",
             },
+        ]
+        subnet_resources = [
             {
                 "resource_id": "subnet-123",
                 "resource_type": "ec2:subnet",  # FREE - should be filtered
@@ -1082,6 +1068,8 @@ class TestAllResourceTypeSupport:
                 "cost_impact": 0.0,
                 "arn": "arn:aws:ec2:us-east-1:123456789012:subnet/subnet-123",
             },
+        ]
+        sg_resources = [
             {
                 "resource_id": "sg-123",
                 "resource_type": "ec2:security-group",  # FREE - should be filtered
@@ -1092,9 +1080,20 @@ class TestAllResourceTypeSupport:
             },
         ]
 
-        mock_aws_client.get_all_tagged_resources = AsyncMock(
-            return_value=tagging_api_resources
-        )
+        async def mock_fetch_by_type(resource_type, filters):
+            if resource_type == "ec2:instance":
+                return ec2_resources
+            elif resource_type == "s3:bucket":
+                return s3_resources
+            elif resource_type == "ec2:vpc":
+                return vpc_resources
+            elif resource_type == "ec2:subnet":
+                return subnet_resources
+            elif resource_type == "ec2:security-group":
+                return sg_resources
+            return []
+
+        compliance_service._fetch_resources_by_type = AsyncMock(side_effect=mock_fetch_by_type)
         mock_policy_service.validate_resource_tags.return_value = []
 
         result = await compliance_service._scan_and_validate(

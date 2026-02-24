@@ -49,10 +49,10 @@ class TestFetchResourcesByType:
         aws_client.get_rds_instances.assert_called_once_with(filters)
 
     @pytest.mark.asyncio
-    async def test_fetch_resources_by_type_unknown_type_uses_tagging_api(self):
-        """Test that unknown resource types fall back to Tagging API."""
+    async def test_fetch_resources_by_type_dynamodb_uses_direct_fetcher(self):
+        """Test that DynamoDB uses its direct fetcher (not Tagging API)."""
         aws_client = MagicMock()
-        aws_client.get_all_tagged_resources = AsyncMock(
+        aws_client.get_dynamodb_tables = AsyncMock(
             return_value=[
                 {"resource_id": "table-123", "resource_type": "dynamodb:table", "tags": {}}
             ]
@@ -62,6 +62,22 @@ class TestFetchResourcesByType:
 
         assert len(result) == 1
         assert result[0]["resource_type"] == "dynamodb:table"
+        aws_client.get_dynamodb_tables.assert_called_once_with(None)
+
+    @pytest.mark.asyncio
+    async def test_fetch_resources_by_type_unknown_type_falls_back_to_tagging_api(self):
+        """Test that truly unknown resource types fall back to Tagging API."""
+        aws_client = MagicMock()
+        aws_client.get_all_tagged_resources = AsyncMock(
+            return_value=[
+                {"resource_id": "res-123", "resource_type": "custom:widget", "tags": {}}
+            ]
+        )
+
+        result = await fetch_resources_by_type(aws_client, "custom:widget")
+
+        assert len(result) == 1
+        assert result[0]["resource_type"] == "custom:widget"
         aws_client.get_all_tagged_resources.assert_called_once()
 
     @pytest.mark.asyncio
