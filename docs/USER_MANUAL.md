@@ -10,8 +10,9 @@ A practical guide for FinOps practitioners to use the FinOps Tag Compliance MCP 
 4. [Example prompts](#example-prompts)
 5. [Understanding results](#understanding-results)
 6. [Troubleshooting](#troubleshooting)
-7. [Tips for FinOps practitioners](#tips-for-finops-practitioners)
-8. [Customizing output formatting](#customizing-output-formatting)
+7. [Preventing hallucinations](#preventing-hallucinations)
+8. [Tips for FinOps practitioners](#tips-for-finops-practitioners)
+9. [Customizing output formatting](#customizing-output-formatting)
 
 ---
 
@@ -497,6 +498,94 @@ Broad or vague prompts (e.g. "check compliance for all resources", "what's my to
 - Check Claude Desktop config file syntax (use a JSON validator)
 - Restart Claude Desktop after config changes
 - Test with MCP Inspector: `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server`
+
+---
+
+## Preventing hallucinations
+
+AI assistants like Claude can sometimes fabricate data when tool calls fail, time out, or return incomplete results. This is called "hallucination" and it can lead to inaccurate compliance numbers, invented cost figures, or misleading reports. The MCP server includes several safeguards to prevent this, but understanding how they work helps you get reliable results.
+
+### Why hallucinations happen with MCP tools
+
+When an AI assistant calls an MCP tool and the tool takes too long (timeout) or fails partway through (partial scan), the assistant may:
+- Invent numbers that seem plausible instead of reporting the error
+- Present data from a few regions as if it covers the entire account
+- Extrapolate cost figures from incomplete scans
+
+This is most likely with broad "all" mode scans that hit many AWS regions and resource types simultaneously.
+
+### Built-in safeguards
+
+The MCP server includes three layers of protection:
+
+**1. Structured error responses**
+
+When a tool times out or fails, the server returns a structured JSON error with a clear `"error"` field and a suggestion to use more specific resource types. The AI assistant sees this error and can report it directly instead of guessing.
+
+**2. Data quality metadata**
+
+Every scan response includes a `data_quality` field that tells the AI assistant whether results are complete:
+
+```json
+// Complete scan — all regions succeeded:
+"data_quality": {
+  "status": "complete",
+  "note": "All 17 regions scanned successfully."
+}
+
+// Partial scan — some regions failed:
+"data_quality": {
+  "status": "partial",
+  "warning": "3 of 17 regions failed to scan. Results are incomplete
+              and DO NOT cover: eu-west-1, ap-south-1, sa-east-1.",
+  "failed_regions": ["eu-west-1", "ap-south-1", "sa-east-1"]
+}
+```
+
+When the AI assistant sees `"status": "partial"`, it is instructed to disclose which regions are missing and avoid presenting the numbers as account-wide totals.
+
+**3. Tool description instructions**
+
+Each scanning tool includes explicit instructions in its description telling the AI assistant to:
+- Always check the `data_quality` field before presenting results
+- Disclose partial data to the user
+- Never estimate, extrapolate, or fabricate values for regions that failed
+
+### What you can do
+
+Even with these safeguards, following these practices will help you get the most accurate results:
+
+**Be specific with your prompts**
+
+Broad prompts are more likely to trigger timeouts and partial results. Specific prompts are faster and more reliable:
+
+| Instead of | Use |
+|------------|-----|
+| "Check compliance for everything" | "Check compliance for EC2 instances and S3 buckets" |
+| "What's my total cost attribution gap?" | "What's the cost attribution gap for EC2 and RDS?" |
+| "Scan all resources across all regions" | "Scan Lambda functions in us-east-1 and eu-west-1" |
+
+**Ask Claude to show the data quality status**
+
+If you want extra confidence, include this in your prompt:
+
+```
+Check tag compliance for EC2 instances. Show me the data_quality status
+and list any failed regions.
+```
+
+**Watch for warning signs in responses**
+
+Be skeptical if Claude:
+- Gives precise dollar amounts without mentioning which regions were scanned
+- Claims "all resources are compliant" without listing how many were checked
+- Provides numbers that seem inconsistent between different tool calls
+
+In these cases, ask: "Did all regions scan successfully? Show me the data_quality field."
+
+**Use the production deployment for broad scans**
+
+If you regularly need to scan all resource types across all regions, the [managed production deployment](https://github.com/OptimNow/finops-tag-compliance-deploy) on ECS Fargate offers significantly better performance. AWS API calls from within AWS are faster and more reliable than calls from a local machine, reducing the risk of timeouts and partial data.
 
 ---
 
