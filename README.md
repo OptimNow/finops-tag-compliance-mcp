@@ -8,12 +8,6 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
 
-### Install
-
-[![Install](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=finops-tag-compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
-[![Install](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=finops-tag-compliance&config=eyJjb21tYW5kIjoidXZ4IGZpbm9wcy10YWctY29tcGxpYW5jZS1tY3BAbGF0ZXN0IiwiZW52Ijp7IkFXU19SRUdJT04iOiJ1cy1lYXN0LTEifSwiZGlzYWJsZWQiOmZhbHNlLCJhdXRvQXBwcm92ZSI6W119)
-[![Install on VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=FinOps%20Tag%20Compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
-
 ---
 
 ## Table of contents
@@ -119,6 +113,10 @@ Define required and optional tags in a simple JSON file (`policies/tagging_polic
 ---
 
 ## Installation
+
+[![Install](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=finops-tag-compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+[![Install](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=finops-tag-compliance&config=eyJjb21tYW5kIjoidXZ4IGZpbm9wcy10YWctY29tcGxpYW5jZS1tY3BAbGF0ZXN0IiwiZW52Ijp7IkFXU19SRUdJT04iOiJ1cy1lYXN0LTEifSwiZGlzYWJsZWQiOmZhbHNlLCJhdXRvQXBwcm92ZSI6W119)
+[![Install on VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=FinOps%20Tag%20Compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
 
 ### Prerequisites
 
