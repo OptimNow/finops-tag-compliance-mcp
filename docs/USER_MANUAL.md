@@ -1,35 +1,27 @@
-# User manual: Tag Compliance MCP Server
+# User manual
 
-A practical guide for FinOps practitioners to use the Tag Compliance MCP Server with Claude Desktop.
+A practical guide for FinOps practitioners to use the FinOps Tag Compliance MCP Server with Claude.
 
 ## Table of contents
 
-1. [Getting Started](#getting-started)
-2. [Available Tools](#available-tools)
-3. [Common Workflows](#common-workflows)
-4. [Example Prompts](#example-prompts)
-5. [Understanding Results](#understanding-results)
+1. [Getting started](#getting-started)
+2. [Available tools](#available-tools)
+3. [Common workflows](#common-workflows)
+4. [Example prompts](#example-prompts)
+5. [Understanding results](#understanding-results)
 6. [Troubleshooting](#troubleshooting)
-7. [Tips for FinOps Practitioners](#tips-for-finops-practitioners)
-8. [Customizing Output Formatting](#customizing-output-formatting)
+7. [Tips for FinOps practitioners](#tips-for-finops-practitioners)
+8. [Customizing output formatting](#customizing-output-formatting)
 
 ---
 
 ## Getting started
 
-### What is this tool?
-
-The Tag Compliance MCP Server helps you manage AWS resource tagging through natural conversation with Claude. Instead of writing scripts or navigating the AWS console, you can simply ask Claude questions like:
-
-- "Which of my EC2 instances are missing required tags?"
-- "What's my overall tag compliance score?"
-- "How much money am I losing due to untagged resources?"
-
 ### Prerequisites
 
-1. MCP server installed (see [Deployment Guide](DEPLOYMENT.md))
-2. Claude Desktop configured to connect to the server (stdio recommended for local use -- no Docker or bridge needed)
-3. AWS credentials with read access to your resources
+1. MCP server installed (see the [README](../README.md) for quick start instructions)
+2. Claude Desktop (or any MCP-compatible client) configured to connect to the server
+3. AWS credentials with read access to your resources (see [IAM permissions guide](security/IAM_PERMISSIONS.md))
 
 ### Quick test
 
@@ -39,26 +31,11 @@ After setup, try asking Claude:
 
 You should see a response listing your required and optional tags.
 
-### Tool search optimization (optional)
-
-**NEW: January 2026** - Reduce your token costs by 85% with Claude's Tool Search feature!
-
-Instead of loading all 8 tool definitions upfront, Claude can discover tools on-demand. This optimization:
-- **Saves costs**: Reduces token usage from ~15K to ~3K per conversation
-- **Improves performance**: Faster response times and better tool selection accuracy
-- **No functionality changes**: All tools still work exactly the same
-
-**To enable:**
-1. See [examples/](../examples/) for ready-to-use configuration files
-2. Read the [Tool Search Configuration Guide](./TOOL_SEARCH_CONFIGURATION.md) for detailed setup
-
-This is **completely optional** - your MCP server works perfectly without it. But if you're doing many conversations, the cost savings add up quickly!
-
 ---
 
 ## Available tools
 
-The MCP server provides 8 tools for tag compliance management:
+The MCP server provides 14 tools for tag compliance management:
 
 ### 1. check_tag_compliance
 
@@ -77,7 +54,7 @@ What's the compliance score for all my S3 buckets?
 Scan my Lambda functions for tag violations
 ```
 
-**Resource types**: 
+**Resource types**:
 - Specific types: `ec2:instance`, `rds:db`, `s3:bucket`, `lambda:function`, `ecs:service`, `opensearch:domain`
 - Use `all` to scan ALL taggable resources (50+ types including Bedrock, DynamoDB, SNS, SQS, etc.)
 
@@ -150,7 +127,7 @@ Get tag suggestions for a resource.
 Suggest tags for arn:aws:ec2:us-east-1:123456789:instance/i-abc123
 ```
 ```
-What tags should I add to this S3 bucket?
+What tags should I add to this EC2 instance?
 ```
 
 ---
@@ -214,6 +191,120 @@ What's the trend in tag violations?
 
 ---
 
+### 9. generate_custodian_policy
+
+Generate Cloud Custodian YAML policies from your tagging policy.
+
+**What it does**: Creates enforceable Cloud Custodian policies based on your current tagging policy. Use `dry_run=True` (default) for notify-only policies, or `False` for auto-remediation.
+
+**Example prompts**:
+```
+Generate Cloud Custodian policies for my tagging rules
+```
+```
+Create enforcement policies for missing Environment and Owner tags
+```
+```
+Generate auto-remediation policies for EC2 instances
+```
+
+---
+
+### 10. generate_openops_workflow
+
+Generate an OpenOps automation workflow for tag remediation.
+
+**What it does**: Creates an OpenOps-compatible YAML workflow that automates tag compliance enforcement with notification, auto-tagging, or reporting strategies.
+
+**Example prompts**:
+```
+Create an OpenOps workflow to notify when compliance drops below 80%
+```
+```
+Generate a daily auto-tagging workflow for EC2 instances
+```
+```
+Build a weekly tag compliance reporting workflow
+```
+
+---
+
+### 11. schedule_compliance_audit
+
+Create a compliance audit schedule configuration.
+
+**What it does**: Generates a schedule configuration for recurring compliance audits, including cron expressions and next estimated run time. The configuration can be used with external schedulers.
+
+**Example prompts**:
+```
+Schedule a daily compliance audit at 9am UTC
+```
+```
+Set up a weekly audit with email notifications
+```
+```
+Create a monthly compliance check schedule for EC2 and RDS
+```
+
+---
+
+### 12. detect_tag_drift
+
+Detect unexpected tag changes since the last compliance scan.
+
+**What it does**: Compares current resource tags against expected state from the tagging policy to identify missing required tags and invalid tag values. Classifies drift by severity: critical, warning, or info.
+
+**Example prompts**:
+```
+Detect tag drift on my EC2 instances
+```
+```
+Have any tags changed unexpectedly in the last 7 days?
+```
+```
+Check for tag drift on the Environment and Owner tags
+```
+
+---
+
+### 13. export_violations_csv
+
+Export compliance violations as CSV data.
+
+**What it does**: Runs a compliance scan and exports violations in CSV format for spreadsheet analysis, reporting, or integration with other tools.
+
+**Example prompts**:
+```
+Export all tag violations as CSV
+```
+```
+Give me a CSV of critical violations for EC2 and RDS
+```
+```
+Export violations with resource ARN and cost impact columns
+```
+
+---
+
+### 14. import_aws_tag_policy
+
+Import and convert an AWS Organizations tag policy to MCP format.
+
+**What it does**: Connects to AWS Organizations to retrieve tag policies and converts them to the MCP server's tagging policy format. If no policy ID is provided, lists all available tag policies.
+
+**Example prompts**:
+```
+List my AWS Organizations tag policies
+```
+```
+Import the tag policy p-abc12345 from AWS Organizations
+```
+```
+Convert my AWS Organizations tagging rules to MCP format
+```
+
+---
+
 ## Common workflows
 
 ### Workflow 1: Initial assessment
@@ -247,6 +338,9 @@ Focus on fixing the most impactful violations:
 3. **Validate after tagging**:
    > "Validate the tags on [resource ARN]"
 
+4. **Generate enforcement policies**:
+   > "Generate Cloud Custodian policies for EC2 tag enforcement"
+
 ---
 
 ### Workflow 3: Ongoing monitoring
@@ -259,8 +353,11 @@ Track compliance over time:
 2. **Review trends**:
    > "Show me compliance history for the last 7 days"
 
-3. **Identify new violations**:
-   > "Find resources created in the last week that are missing tags"
+3. **Detect drift**:
+   > "Have any tags changed unexpectedly this week?"
+
+4. **Export for reporting**:
+   > "Export violations as CSV for the team"
 
 ---
 
@@ -292,7 +389,7 @@ Identify ownership gaps:
 
 ### Resource-specific queries
 
-| Resource Type | Example prompt |
+| Resource type | Example prompt |
 |---------------|----------------|
 | All resources | "Check tag compliance for all resource types" |
 | EC2 | "Check tag compliance for EC2 instances" |
@@ -315,6 +412,9 @@ Identify ownership gaps:
 | Time-based | "Show compliance history for the last 30 days" |
 | Specific resource | "Validate tags on arn:aws:s3:::my-bucket" |
 | AI/ML resources | "Find all untagged Bedrock and SageMaker resources" |
+| Enforcement | "Generate Cloud Custodian policies for my tagging rules" |
+| Drift detection | "Check for tag drift in the last 7 days" |
+| Export | "Export all violations as CSV" |
 
 ---
 
@@ -369,7 +469,7 @@ The cost attribution gap shows:
 ### "Access denied" errors
 
 - Your AWS credentials may lack required permissions
-- See [IAM Permissions Guide](IAM_PERMISSIONS.md) for required policies
+- See [IAM permissions guide](security/IAM_PERMISSIONS.md) for required policies
 
 ### Slow responses
 
@@ -379,8 +479,7 @@ The cost attribution gap shows:
 
 ### Claude doesn't see the tools
 
-- **stdio transport:** Check that `python -m mcp_server.stdio_server` runs without errors from the repository directory
-- **HTTP transport:** Verify the MCP server is running: `curl http://SERVER:8080/health`
+- Check that `python -m mcp_server.stdio_server` runs without errors
 - Check Claude Desktop config file syntax (use a JSON validator)
 - Restart Claude Desktop after config changes
 - Test with MCP Inspector: `npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server`
@@ -440,7 +539,7 @@ For all tag compliance results in this conversation, please:
 
 ### Example formatting prompts
 
-| Format | Example Prompt |
+| Format | Example prompt |
 |--------|----------------|
 | Tables | "Show untagged resources in a table with Resource ID, Type, Cost, and Missing Tags columns" |
 | Charts | "Display the compliance score trend as a bar chart" |
@@ -456,9 +555,8 @@ For organization-wide formatting preferences, you can add instructions to Claude
 
 ## Getting help
 
-- **Deployment issues**: See [Deployment Guide](DEPLOYMENT.md)
-- **Policy configuration**: See [Tagging Policy Guide](TAGGING_POLICY_GUIDE.md)
-- **IAM permissions**: See [IAM Permissions Guide](IAM_PERMISSIONS.md)
-- **Bug reports**: Open an issue on GitHub
-- **Tool logic details**: See [Tool Logic Reference](TOOL_LOGIC_REFERENCE.md)
-
+- **Installation & setup**: See the [README](../README.md)
+- **Policy configuration**: See [Tagging policy guide](TAGGING_POLICY_GUIDE.md)
+- **IAM permissions**: See [IAM permissions guide](security/IAM_PERMISSIONS.md)
+- **Tool logic details**: See [Tool logic reference](TOOL_LOGIC_REFERENCE.md)
+- **Bug reports**: Open an issue on [GitHub](https://github.com/OptimNow/finops-tag-compliance-mcp/issues)

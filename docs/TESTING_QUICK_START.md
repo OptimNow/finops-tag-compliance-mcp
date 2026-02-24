@@ -183,7 +183,7 @@ npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
 ```
 
 In the Inspector you can:
-- See all 8 registered tools and their schemas
+- See all 14 registered tools and their schemas
 - Call tools interactively with test parameters
 - Inspect JSON-RPC request/response payloads
 - Verify tool registration without needing Claude Desktop
