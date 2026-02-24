@@ -43,6 +43,49 @@ _container: ServiceContainer | None = None
 
 
 # ---------------------------------------------------------------------------
+# Anti-hallucination: data quality metadata
+# ---------------------------------------------------------------------------
+def _build_data_quality(result: Any) -> dict:
+    """Build a data_quality block that tells LLMs whether results are complete.
+
+    This metadata is included in every scan response so that LLMs know whether
+    the data covers all regions and resource types, or is partial/incomplete.
+    LLMs MUST report partial data honestly rather than presenting it as complete.
+    """
+    quality: dict[str, Any] = {"status": "complete"}
+
+    if not hasattr(result, "region_metadata"):
+        return quality
+
+    meta = result.region_metadata
+    failed = meta.failed_regions or []
+    total = meta.total_regions or 0
+
+    if meta.discovery_failed:
+        quality["status"] = "partial"
+        quality["warning"] = (
+            "Region discovery failed. Results are from the default region only "
+            "and DO NOT represent the full AWS account. "
+            "Do not present these numbers as account-wide totals."
+        )
+        if meta.discovery_error:
+            quality["discovery_error"] = meta.discovery_error
+    elif failed:
+        quality["status"] = "partial"
+        quality["warning"] = (
+            f"{len(failed)} of {total} regions failed to scan. "
+            f"Results are incomplete and DO NOT cover: {', '.join(failed)}. "
+            "Do not present these numbers as account-wide totals."
+        )
+        quality["failed_regions"] = failed
+    else:
+        quality["status"] = "complete"
+        quality["note"] = f"All {total} regions scanned successfully."
+
+    return quality
+
+
+# ---------------------------------------------------------------------------
 # Tool 1: check_tag_compliance
 # ---------------------------------------------------------------------------
 @mcp.tool()
@@ -62,6 +105,12 @@ async def check_tag_compliance(
     IMPORTANT: The 'all' mode scans 42 resource types across all AWS regions,
     which may take several minutes. For faster results, specify resource types
     explicitly: ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"]
+
+    CRITICAL — data accuracy: Always check the "data_quality" field in the
+    response. If data_quality.status is "partial", some regions failed to scan
+    and the results are INCOMPLETE. You MUST disclose this to the user — do NOT
+    present partial data as if it were a complete account-wide picture. Never
+    estimate, extrapolate, or fabricate values for regions that failed.
 
     Args:
         resource_types: List of resource types to check. Examples:
@@ -150,6 +199,9 @@ async def check_tag_compliance(
         "stored_in_history": store_snapshot,
     }
 
+    # Add data quality metadata (anti-hallucination guard)
+    response["data_quality"] = _build_data_quality(result)
+
     # Add multi-region fields if this is a MultiRegionComplianceResult
     if hasattr(result, "region_metadata"):
         response["region_metadata"] = {
@@ -157,6 +209,7 @@ async def check_tag_compliance(
             "successful_regions": result.region_metadata.successful_regions,
             "failed_regions": result.region_metadata.failed_regions,
             "skipped_regions": result.region_metadata.skipped_regions,
+            "discovery_failed": result.region_metadata.discovery_failed,
         }
         response["regional_breakdown"] = [
             {
@@ -187,6 +240,11 @@ async def find_untagged_resources(
 
     Returns resource details and age to help prioritize remediation.
     Cost estimates are only included when explicitly requested via include_costs=true.
+
+    CRITICAL — data accuracy: Always check the "data_quality" field in the
+    response. If data_quality.status is "partial", some regions failed and the
+    results are INCOMPLETE. You MUST tell the user which regions are missing.
+    Never estimate or fabricate resource counts for failed regions.
 
     Args:
         resource_types: List of resource types to search (e.g. ["ec2:instance"] or ["all"])
@@ -245,6 +303,7 @@ async def find_untagged_resources(
     response: dict[str, Any] = {
         "total_untagged": result.total_untagged,
         "resources": resources,
+        "data_quality": _build_data_quality(result),
         "scan_timestamp": result.scan_timestamp.isoformat(),
     }
     if include_costs:
@@ -328,6 +387,14 @@ async def get_cost_attribution_gap(
     Shows how much cloud spend cannot be allocated to teams/projects due to
     missing or invalid resource tags.
 
+    IMPORTANT: This is the slowest tool when used with "all" resource types
+    (3-4 minutes). Prefer specific resource types for faster results.
+
+    CRITICAL — data accuracy: If this tool returns an error or timeout, report
+    the error to the user exactly as received. Never estimate, extrapolate, or
+    fabricate dollar amounts. If the tool succeeds, check the "data_quality"
+    field — if status is "partial", clearly disclose which data is missing.
+
     Args:
         resource_types: List of resource types to analyze (e.g. ["ec2:instance"] or ["all"])
         time_period: Time period with Start and End dates in YYYY-MM-DD format
@@ -384,6 +451,7 @@ async def get_cost_attribution_gap(
             "attribution_gap_percentage": result.attribution_gap_percentage,
             "time_period": result.time_period,
             "breakdown": breakdown,
+            "data_quality": _build_data_quality(result),
             "scan_timestamp": result.scan_timestamp.isoformat(),
         },
         default=str,
@@ -452,6 +520,10 @@ async def generate_compliance_report(
     Includes overall compliance summary, top violations ranked by
     count and cost impact, and actionable recommendations.
 
+    CRITICAL — data accuracy: Always check the "data_quality" field. If status
+    is "partial", clearly state which regions or data are missing. Never present
+    partial scan results as a complete compliance report.
+
     Args:
         resource_types: List of resource types to include (e.g. ["ec2:instance"] or ["all"])
         format: Output format: "json", "csv", or "markdown"
@@ -509,7 +581,9 @@ async def generate_compliance_report(
         include_recommendations=include_recommendations,
     )
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    report_data = result.model_dump(mode="json")
+    report_data["data_quality"] = _build_data_quality(compliance_result)
+    return json.dumps(report_data, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -698,6 +772,10 @@ async def detect_tag_drift(
     Classifies drift by severity: critical (required tag removed),
     warning (value changed), or info (optional tag changed).
 
+    CRITICAL — data accuracy: If the result contains a "data_quality" field
+    with status "partial", tell the user which regions were not scanned.
+    Never fabricate drift data for regions that failed.
+
     Args:
         resource_types: Resource types to check (e.g. ["ec2:instance"]).
             Default: ["ec2:instance", "s3:bucket", "rds:db"]
@@ -736,7 +814,9 @@ async def detect_tag_drift(
             "message": error_msg,
         })
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    drift_data = result.model_dump(mode="json")
+    drift_data["data_quality"] = _build_data_quality(result)
+    return json.dumps(drift_data, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -752,6 +832,9 @@ async def export_violations_csv(
 
     Runs a compliance scan and exports violations in CSV format for
     spreadsheet analysis, reporting, or integration with other tools.
+
+    CRITICAL — data accuracy: Check "data_quality" in the response. If status
+    is "partial", note it in the export and tell the user which regions are missing.
 
     Args:
         resource_types: Resource types to scan (e.g. ["ec2:instance"]).
@@ -791,7 +874,9 @@ async def export_violations_csv(
             "message": error_msg,
         })
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    export_data = result.model_dump(mode="json")
+    export_data["data_quality"] = _build_data_quality(result)
+    return json.dumps(export_data, default=str)
 
 
 # ---------------------------------------------------------------------------
