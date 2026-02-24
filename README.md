@@ -20,15 +20,13 @@
 
 - [The Problem](#the-problem)
 - [What Is MCP?](#what-is-mcp)
-- [What Is This?](#what-is-this)
-- [Quick Start](#quick-start)
+- [What Is This Tagging MCP?](#what-is-this-tagging-mcp)
 - [Features](#features)
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Testing with MCP Inspector](#testing-with-mcp-inspector)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
-- [Development](#development)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 - [License](#license)
@@ -62,7 +60,7 @@ MCP servers expose "tools" that Claude invokes automatically based on what you a
 
 ---
 
-## What is this?
+## What is this Tagging MCP?
 
 An MCP server that gives Claude real-time access to your AWS tagging compliance data. Instead of writing boto3 scripts or clicking through the AWS Console, just ask Claude in natural language:
 
@@ -78,35 +76,6 @@ Behind the scenes, this MCP server queries your AWS environment, validates resou
 The [official AWS MCP](https://github.com/awslabs/mcp) can read your resource tags — but that's like having a librarian who can tell you which books exist, not whether they're organized correctly.
 
 This MCP server goes deeper. It **validates** tags against your organization's policy, **quantifies** the financial impact when they're wrong or missing, **suggests** corrections using pattern matching across similar resources, and **tracks** compliance trends over time.
-
----
-
-## Quick start
-
-```bash
-# Install
-pip install finops-tag-compliance-mcp
-
-# Run
-finops-tag-compliance
-```
-
-Add to your Claude Desktop config (`claude_desktop_config.json`):
-
-```json
-{
-  "mcpServers": {
-    "finops-tag-compliance": {
-      "command": "finops-tag-compliance",
-      "env": {
-        "AWS_REGION": "us-east-1"
-      }
-    }
-  }
-}
-```
-
-That's it. Now ask Claude: *"Which of my EC2 instances are missing required tags?"*
 
 ---
 
@@ -226,7 +195,7 @@ Add to your `claude_desktop_config.json`:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `AWS_REGION` | `us-east-1` | Default AWS region |
+| `AWS_REGION` | `us-east-1` | Default AWS region (e.g. `eu-west-1` for Ireland) |
 | `AWS_PROFILE` | (default) | AWS credentials profile |
 | `ALLOWED_REGIONS` | (all enabled) | Comma-separated list of regions to scan |
 | `MAX_CONCURRENT_REGIONS` | `5` | Max parallel region scans (1-20) |
@@ -344,47 +313,17 @@ finops-tag-compliance-mcp/
 
 ---
 
-## Development
-
-```bash
-# Clone and install with dev dependencies
-git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
-cd finops-tag-compliance-mcp
-pip install -e ".[dev]"
-
-# Run tests
-pytest tests/unit tests/property --ignore=tests/unit/test_aws_client.py
-
-# Format
-black mcp_server/ tests/
-
-# Lint
-ruff check mcp_server/ tests/
-
-# Type check
-mypy mcp_server/
-```
-
-### Testing strategy
-
-- **Unit tests** (`tests/unit/`): Fast, isolated, mock all AWS calls
-- **Property tests** (`tests/property/`): Hypothesis-based generative testing for invariants
-- **Integration tests** (`tests/integration/`): End-to-end with real AWS (requires credentials)
-
----
-
 ## Documentation
 
 | Guide | Description |
 |-------|-------------|
 | [User Manual](./docs/USER_MANUAL.md) | Practical guide for FinOps practitioners |
 | [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) | Define your organization's tagging rules |
-| [Resource Type Configuration](./docs/RESOURCE_TYPE_CONFIGURATION.md) | Manage which AWS resource types to scan |
 | [Tool Logic Reference](./docs/TOOL_LOGIC_REFERENCE.md) | Detailed logic for each of the 14 tools |
-| [Tool Search Configuration](./docs/TOOL_SEARCH_CONFIGURATION.md) | Reduce token costs with on-demand tool loading |
-| [IAM Permissions](./docs/security/IAM_PERMISSIONS.md) | Required AWS permissions |
-| [MCP Security Best Practices](./docs/security/MCP_SECURITY_BEST_PRACTICES.md) | Security guidance |
+| [IAM Permissions](./docs/security/IAM_PERMISSIONS.md) | Required AWS permissions (read-only) |
+| [Resource Type Configuration](./docs/RESOURCE_TYPE_CONFIGURATION.md) | Manage which AWS resource types to scan |
 | [Testing Quick Start](./docs/TESTING_QUICK_START.md) | Getting started with the test suite |
+| [Architecture Diagrams](./docs/diagrams/) | System architecture, sequence, state, and component diagrams |
 
 ---
 
