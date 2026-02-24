@@ -28,6 +28,7 @@ This is a **FinOps Tag Compliance MCP Server** — an open-source Model Context 
 
 **License**: Apache 2.0
 **Transport**: stdio (standard MCP, for Claude Desktop and MCP Inspector)
+**Production deployment**: For HTTP/API deployment on AWS (ECS Fargate, CloudFormation), see the private [finops-tag-compliance-deploy](https://github.com/OptimNow/finops-tag-compliance-deploy) repo.
 
 ## Development Commands
 
@@ -133,18 +134,45 @@ This project deliberately separates **protocol-agnostic business logic** (reusab
 - Easy to add CLI, REST API, webhook, or Lambda interface without touching business logic
 - Services are testable in isolation (unit tests mock only clients, not MCP layer)
 
-### High-Level File Structure
+### Repository structure
 
 ```
-mcp_server/
-├── stdio_server.py      # ★ FastMCP stdio entry point (Claude Desktop / Inspector)
-├── container.py         # ★ ServiceContainer (dependency injection + lifecycle)
-├── config.py            # CoreSettings (environment-based configuration)
-├── models/              # Pydantic data models (17 files)
-├── services/            # Core business logic (protocol-agnostic)
-├── tools/               # 14 MCP tool adapters (thin wrappers)
-├── clients/             # AWS client wrapper, Redis cache
-└── utils/               # Correlation IDs, validation, error sanitization
+finops-tag-compliance-mcp/
+├── mcp_server/
+│   ├── stdio_server.py      # ★ FastMCP stdio entry point (Claude Desktop / Inspector)
+│   ├── container.py         # ★ ServiceContainer (dependency injection + lifecycle)
+│   ├── config.py            # CoreSettings (environment-based configuration)
+│   ├── models/              # Pydantic data models (17 files)
+│   ├── services/            # Core business logic (12 services, protocol-agnostic)
+│   ├── tools/               # 14 MCP tool adapters (thin wrappers)
+│   ├── clients/             # AWS client wrapper, Redis cache, regional factory
+│   └── utils/               # Correlation IDs, validation, error sanitization
+├── policies/
+│   └── tagging_policy.json  # Tagging policy configuration
+├── config/
+│   ├── resource_types.json        # Resource types configuration
+│   └── resource_types.schema.json # JSON Schema for resource types
+├── examples/
+│   ├── claude_desktop_config_stdio.json  # Claude Desktop config example
+│   └── aws_tag_policy_example.json      # AWS Organizations policy example
+├── scripts/
+│   └── convert_aws_policy.py  # Convert AWS Organizations policy to MCP format
+├── tests/
+│   ├── unit/                # Unit tests (mock all dependencies)
+│   ├── property/            # Hypothesis-based property tests
+│   ├── integration/         # End-to-end tests (require AWS credentials)
+│   └── uat/                 # UAT scenario definitions
+├── docs/
+│   ├── USER_MANUAL.md
+│   ├── TOOL_LOGIC_REFERENCE.md
+│   ├── TAGGING_POLICY_GUIDE.md
+│   ├── TESTING_QUICK_START.md
+│   ├── RESOURCE_TYPE_CONFIGURATION.md
+│   ├── security/IAM_PERMISSIONS.md
+│   └── diagrams/            # Architecture, sequence, state, component diagrams
+├── pyproject.toml           # Package configuration (pip install)
+├── LICENSE                  # Apache 2.0
+└── README.md
 ```
 
 ### Multi-Region Scanning
@@ -444,6 +472,12 @@ Development mistakes encountered during this project. **Claude must check this s
 
 - **Never hardcode `force_refresh=True`**: Propagate the parameter through all function calls.
 - **Include all context in cache keys**: Region, resource types, filters, severity, scanned regions — changing any must produce a different cache key.
+
+### Git & Repository Hygiene
+
+- **Gitignored files can still be tracked**: If a file was committed before the `.gitignore` rule was added, git continues tracking it. Use `git rm --cached <file>` to remove from tracking without deleting the file. Always verify with `git ls-files` after adding gitignore rules.
+- **Never commit `.claude/settings.local.json`**: This file can contain sensitive data (API keys, tokens, paths). It should be in `.gitignore` and never tracked. If accidentally committed, remove with `git rm --cached` and rotate any exposed credentials.
+- **Hypothesis cache pollutes git history**: The `.hypothesis/` directory generates hundreds of cache files. Ensure it's in `.gitignore` before running property tests for the first time.
 
 ### Compatibility
 
