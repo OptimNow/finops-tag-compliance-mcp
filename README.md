@@ -3,8 +3,79 @@
 > **Turn Claude into your AWS tagging compliance assistant** — Ask in plain English, get real-time insights on your cloud costs and compliance.
 
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
+
+### Install
+
+[![Install](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=finops-tag-compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+[![Install](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=finops-tag-compliance&config=eyJjb21tYW5kIjoidXZ4IGZpbm9wcy10YWctY29tcGxpYW5jZS1tY3BAbGF0ZXN0IiwiZW52Ijp7IkFXU19SRUdJT04iOiJ1cy1lYXN0LTEifSwiZGlzYWJsZWQiOmZhbHNlLCJhdXRvQXBwcm92ZSI6W119)
+[![Install on VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=FinOps%20Tag%20Compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+
+---
+
+## Table of Contents
+
+- [The Problem](#the-problem)
+- [What Is MCP?](#what-is-mcp)
+- [What Is This?](#what-is-this)
+- [Quick Start](#quick-start)
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Testing with MCP Inspector](#testing-with-mcp-inspector)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## The Problem
+
+According to the FinOps Foundation's 2025 report, **43% of cloud costs lack proper tagging**. For large enterprises, that translates to billions in annual spend that cannot be attributed to a team, project, or cost center — the so-called "attribution gap."
+
+Today, fixing tagging compliance means:
+
+- **Manual audits**: Clicking through the AWS Console resource by resource
+- **Custom scripts**: Writing and maintaining boto3 scripts that check tags against a spreadsheet
+- **Delayed feedback**: Finding violations weeks after resources are launched
+- **No cost context**: Knowing a resource is untagged, but not how much money is at stake
+
+The AWS Console can show you *what* tags exist, but it doesn't tell you whether they're *correct*, how much you're *losing* from the gaps, or *what values* should go there.
+
+---
+
+## What Is MCP?
+
+**[Model Context Protocol (MCP)](https://modelcontextprotocol.io)** is an open standard that lets AI assistants like Claude connect to external tools and data sources. Think of it as giving Claude a phone line to your infrastructure.
+
+**Without MCP:** Claude can only work with what you paste into the chat — it has no access to your live AWS environment.
+
+**With MCP:** Claude can call specialized tools to query your AWS resources, validate tags, calculate costs, and return real-time insights — all through natural conversation.
+
+MCP servers expose "tools" that Claude invokes automatically based on what you ask. When you say *"Which S3 buckets are untagged?"*, Claude recognizes it needs the `find_untagged_resources` tool, calls it, gets structured data back, and translates that into a natural language answer.
+
+---
+
+## What Is This?
+
+An MCP server that gives Claude real-time access to your AWS tagging compliance data. Instead of writing boto3 scripts or clicking through the AWS Console, just ask Claude in natural language:
+
+- *"Run a compliance check on all my EC2 and RDS instances"*
+- *"How much of our EC2 spend is unattributable due to missing tags?"*
+- *"Suggest tags for this EC2 instance based on its name and similar resources"*
+- *"Generate a markdown compliance report for our Q1 review"*
+
+Behind the scenes, this MCP server queries your AWS environment, validates resources against your tagging policy, calculates cost impacts, and returns structured insights that Claude translates into natural language.
+
+### Beyond Simple Tag Reading
+
+The [official AWS MCP](https://github.com/awslabs/mcp) can read your resource tags — but that's like having a librarian who can tell you which books exist, not whether they're organized correctly.
+
+This MCP server goes deeper. It **validates** tags against your organization's policy, **quantifies** the financial impact when they're wrong or missing, **suggests** corrections using pattern matching across similar resources, and **tracks** compliance trends over time.
 
 ---
 
@@ -34,22 +105,6 @@ Add to your Claude Desktop config (`claude_desktop_config.json`):
 ```
 
 That's it. Now ask Claude: *"Which of my EC2 instances are missing required tags?"*
-
-> **Want multi-account support, scheduled reports, and a dashboard?**
-> Connect your AWS account at [mcp.optimnow.io](https://mcp.optimnow.io) — no setup required.
-
----
-
-## What Is This?
-
-An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server that gives Claude real-time access to your AWS tagging compliance data. Instead of writing boto3 scripts or clicking through the AWS Console, just ask Claude in natural language:
-
-- *"Run a compliance check on all my EC2 and RDS instances"*
-- *"How much of our EC2 spend is unattributable due to missing tags?"*
-- *"Suggest tags for this EC2 instance based on its name and similar resources"*
-- *"Generate a markdown compliance report for our Q1 review"*
-
-Behind the scenes, this MCP server queries your AWS environment, validates resources against your tagging policy, calculates cost impacts, and returns structured insights that Claude translates into natural language.
 
 ---
 
@@ -96,9 +151,9 @@ Define required and optional tags in a simple JSON file (`policies/tagging_polic
 
 ### Prerequisites
 
-- Python 3.11+
+- Python 3.10+
 - AWS credentials configured (`~/.aws/credentials` or environment variables)
-- [Claude Desktop](https://claude.ai/download) or any MCP-compatible client
+- [Claude Desktop](https://claude.ai/download) or any MCP-compatible client (VS Code, Cursor, Kiro)
 
 ### Install from PyPI
 
