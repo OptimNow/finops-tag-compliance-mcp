@@ -17,6 +17,7 @@
 - [What Is This Tagging MCP?](#what-is-this-tagging-mcp)
 - [Features](#features)
 - [Installation](#installation)
+- [Production Deployment](#production-deployment)
 - [Configuration](#configuration)
 - [Testing with MCP Inspector](#testing-with-mcp-inspector)
 - [Architecture](#architecture)
@@ -147,6 +148,20 @@ The server needs read-only AWS permissions. See [IAM Permissions Guide](./docs/s
 - `ce:GetCostAndUsage` (Cost Explorer — optional, for cost attribution)
 
 No write permissions are needed.
+
+### Production deployment
+
+This repository is designed for **local use** — the MCP server runs on your machine alongside Claude Desktop, Cursor, or VS Code. Your AWS credentials stay local and never leave your laptop.
+
+For **production and team environments**, we provide a separate deployment repository with the infrastructure to run this MCP server securely on AWS:
+
+- CloudFormation templates for VPC, ALB, and EC2/ECS deployment
+- API key authentication via AWS Secrets Manager
+- TLS termination and private subnet isolation
+- CloudWatch logging and security monitoring
+- CI/CD pipeline setup
+
+See [finops-tag-compliance-deploy](https://github.com/OptimNow/finops-tag-compliance-deploy) for the full production stack. For support on deploying in production, contact [jean@optimnow.io](mailto:jean@optimnow.io).
 
 ---
 
