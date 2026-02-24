@@ -2,65 +2,76 @@
 
 ## 1. High-level component architecture
 
-This diagram shows the major logical components and their dependencies.
+This diagram shows the major logical components and their dependencies for the stdio MCP server.
 
 ```mermaid
 graph TB
-    subgraph "Presentation Layer"
-        HTTP[HTTP API<br/>FastAPI Endpoints]
-        MCP[MCP Protocol Handler<br/>Tool Registry]
+    subgraph "MCP transport layer"
+        MCP[FastMCP stdio server<br/>Tool registry and JSON-RPC]
     end
 
-    subgraph "Application Layer - Tools"
-        T1[Check Compliance Tool]
-        T2[Find Untagged Tool]
-        T3[Validate Tags Tool]
-        T4[Cost Gap Tool]
-        T5[Suggest Tags Tool]
-        T6[Get Policy Tool]
-        T7[Generate Report Tool]
-        T8[History Tool]
+    subgraph "Application layer — tools (14)"
+        T1[check_tag_compliance]
+        T2[find_untagged_resources]
+        T3[validate_resource_tags]
+        T4[get_cost_attribution_gap]
+        T5[suggest_tags]
+        T6[get_tagging_policy]
+        T7[generate_compliance_report]
+        T8[get_violation_history]
+        T9[generate_custodian_policy]
+        T10[generate_openops_workflow]
+        T11[schedule_compliance_audit]
+        T12[detect_tag_drift]
+        T13[export_violations_csv]
+        T14[import_aws_tag_policy]
     end
 
-    subgraph "Business Logic Layer - Services"
+    subgraph "Business logic layer — ServiceContainer"
         CS[Compliance Service<br/>• Scan resources<br/>• Validate tags<br/>• Calculate scores]
         PS[Policy Service<br/>• Load policy<br/>• Validate structure<br/>• Check applicability]
         CostS[Cost Service<br/>• Query Cost Explorer<br/>• Calculate gaps<br/>• Group by dimensions]
         SS[Suggestion Service<br/>• Analyze patterns<br/>• Find similar resources<br/>• Generate suggestions]
         HS[History Service<br/>• Store snapshots<br/>• Query trends<br/>• Calculate changes]
-        AS[Audit Service<br/>• Log invocations<br/>• Track metrics<br/>• Store events]
-        SecS[Security Service<br/>• Monitor threats<br/>• Track violations<br/>• Rate limit]
-        MS[Metrics Service<br/>• Aggregate stats<br/>• Generate metrics<br/>• Export Prometheus]
+        AS[Audit Service<br/>• Log invocations<br/>• Track parameters<br/>• Store results]
+        APS[Auto Policy Service<br/>• Import from AWS Orgs<br/>• Detect policy source<br/>• Create defaults]
+        SchedS[Scheduler Service<br/>• Recurring scans<br/>• Configurable schedule]
     end
 
-    subgraph "Integration Layer - Clients"
-        AWSC[AWS Client<br/>• Resource Groups API<br/>• Cost Explorer API<br/>• EC2/RDS/S3/Lambda APIs<br/>• Rate limiting<br/>• Retry logic]
+    subgraph "Multi-region scanning"
+        MRS[Multi-Region Scanner<br/>• Parallel region scanning<br/>• Result aggregation]
+        RDS[Region Discovery Service<br/>• Query enabled regions<br/>• Cache region list]
+        RCF[Regional Client Factory<br/>• Create per-region clients<br/>• Cache client instances]
+    end
+
+    subgraph "Guardrails"
+        BT[Budget Tracker<br/>• 100 calls/session<br/>• In-memory or Redis]
+        LD[Loop Detector<br/>• 3 identical calls/5 min<br/>• In-memory or Redis]
+    end
+
+    subgraph "Integration layer — clients"
+        AWSC[AWS Client<br/>• EC2, RDS, S3, Lambda APIs<br/>• ECS, OpenSearch APIs<br/>• Cost Explorer API<br/>• Resource Groups API<br/>• Rate limiting<br/>• Exponential backoff]
         CacheC[Cache Client<br/>• Redis operations<br/>• TTL management<br/>• Graceful degradation]
     end
 
-    subgraph "Data Layer"
-        Redis[(Redis<br/>• Compliance cache<br/>• Budget tracking<br/>• Loop detection<br/>• Security events)]
-        AuditDB[(SQLite - Audit<br/>• Tool invocations<br/>• Parameters<br/>• Results<br/>• Errors)]
-        HistoryDB[(SQLite - History<br/>• Compliance snapshots<br/>• Timestamps<br/>• Scores<br/>• Violations)]
-        PolicyFile[Policy Config<br/>tagging_policy.json]
+    subgraph "Data layer"
+        Redis[(Redis<br/>• Compliance cache<br/>• Budget tracking<br/>• Loop detection<br/>Optional)]
+        AuditDB[(SQLite — Audit<br/>• Tool invocations<br/>• Parameters<br/>• Results)]
+        HistoryDB[(SQLite — History<br/>• Compliance snapshots<br/>• Timestamps<br/>• Scores)]
+        PolicyFile[Policy config<br/>tagging_policy.json]
+        ResourceTypesFile[Resource types config<br/>resource_types.json]
     end
 
-    subgraph "External Systems"
+    subgraph "External systems"
         AWS[AWS Services<br/>• EC2<br/>• RDS<br/>• S3<br/>• Lambda<br/>• ECS<br/>• OpenSearch]
-        CE[Cost Explorer]
+        CE[Cost Explorer<br/>Always us-east-1]
         RGTA[Resource Groups<br/>Tagging API]
-        CW[CloudWatch Logs]
     end
 
-    subgraph "Cross-Cutting Concerns"
-        Middleware[Middleware Stack<br/>• CORS<br/>• Sanitization<br/>• Correlation<br/>• Budget enforcement<br/>• Loop detection<br/>• Security checks]
-        Utils[Utilities<br/>• Input validation<br/>• Error sanitization<br/>• Logging<br/>• Correlation IDs]
-        Config[Configuration<br/>• Environment vars<br/>• Settings<br/>• Defaults]
+    subgraph "Cross-cutting concerns"
+        Utils[Utilities<br/>• Input validation<br/>• Error sanitization<br/>• Correlation IDs<br/>• ARN parsing]
+        Config[Configuration<br/>• CoreSettings<br/>• Environment vars<br/>• Defaults]
     end
-
-    %% HTTP to MCP
-    HTTP --> Middleware
-    Middleware --> MCP
 
     %% MCP to Tools
     MCP --> T1
@@ -71,6 +82,16 @@ graph TB
     MCP --> T6
     MCP --> T7
     MCP --> T8
+    MCP --> T9
+    MCP --> T10
+    MCP --> T11
+    MCP --> T12
+    MCP --> T13
+    MCP --> T14
+
+    %% Guardrails
+    MCP -.-> BT
+    MCP -.-> LD
 
     %% Tools to Services
     T1 --> CS
@@ -81,6 +102,17 @@ graph TB
     T6 --> PS
     T7 --> CS
     T8 --> HS
+    T9 --> PS
+    T10 --> PS
+    T11 --> PS
+    T12 --> CS
+    T13 --> CS
+    T14 --> PS
+
+    %% Tools to Multi-Region Scanner
+    T1 --> MRS
+    T2 --> MRS
+    T7 --> MRS
 
     %% Service Dependencies
     CS --> PS
@@ -92,16 +124,18 @@ graph TB
     SS --> PS
     HS --> HistoryDB
     AS --> AuditDB
-    AS --> CW
-    SecS --> Redis
-    SecS --> CW
-    MS --> AS
+    MRS --> RDS
+    MRS --> RCF
+    RCF --> AWSC
+    RDS --> AWSC
 
     %% Client to External
     AWSC --> AWS
     AWSC --> CE
     AWSC --> RGTA
     CacheC --> Redis
+    BT --> CacheC
+    LD --> CacheC
 
     %% Services to Audit
     CS -.->|Log| AS
@@ -111,82 +145,103 @@ graph TB
 
     %% Config Dependencies
     PS --> PolicyFile
-    HTTP --> Config
+    PS --> ResourceTypesFile
     AWSC --> Config
     CacheC --> Config
 
     %% Utils Dependencies
     MCP --> Utils
-    Middleware --> Utils
     CS --> Utils
 
-    %% Security Dependencies
-    Middleware --> SecS
-
     %% Styling
-    classDef presentation fill:#e1f5ff,stroke:#01579b,stroke-width:2px
+    classDef mcp fill:#e1f5ff,stroke:#01579b,stroke-width:2px
     classDef tools fill:#e8f5e9,stroke:#1b5e20,stroke-width:2px
     classDef services fill:#f3e5f5,stroke:#4a148c,stroke-width:2px
+    classDef scanner fill:#e8eaf6,stroke:#283593,stroke-width:2px
+    classDef guards fill:#fff8e1,stroke:#f9a825,stroke-width:2px
     classDef clients fill:#fff3e0,stroke:#e65100,stroke-width:2px
     classDef data fill:#fce4ec,stroke:#880e4f,stroke-width:2px
     classDef external fill:#fff9c4,stroke:#f57f17,stroke-width:2px
     classDef crosscut fill:#e0f2f1,stroke:#004d40,stroke-width:2px
 
-    class HTTP,MCP presentation
-    class T1,T2,T3,T4,T5,T6,T7,T8 tools
-    class CS,PS,CostS,SS,HS,AS,SecS,MS services
+    class MCP mcp
+    class T1,T2,T3,T4,T5,T6,T7,T8,T9,T10,T11,T12,T13,T14 tools
+    class CS,PS,CostS,SS,HS,AS,APS,SchedS services
+    class MRS,RDS,RCF scanner
+    class BT,LD guards
     class AWSC,CacheC clients
-    class Redis,AuditDB,HistoryDB,PolicyFile data
-    class AWS,CE,RGTA,CW external
-    class Middleware,Utils,Config crosscut
+    class Redis,AuditDB,HistoryDB,PolicyFile,ResourceTypesFile data
+    class AWS,CE,RGTA external
+    class Utils,Config crosscut
 ```
 
 ## 2. Component dependency matrix
 
 This table shows which components depend on each other.
 
-| Component | Depends On | Used By |
+| Component | Depends on | Used by |
 |-----------|-----------|---------|
-| **HTTP API** | Middleware, Config | External Clients |
-| **MCP Handler** | Utils, Middleware | HTTP API |
-| **Tools (8)** | Services, MCP Handler | MCP Handler |
-| **Compliance Service** | Policy Service, Cost Service, AWS Client, Cache Client, Utils | Tools 1, 2, 3, 7 |
-| **Policy Service** | Policy File, Config | Compliance Service, Suggestion Service, Tools |
+| **FastMCP stdio server** | Utils, Config | Claude Desktop, MCP Inspector |
+| **Tools (14)** | Services, MCP server | MCP server |
+| **Compliance Service** | Policy Service, Cost Service, AWS Client, Cache Client, Utils | Tools 1, 2, 3, 7, 12, 13 |
+| **Policy Service** | Policy file, Resource types config | Compliance Service, Suggestion Service, Tools 6, 9, 10, 11, 14 |
 | **Cost Service** | AWS Client, Utils | Compliance Service, Tool 4 |
 | **Suggestion Service** | AWS Client, Policy Service | Tool 5 |
 | **History Service** | History DB | Tool 8, Compliance Service |
-| **Audit Service** | Audit DB, CloudWatch | All Services (logging) |
-| **Security Service** | Redis, CloudWatch | Middleware |
-| **Metrics Service** | Audit Service | Monitoring Systems |
-| **AWS Client** | AWS Services, Config | All Services that need AWS data |
-| **Cache Client** | Redis, Config | Compliance Service, Security Service |
-| **Middleware Stack** | Utils, Security Service, Config | HTTP API |
-| **Utilities** | - | All Components |
-| **Configuration** | Environment Variables | All Components |
+| **Audit Service** | Audit DB | All services (logging) |
+| **Multi-Region Scanner** | Region Discovery, Regional Client Factory | Tools 1, 2, 7 |
+| **Region Discovery Service** | AWS Client (EC2), Cache Client | Multi-Region Scanner |
+| **Regional Client Factory** | AWS Client constructor | Multi-Region Scanner |
+| **Budget Tracker** | Cache Client (optional) | MCP server (pre-invocation) |
+| **Loop Detector** | Cache Client (optional) | MCP server (pre-invocation) |
+| **AWS Client** | AWS APIs, Config | All services that need AWS data |
+| **Cache Client** | Redis (optional), Config | Compliance Service, Budget Tracker, Loop Detector |
+| **Utilities** | — | All components |
+| **Configuration** | Environment variables | All components |
 
 ## 3. Component interfaces
 
-### Presentation layer components
+### MCP transport layer
 
 ```mermaid
 classDiagram
-    class FastAPIServer {
-        +GET /health
-        +GET /metrics
-        +GET /mcp/tools
-        +POST /mcp/tools/call
-        -lifespan_handler()
-        -setup_middleware()
+    class FastMCPServer {
+        +mcp: FastMCP
+        +_container: ServiceContainer
+        +_ensure_initialized()
+        +check_tag_compliance(params) str
+        +find_untagged_resources(params) str
+        +validate_resource_tags(params) str
+        +get_cost_attribution_gap(params) str
+        +suggest_tags(params) str
+        +get_tagging_policy(params) str
+        +generate_compliance_report(params) str
+        +get_violation_history(params) str
+        +generate_custodian_policy(params) str
+        +generate_openops_workflow(params) str
+        +schedule_compliance_audit(params) str
+        +detect_tag_drift(params) str
+        +export_violations_csv(params) str
+        +import_aws_tag_policy(params) str
     }
 
-    class MCPHandler {
-        +list_tools() ToolDefinition[]
-        +invoke_tool(name, params) MCPToolResult
-        -validate_input(tool, params)
-        -lookup_tool(name) ToolHandler
+    class ServiceContainer {
+        +initialize() async
+        +shutdown() async
+        +compliance_service: ComplianceService
+        +policy_service: PolicyService
+        +aws_client: AWSClient
+        +redis_cache: RedisCache
+        +audit_service: AuditService
+        +history_service: HistoryService
+        +budget_tracker: BudgetTracker
+        +loop_detector: LoopDetector
+        +multi_region_scanner: MultiRegionScanner
+        +auto_policy_service: AutoPolicyService
+        +scheduler_service: SchedulerService
     }
 
-    FastAPIServer --> MCPHandler
+    FastMCPServer --> ServiceContainer
 ```
 
 ### Service layer components
@@ -229,25 +284,20 @@ classDiagram
 
     class AuditService {
         +log_invocation(tool, params, result)
-        +get_metrics() Metrics
         -store_audit_log(log_entry)
     }
 
-    class SecurityService {
-        +check_security_threat(request) bool
-        +log_security_event(event)
-        +is_rate_limited(session) bool
-    }
-
-    class MetricsService {
-        +generate_prometheus_metrics() string
-        +get_tool_metrics() dict
-        +get_error_rates() dict
+    class MultiRegionScanner {
+        +scan_all_regions(params) MultiRegionComplianceResult
+        -discover_regions() list[str]
+        -scan_region(region) RegionalResult
+        -aggregate_results(results) MultiRegionComplianceResult
     }
 
     ComplianceService --> PolicyService
     ComplianceService --> CostService
     SuggestionService --> PolicyService
+    MultiRegionScanner --> ComplianceService
 ```
 
 ### Integration layer components
@@ -259,7 +309,13 @@ classDiagram
         +get_cost_data(time_period) CostData
         +describe_resource(arn) ResourceDetails
         -exponential_backoff_retry(func, max_retries)
-        -initialize_clients()
+        -ec2_client
+        -rds_client
+        -s3_client
+        -lambda_client
+        -ecs_client
+        -cost_explorer_client
+        -resource_groups_client
     }
 
     class CacheClient {
@@ -270,87 +326,87 @@ classDiagram
         -reconnect() bool
     }
 
-    class AWSClient {
-        -ec2_client
-        -rds_client
-        -s3_client
-        -lambda_client
-        -cost_explorer_client
-        -resource_groups_client
+    class RegionalClientFactory {
+        +get_client(region) AWSClient
+        -_clients: dict[str, AWSClient]
     }
+
+    RegionalClientFactory --> AWSClient
 ```
 
 ## 4. Component communication patterns
 
 ```mermaid
 graph LR
-    subgraph "Synchronous Communication"
-        A[Tool] -->|Direct Call| B[Service]
-        B -->|Return Value| A
+    subgraph "Synchronous communication"
+        A[Tool] -->|Direct call| B[Service]
+        B -->|Return value| A
     end
 
-    subgraph "Asynchronous Communication"
-        C[Service] -->|Log Event| D[Audit Service]
-        E[Service] -->|Log Security Event| F[CloudWatch]
+    subgraph "Async audit logging"
+        C[Service] -->|Log event| D[Audit Service]
+        D -->|Write| E[SQLite]
     end
 
-    subgraph "Cached Communication"
-        G[Service] -->|Check Cache| H[Redis]
-        H -->|Cache Miss| G
+    subgraph "Cached communication"
+        G[Service] -->|Check cache| H[Redis]
+        H -->|Cache miss| G
         G -->|Query| I[AWS]
         I -->|Data| G
         G -->|Store| H
     end
 
-    subgraph "Error Handling"
-        J[Service] -->|API Call| K[AWS Client]
-        K -->|Error| L[Retry Logic]
-        L -->|Max Retries| M[Error Response]
+    subgraph "Error handling"
+        J[Service] -->|API call| K[AWS Client]
+        K -->|Error| L[Retry logic]
+        L -->|Max retries| M[Error response]
         L -->|Success| K
     end
 ```
 
-## 5. Component deployment units
+## 5. Component runtime structure
 
-Components are grouped into deployment units:
+Components run as a single Python process:
 
 ```mermaid
 graph TB
-    subgraph "Single Container"
-        subgraph "Web Server Process"
-            FastAPI[FastAPI Application]
-            Uvicorn[Uvicorn ASGI Server]
+    subgraph "Single Python process"
+        subgraph "MCP server"
+            FastMCP[FastMCP instance]
+            Stdio[stdin/stdout transport]
         end
 
-        subgraph "Application Code"
-            MCP[MCP Handler]
-            Tools[Tool Handlers]
-            Services[Service Layer]
-            Clients[Client Layer]
+        subgraph "Application code"
+            Tools[14 tool handlers]
+            Container[ServiceContainer]
+            Services[Service layer]
+            Clients[Client layer]
             Utils[Utilities]
         end
 
-        subgraph "In-Process Storage"
-            PolicyCache[Policy Cache<br/>In-Memory]
-            ConfigCache[Config Cache<br/>In-Memory]
+        subgraph "In-process state"
+            PolicyCache[Policy cache<br/>In-memory]
+            RegionCache[Region client cache<br/>In-memory]
+            ConfigCache[Config cache<br/>In-memory]
         end
     end
 
-    subgraph "External Dependencies"
-        Redis[(Redis Container)]
-        SQLite[(SQLite Files<br/>Volume Mount)]
-        AWS[AWS Services<br/>External]
+    subgraph "External dependencies"
+        Redis[(Redis<br/>Optional)]
+        SQLite[(SQLite files<br/>Local)]
+        AWS[AWS services<br/>Remote]
     end
 
-    Uvicorn --> FastAPI
-    FastAPI --> MCP
-    MCP --> Tools
-    Tools --> Services
+    Stdio --> FastMCP
+    FastMCP --> Tools
+    Tools --> Container
+    Container --> Services
     Services --> Clients
     Services --> Utils
 
     Services --> PolicyCache
-    FastAPI --> ConfigCache
+    Services --> RegionCache
+    FastMCP --> ConfigCache
 
     Clients --> Redis
     Services --> SQLite
@@ -361,85 +417,70 @@ graph TB
 
 ### Stateless components
 These components maintain no state between requests:
-- FastAPI Server
-- MCP Handler
-- Tool Handlers
+- FastMCP server (delegates to container)
+- Tool handlers (pure adapters)
 - Utility functions
 
 ### Stateful components
 These components maintain state or cached data:
-- Policy Service (in-memory cache)
+- ServiceContainer (holds all service references)
+- Policy Service (in-memory policy cache)
 - Configuration (loaded once at startup)
-- Redis Cache Client (connection pool)
-- AWS Client (client initialization, connection pools)
+- Regional Client Factory (client connection pools)
+- AWS Client (boto3 client initialization)
 
 ### Persistence components
 These components interact with persistent storage:
-- Audit Service → SQLite Audit DB
-- History Service → SQLite History DB
-- Cache Client → Redis
+- Audit Service → SQLite audit DB
+- History Service → SQLite history DB
+- Cache Client → Redis (optional)
 - Policy Service → tagging_policy.json file
 
 ### External integration components
 These components communicate with external systems:
-- AWS Client → AWS APIs
-- CloudWatch Logger → CloudWatch Logs
-- Metrics Service → Prometheus scraper
-
-## Component scalability considerations
-
-| Component | Scalability | Notes |
-|-----------|-------------|-------|
-| HTTP API | Horizontal | Stateless, load balancer ready |
-| MCP Handler | Horizontal | No shared state |
-| Tool Handlers | Horizontal | Independent execution |
-| Services | Horizontal | Most are stateless |
-| AWS Client | Vertical | Rate limited by AWS quotas |
-| Redis Cache | Horizontal | Can use Redis Cluster |
-| SQLite DBs | Vertical | Consider migration to managed DB for scale |
-| Policy Service | Horizontal | In-memory cache, file system read |
+- AWS Client → AWS APIs (EC2, RDS, S3, Lambda, ECS, OpenSearch, Cost Explorer, Resource Groups)
 
 ## Component testing strategy
 
 ```mermaid
 graph TB
-    subgraph "Unit Tests"
-        UT1[Service Tests<br/>Mock dependencies]
-        UT2[Client Tests<br/>Mock external APIs]
-        UT3[Utility Tests<br/>Pure functions]
+    subgraph "Unit tests"
+        UT1[Service tests<br/>Mock dependencies]
+        UT2[Client tests<br/>Mock external APIs]
+        UT3[Utility tests<br/>Pure functions]
     end
 
-    subgraph "Integration Tests"
-        IT1[Tool Tests<br/>Real services]
-        IT2[API Tests<br/>Real HTTP calls]
-        IT3[AWS Tests<br/>LocalStack]
+    subgraph "Property tests"
+        PT1[Compliance score bounds<br/>Hypothesis-based]
+        PT2[Input validation<br/>Fuzz testing]
+        PT3[Policy evaluation<br/>Generative testing]
     end
 
-    subgraph "E2E Tests"
-        E2E1[Full Workflow Tests<br/>Real components]
-        E2E2[Error Scenario Tests<br/>Fault injection]
+    subgraph "Integration tests"
+        IT1[Tool tests<br/>Real services + mocked AWS]
+        IT2[End-to-end<br/>Full stack with LocalStack]
     end
 
     UT1 --> IT1
     UT2 --> IT1
     UT3 --> IT1
-    IT1 --> E2E1
-    IT2 --> E2E1
-    IT3 --> E2E2
+    PT1 --> IT2
+    PT2 --> IT2
+    PT3 --> IT2
 ```
 
 ## Component responsibilities summary
 
 ### Clear separation of concerns
 
-1. **Presentation Layer**: HTTP protocol, MCP protocol, request/response formatting
-2. **Application Layer**: Tool definitions, input validation, tool orchestration
-3. **Business Logic Layer**: Domain logic, compliance checking, cost analysis
-4. **Integration Layer**: External system communication, rate limiting, retries
-5. **Data Layer**: Persistence, caching, configuration
-6. **Cross-Cutting**: Logging, monitoring, security, error handling
+1. **MCP transport layer**: stdio JSON-RPC protocol, tool registration
+2. **Application layer**: Tool definitions, input validation, tool orchestration
+3. **Business logic layer**: Domain logic, compliance checking, cost analysis
+4. **Multi-region layer**: Region discovery, parallel scanning, result aggregation
+5. **Integration layer**: External system communication, rate limiting, retries
+6. **Data layer**: Persistence, caching, configuration
 
 This architecture follows **Clean Architecture** principles with clear dependency rules:
-- Dependencies point inward (presentation → application → business logic → data)
+- Dependencies point inward (transport → application → business logic → data)
 - Inner layers have no knowledge of outer layers
-- Business logic is independent of frameworks and external systems
+- Business logic is independent of the transport protocol (stdio, HTTP, CLI, etc.)
