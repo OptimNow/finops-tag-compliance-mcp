@@ -197,7 +197,7 @@ class CoreSettings(BaseSettings):
 
     # Timeout Configuration (Requirements: 16.1, 16.2)
     tool_execution_timeout_seconds: int = Field(
-        default=30,
+        default=300,
         description="Maximum time allowed for a single tool execution in seconds",
         validation_alias="TOOL_EXECUTION_TIMEOUT_SECONDS",
     )

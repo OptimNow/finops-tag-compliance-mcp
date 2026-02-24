@@ -197,15 +197,33 @@ async def find_untagged_resources(
     _ensure_initialized()
     from .tools import find_untagged_resources as _find
 
-    result = await _find(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        regions=regions,
-        min_cost_threshold=min_cost_threshold,
-        include_costs=include_costs,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _find(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            regions=regions,
+            min_cost_threshold=min_cost_threshold,
+            include_costs=include_costs,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during find_untagged_resources: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try scanning specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during find_untagged_resources: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     resources = []
     for r in result.resources:
@@ -319,15 +337,33 @@ async def get_cost_attribution_gap(
     _ensure_initialized()
     from .tools import get_cost_attribution_gap as _gap
 
-    result = await _gap(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        time_period=time_period,
-        group_by=group_by,
-        filters=filters,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _gap(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            time_period=time_period,
+            group_by=group_by,
+            filters=filters,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during cost attribution gap: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Cost attribution analysis timed out: {error_msg}",
+            "suggestion": "Try analyzing specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during cost attribution gap: {error_msg}")
+        return json.dumps({
+            "error": "analysis_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     breakdown = None
     if result.breakdown:
@@ -425,13 +461,31 @@ async def generate_compliance_report(
     from .tools import check_tag_compliance as _check
     from .tools import generate_compliance_report as _report
 
-    compliance_result = await _check(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        severity="all",
-        history_service=_container.history_service,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        compliance_result = await _check(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            severity="all",
+            history_service=_container.history_service,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during compliance report scan: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try generating a report for specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during compliance report scan: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     # Try to get actual cost attribution gap
     if _container.aws_client and _container.policy_service:
@@ -654,16 +708,33 @@ async def detect_tag_drift(
     _ensure_initialized()
     from .tools import detect_tag_drift as _drift
 
-    result = await _drift(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        tag_keys=tag_keys,
-        lookback_days=lookback_days,
-        history_service=_container.history_service,
-        compliance_service=_container.compliance_service,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _drift(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            tag_keys=tag_keys,
+            lookback_days=lookback_days,
+            history_service=_container.history_service,
+            compliance_service=_container.compliance_service,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during tag drift detection: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Tag drift detection timed out: {error_msg}",
+            "suggestion": "Try checking specific resource types instead of scanning all. "
+                         "Example: ['ec2:instance', 's3:bucket', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during tag drift detection: {error_msg}")
+        return json.dumps({
+            "error": "drift_detection_failed",
+            "message": error_msg,
+        })
 
     return json.dumps(result.model_dump(mode="json"), default=str)
 
@@ -695,13 +766,30 @@ async def export_violations_csv(
     _ensure_initialized()
     from .tools import export_violations_csv as _export
 
-    result = await _export(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        severity=severity,
-        columns=columns,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _export(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            severity=severity,
+            columns=columns,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during violations export: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Export timed out: {error_msg}",
+            "suggestion": "Try exporting specific resource types instead of all. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during violations export: {error_msg}")
+        return json.dumps({
+            "error": "export_failed",
+            "message": error_msg,
+        })
 
     return json.dumps(result.model_dump(mode="json"), default=str)
 
