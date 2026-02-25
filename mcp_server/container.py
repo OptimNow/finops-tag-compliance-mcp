@@ -1,5 +1,5 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 """Service container for dependency wiring and lifecycle management.
@@ -22,8 +22,8 @@ import boto3
 from .clients.aws_client import AWSClient
 from .clients.cache import RedisCache
 from .clients.regional_client_factory import RegionalClientFactory
-from .config import CoreSettings, Settings, settings as get_default_settings
-from .middleware.budget_middleware import BudgetTracker
+from .config import CoreSettings, settings as get_default_settings
+from .utils.budget_tracker import BudgetTracker
 from .services.audit_service import AuditService
 from .services.compliance_service import ComplianceService
 from .services.history_service import HistoryService

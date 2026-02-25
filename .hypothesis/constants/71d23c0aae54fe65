@@ -1,4 +1,0 @@
-# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\models\policy.py
-# hypothesis_version: 6.148.8
-
-[128, 256, 512, '1.0', '2025-12-29T22:00:00Z', 'CostCenter', 'Engineering', 'Marketing', 'Project', 'Project name', 'Sales', 'allowed_values', 'applies_to', 'case_sensitivity', 'description', 'ec2:instance', 'example', 'last_updated', 'max_key_length', 'max_value_length', 'name', 'optional_tags', 'rds:db', 'required_tags', 's3:bucket', 'tag_naming_rules', 'validation_regex', 'version']

@@ -1,6 +1,6 @@
-# IAM Permissions Guide
+# IAM permissions guide
 
-## FinOps Tag Compliance MCP Server - AWS IAM Setup
+## FinOps Tag Compliance MCP Server - AWS IAM setup
 
 This guide covers the IAM permissions required for the MCP server to scan AWS resources and check tag compliance.
 
@@ -33,9 +33,9 @@ The MCP server requires **read-only** access to AWS resources in Phase 1. The pr
 
 ---
 
-## Quick Start
+## Quick start
 
-### Option 1: AWS Managed Policy (Fastest)
+### Option 1: AWS managed policy (fastest)
 
 For testing and development, use the AWS-managed `ReadOnlyAccess` policy:
 
@@ -54,15 +54,15 @@ aws iam attach-role-policy \
 **Pros**: Quick setup, covers all services
 **Cons**: Broader permissions than needed (includes read access to IAM, Secrets Manager, etc.)
 
-### Option 2: Custom Policy (Recommended)
+### Option 2: Custom policy (recommended)
 
 For production or security-conscious environments, use a custom policy with only required permissions.
 
 ---
 
-## Custom IAM Policy (Least Privilege)
+## Custom IAM policy (least privilege)
 
-### Policy Document
+### Policy document
 
 **Ready-to-use policy file**: [`policies/iam/MCP_Tagging_Policy.json`](../policies/iam/MCP_Tagging_Policy.json)
 
@@ -115,7 +115,7 @@ This is the complete, production-ready IAM policy for the MCP server. You can us
 }
 ```
 
-### Apply the Policy
+### Apply the policy
 
 **For IAM User (Local Development)**:
 
@@ -178,9 +178,9 @@ aws iam add-role-to-instance-profile \
 
 ---
 
-## Permission Breakdown
+## Permission breakdown
 
-### EC2 Permissions
+### EC2 permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -189,7 +189,7 @@ aws iam add-role-to-instance-profile \
 | `ec2:DescribeVolumes` | Check EBS volume tags |
 | `ec2:DescribeRegions` | List available AWS regions |
 
-### RDS Permissions
+### RDS permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -197,7 +197,7 @@ aws iam add-role-to-instance-profile \
 | `rds:DescribeDBClusters` | List RDS Aurora clusters |
 | `rds:ListTagsForResource` | Get tags for RDS resources |
 
-### S3 Permissions
+### S3 permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -205,14 +205,14 @@ aws iam add-role-to-instance-profile \
 | `s3:GetBucketTagging` | Get tags for each bucket |
 | `s3:GetBucketLocation` | Determine bucket region |
 
-### Lambda Permissions
+### Lambda permissions
 
 | Permission | Purpose |
 |------------|---------|
 | `lambda:ListFunctions` | List Lambda functions |
 | `lambda:ListTags` | Get tags for Lambda functions |
 
-### ECS Permissions
+### ECS permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -221,7 +221,7 @@ aws iam add-role-to-instance-profile \
 | `ecs:DescribeServices` | Get service details |
 | `ecs:ListTagsForResource` | Get tags for ECS resources |
 
-### OpenSearch Permissions
+### OpenSearch permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -230,7 +230,7 @@ aws iam add-role-to-instance-profile \
 | `es:DescribeDomains` | Get multiple domain details |
 | `es:ListTags` | Get tags for OpenSearch domains |
 
-### Cost Explorer Permissions
+### Cost Explorer permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -238,7 +238,7 @@ aws iam add-role-to-instance-profile \
 | `ce:GetCostForecast` | Estimate future costs |
 | `ce:GetTags` | Get cost allocation tags |
 
-### Resource Groups Tagging API
+### Resource Groups Tagging API permissions
 
 | Permission | Purpose |
 |------------|---------|
@@ -246,7 +246,7 @@ aws iam add-role-to-instance-profile \
 | `tag:GetTagKeys` | List all tag keys in use |
 | `tag:GetTagValues` | List all tag values for a key |
 
-### CloudWatch Logs (Optional)
+### CloudWatch Logs (optional)
 
 | Permission | Purpose |
 |------------|---------|
@@ -256,11 +256,11 @@ aws iam add-role-to-instance-profile \
 
 ---
 
-## Testing IAM Permissions
+## Testing IAM permissions
 
 After setting up IAM permissions, verify they work:
 
-### Test Script
+### Test script
 
 ```bash
 #!/bin/bash
@@ -337,7 +337,7 @@ chmod +x test-iam-permissions.sh
 ./test-iam-permissions.sh
 ```
 
-### Manual Testing
+### Manual testing
 
 ```bash
 # Test identity
@@ -369,7 +369,7 @@ aws ce get-cost-and-usage \
 
 ## Troubleshooting
 
-### "Access Denied" Errors
+### "Access Denied" errors
 
 **Symptom**: MCP server returns "Access Denied" or "UnauthorizedOperation"
 
@@ -389,7 +389,7 @@ aws ce get-cost-and-usage \
 3. Restart Docker containers after configuring credentials: `docker-compose restart`
 4. Check Docker logs: `docker logs tagging-mcp-server --tail 50`
 
-### Cost Explorer Not Enabled
+### Cost Explorer not enabled
 
 **Symptom**: `ce:GetCostAndUsage` returns "Cost Explorer is not enabled"
 
@@ -410,15 +410,15 @@ aws ce get-cost-and-usage \
 
 ---
 
-## Security Best Practices
+## Security best practices
 
-### 1. Use IAM Roles for EC2 (Not IAM Users)
+### 1. Use IAM roles for EC2 (not IAM users)
 
 For production deployments on EC2, always use IAM roles with instance profiles instead of IAM user credentials.
 
 **Why**: IAM roles automatically rotate credentials and don't require storing secrets.
 
-### 2. Restrict by Region (Optional)
+### 2. Restrict by region (optional)
 
 Add a condition to limit access to specific regions:
 
@@ -432,7 +432,7 @@ Add a condition to limit access to specific regions:
 }
 ```
 
-### 3. Use Resource Tags for Access Control (Optional)
+### 3. Use resource tags for access control (optional)
 
 Limit access to resources with specific tags:
 
@@ -458,13 +458,13 @@ aws cloudtrail create-trail \
 aws cloudtrail start-logging --name tagging-mcp-audit
 ```
 
-### 5. Use AWS Organizations SCPs (Optional)
+### 5. Use AWS Organizations SCPs (optional)
 
 For multi-account setups, use Service Control Policies to enforce permission boundaries.
 
 ---
 
-## Phase 2 Permissions (Future)
+## Phase 2 permissions (future)
 
 Phase 2 will add write permissions for bulk tagging operations:
 
@@ -491,11 +491,11 @@ Phase 2 will add write permissions for bulk tagging operations:
 
 ---
 
-## AWS ARN Format Reference
+## AWS ARN format reference
 
 The MCP server validates AWS ARNs (Amazon Resource Names) for all tool inputs. This section documents the supported ARN formats.
 
-### ARN Structure
+### ARN structure
 
 AWS ARNs follow this general format:
 
@@ -511,7 +511,7 @@ arn:partition:service:region:account-id:resource
 | `account-id` | 12-digit AWS account ID (may be empty) | `123456789012`, `` |
 | `resource` | Resource identifier | `instance/i-1234567890abcdef0` |
 
-### Supported ARN Formats by Service
+### Supported ARN formats by service
 
 #### EC2 (Elastic Compute Cloud)
 
@@ -615,7 +615,7 @@ arn:aws:opensearch:region:account-id:domain/domain-name
 - `arn:aws:es:us-east-1:123456789012:domain/my-search-domain`
 - `arn:aws:opensearch:us-west-2:123456789012:domain/my-opensearch`
 
-#### Other Global Services (Empty Region)
+#### Other global services (empty region)
 
 | Service | ARN Format | Example |
 |---------|------------|---------|
@@ -623,7 +623,7 @@ arn:aws:opensearch:region:account-id:domain/domain-name
 | CloudFront | `arn:aws:cloudfront::account-id:distribution/dist-id` | `arn:aws:cloudfront::123456789012:distribution/E1234567890` |
 | WAF (Global) | `arn:aws:waf::account-id:webacl/acl-id` | `arn:aws:waf::123456789012:webacl/abc123` |
 
-#### Additional Services
+#### Additional services
 
 | Service | ARN Format |
 |---------|------------|
@@ -640,7 +640,7 @@ arn:aws:opensearch:region:account-id:domain/domain-name
 | Redshift | `arn:aws:redshift:region:account-id:cluster:cluster-id` |
 | Glue | `arn:aws:glue:region:account-id:database/database-name` |
 
-### ARN Validation Rules
+### ARN validation rules
 
 The MCP server validates ARNs with the following rules:
 
@@ -650,7 +650,7 @@ The MCP server validates ARNs with the following rules:
 4. **Account ID**: Must be exactly 12 digits, or empty for S3 bucket ARNs
 5. **Resource**: Must contain valid characters (alphanumeric, hyphens, slashes, colons, dots, underscores)
 
-### Common ARN Validation Errors
+### Common ARN validation errors
 
 | Error | Cause | Solution |
 |-------|-------|----------|
@@ -674,7 +674,7 @@ The MCP server validates ARNs with the following rules:
 
 ---
 
-## Related Documentation
+## Related documentation
 
 - [UAT Protocol](UAT_PROTOCOL.md) - User acceptance testing guide
 - [Deployment Guide](DEPLOYMENT.md) - EC2 deployment instructions

@@ -1,3 +1,7 @@
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
+# See LICENSE file in the project root for full license information.
+
 """
 Property-based tests for Correlation ID Propagation.
 
@@ -15,8 +19,6 @@ import os
 import re
 import tempfile
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -24,7 +26,6 @@ from mcp_server.models.audit import AuditStatus
 from mcp_server.services.audit_service import AuditService
 from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 from mcp_server.utils.correlation import (
-    CorrelationIDMiddleware,
     generate_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
@@ -198,134 +199,6 @@ class TestCorrelationIDContextPropagation:
         assert (
             result["correlation_id"] == correlation_id
         ), f"Expected '{correlation_id}' but got '{result['correlation_id']}'"
-
-
-class TestCorrelationIDMiddleware:
-    """
-    Property 16: Correlation ID Propagation - Middleware Tests
-
-    The middleware SHALL generate correlation IDs and include them in responses.
-
-    Validates: Requirements 15.1
-    """
-
-    @given(st.data())
-    @settings(max_examples=100, deadline=None)
-    def test_middleware_generates_correlation_id_for_requests(self, data):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any request without a correlation ID header, the middleware
-        SHALL generate a new unique correlation ID.
-        """
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        # Response must have correlation ID header
-        assert (
-            "X-Correlation-ID" in response.headers
-        ), "Response must include X-Correlation-ID header"
-
-        correlation_id = response.headers["X-Correlation-ID"]
-
-        # Must be non-empty
-        assert correlation_id, "Correlation ID must not be empty"
-
-        # Must be valid UUID4
-        assert is_valid_uuid4(
-            correlation_id
-        ), f"Generated correlation ID '{correlation_id}' is not valid UUID4"
-
-    @given(correlation_id=uuid4_strategy())
-    @settings(max_examples=100, deadline=None)
-    def test_middleware_preserves_existing_correlation_id(self, correlation_id: str):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any request with an existing correlation ID header, the middleware
-        SHALL preserve and return the same correlation ID.
-        """
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test", headers={"X-Correlation-ID": correlation_id})
-
-        # Response must have the same correlation ID
-        assert (
-            response.headers["X-Correlation-ID"] == correlation_id
-        ), f"Expected '{correlation_id}' but got '{response.headers['X-Correlation-ID']}'"
-
-    @given(st.data())
-    @settings(max_examples=100, deadline=None)
-    def test_middleware_sets_correlation_id_in_context(self, data):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any request, the middleware SHALL set the correlation ID
-        in the request context for use by handlers.
-        """
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        captured_id = None
-
-        @app.get("/test")
-        async def test_endpoint():
-            nonlocal captured_id
-            captured_id = get_correlation_id()
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        # Captured ID must match response header
-        assert captured_id is not None, "Correlation ID must be set in context"
-        assert (
-            captured_id == response.headers["X-Correlation-ID"]
-        ), f"Context ID '{captured_id}' doesn't match header '{response.headers['X-Correlation-ID']}'"
-
-    @given(st.integers(min_value=2, max_value=10))
-    @settings(max_examples=100, deadline=None)
-    def test_middleware_generates_unique_ids_for_different_requests(self, num_requests: int):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any number of requests, each SHALL receive a unique correlation ID.
-        """
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-
-        correlation_ids = []
-        for _ in range(num_requests):
-            response = client.get("/test")
-            correlation_ids.append(response.headers["X-Correlation-ID"])
-
-        # All IDs should be unique
-        assert len(correlation_ids) == len(
-            set(correlation_ids)
-        ), f"Expected {num_requests} unique IDs but got {len(set(correlation_ids))}"
 
 
 class TestCorrelationIDInAuditLogs:
@@ -605,100 +478,3 @@ class TestCorrelationIDInLogRecords:
             # Clean up
             test_logger.removeHandler(handler)
             test_logger.removeFilter(correlation_filter)
-
-
-class TestCorrelationIDEndToEnd:
-    """
-    Property 16: Correlation ID Propagation - End-to-End Tests
-
-    The correlation ID SHALL be propagated through the entire request lifecycle.
-
-    Validates: Requirements 15.1
-    """
-
-    @given(st.data())
-    @settings(max_examples=100, deadline=None)
-    def test_correlation_id_propagates_from_request_to_audit_log(self, data):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any request, the correlation ID generated by middleware SHALL
-        be available for audit logging within the request handler.
-        """
-        temp_db = create_temp_db()
-        try:
-            app = FastAPI()
-            app.add_middleware(CorrelationIDMiddleware)
-
-            audit_service = AuditService(db_path=temp_db)
-            logged_entry = None
-
-            @app.get("/test")
-            async def test_endpoint():
-                nonlocal logged_entry
-                # Log an audit entry - should capture correlation ID from context
-                logged_entry = audit_service.log_invocation(
-                    tool_name="test_tool",
-                    parameters={"test": "value"},
-                    status=AuditStatus.SUCCESS,
-                )
-                return {"status": "ok"}
-
-            client = TestClient(app)
-            response = client.get("/test")
-
-            # Get correlation ID from response header
-            response_correlation_id = response.headers["X-Correlation-ID"]
-
-            # Audit entry should have the same correlation ID
-            assert logged_entry is not None, "Audit entry should have been logged"
-            assert logged_entry.correlation_id == response_correlation_id, (
-                f"Audit log correlation ID '{logged_entry.correlation_id}' "
-                f"doesn't match response header '{response_correlation_id}'"
-            )
-        finally:
-            cleanup_temp_db(temp_db)
-
-    @given(correlation_id=uuid4_strategy())
-    @settings(max_examples=100, deadline=None)
-    def test_provided_correlation_id_propagates_to_audit_log(self, correlation_id: str):
-        """
-        Feature: phase-1-aws-mvp, Property 16: Correlation ID Propagation
-        Validates: Requirements 15.1
-
-        For any request with a provided correlation ID, that ID SHALL
-        be propagated to audit logs.
-        """
-        temp_db = create_temp_db()
-        try:
-            app = FastAPI()
-            app.add_middleware(CorrelationIDMiddleware)
-
-            audit_service = AuditService(db_path=temp_db)
-            logged_entry = None
-
-            @app.get("/test")
-            async def test_endpoint():
-                nonlocal logged_entry
-                logged_entry = audit_service.log_invocation(
-                    tool_name="test_tool",
-                    parameters={"test": "value"},
-                    status=AuditStatus.SUCCESS,
-                )
-                return {"status": "ok"}
-
-            client = TestClient(app)
-            response = client.get("/test", headers={"X-Correlation-ID": correlation_id})
-
-            # Response should have the same correlation ID
-            assert response.headers["X-Correlation-ID"] == correlation_id
-
-            # Audit entry should have the same correlation ID
-            assert logged_entry is not None, "Audit entry should have been logged"
-            assert logged_entry.correlation_id == correlation_id, (
-                f"Audit log correlation ID '{logged_entry.correlation_id}' "
-                f"doesn't match provided ID '{correlation_id}'"
-            )
-        finally:
-            cleanup_temp_db(temp_db)

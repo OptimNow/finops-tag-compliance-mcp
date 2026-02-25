@@ -1,5 +1,5 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 """AWS client wrapper with rate limiting and backoff."""
@@ -153,6 +153,24 @@ class AWSClient:
             raise
         except Exception as e:
             raise AWSAPIError(f"Failed to get account ID: {str(e)}") from e
+
+    def _get_client(self, service_name: str) -> Any:
+        """
+        Lazily initialize and cache a boto3 client for a given service.
+
+        Avoids creating 30+ boto3 clients at startup when only a few
+        resource types may be scanned.
+
+        Args:
+            service_name: boto3 service name (e.g., "dynamodb", "eks")
+
+        Returns:
+            boto3 client for the service
+        """
+        cache_attr = f"_lazy_{service_name.replace('-', '_')}"
+        if not hasattr(self, cache_attr):
+            setattr(self, cache_attr, boto3.client(service_name, config=self._boto_config))
+        return getattr(self, cache_attr)
 
     def _extract_tags(self, tag_list: list[dict[str, str]]) -> dict[str, str]:
         """
@@ -743,6 +761,1119 @@ class AWSClient:
             raise
         except Exception as e:
             raise AWSAPIError(f"Failed to fetch OpenSearch domains: {str(e)}") from e
+
+    # ================================================================
+    # EC2: NAT Gateways
+    # ================================================================
+
+    async def get_nat_gateways(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch NAT Gateways with their tags."""
+        filters = filters or {}
+        try:
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff(
+                "ec2", self.ec2.describe_nat_gateways,
+                Filter=[{"Name": "state", "Values": ["available", "pending"]}],
+            )
+            resources = []
+            for nat in response.get("NatGateways", []):
+                nat_id = nat.get("NatGatewayId")
+                tags = self._extract_tags(nat.get("Tags", []))
+                resources.append({
+                    "resource_id": nat_id,
+                    "resource_type": "ec2:natgateway",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": nat.get("CreateTime"),
+                    "arn": f"arn:aws:ec2:{self.region}:{account_id}:natgateway/{nat_id}",
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch NAT Gateways: {str(e)}") from e
+
+    # ================================================================
+    # ECS: Clusters, Task Definitions
+    # ================================================================
+
+    async def get_ecs_clusters(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch ECS clusters with their tags."""
+        filters = filters or {}
+        try:
+            list_response = await self._call_with_backoff("ecs", self.ecs.list_clusters)
+            cluster_arns = list_response.get("clusterArns", [])
+            if not cluster_arns:
+                return []
+            describe_response = await self._call_with_backoff(
+                "ecs", self.ecs.describe_clusters,
+                clusters=cluster_arns, include=["TAGS"],
+            )
+            resources = []
+            for cluster in describe_response.get("clusters", []):
+                tags = self._extract_tags(cluster.get("tags", []))
+                resources.append({
+                    "resource_id": cluster.get("clusterName"),
+                    "resource_type": "ecs:cluster",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": None,
+                    "arn": cluster.get("clusterArn"),
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch ECS clusters: {str(e)}") from e
+
+    async def get_ecs_task_definitions(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch active ECS task definition families with their tags."""
+        filters = filters or {}
+        try:
+            list_response = await self._call_with_backoff(
+                "ecs", self.ecs.list_task_definition_families, status="ACTIVE",
+            )
+            resources = []
+            for family in list_response.get("families", []):
+                try:
+                    desc = await self._call_with_backoff(
+                        "ecs", self.ecs.describe_task_definition,
+                        taskDefinition=family, include=["TAGS"],
+                    )
+                    td = desc.get("taskDefinition", {})
+                    tags = self._extract_tags(desc.get("tags", []))
+                    resources.append({
+                        "resource_id": family,
+                        "resource_type": "ecs:task-definition",
+                        "region": self.region,
+                        "tags": tags,
+                        "created_at": td.get("registeredAt"),
+                        "arn": td.get("taskDefinitionArn", ""),
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch ECS task definitions: {str(e)}") from e
+
+    # ================================================================
+    # EKS: Clusters, Node Groups
+    # ================================================================
+
+    async def get_eks_clusters(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch EKS clusters with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("eks")
+            list_response = await self._call_with_backoff("eks", client.list_clusters)
+            resources = []
+            for name in list_response.get("clusters", []):
+                try:
+                    desc = await self._call_with_backoff("eks", client.describe_cluster, name=name)
+                    cluster = desc.get("cluster", {})
+                    resources.append({
+                        "resource_id": name,
+                        "resource_type": "eks:cluster",
+                        "region": self.region,
+                        "tags": cluster.get("tags", {}),
+                        "created_at": cluster.get("createdAt"),
+                        "arn": cluster.get("arn", ""),
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EKS clusters: {str(e)}") from e
+
+    async def get_eks_nodegroups(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch EKS node groups with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("eks")
+            list_clusters = await self._call_with_backoff("eks", client.list_clusters)
+            resources = []
+            for cluster_name in list_clusters.get("clusters", []):
+                try:
+                    ng_response = await self._call_with_backoff(
+                        "eks", client.list_nodegroups, clusterName=cluster_name,
+                    )
+                    for ng_name in ng_response.get("nodegroups", []):
+                        try:
+                            desc = await self._call_with_backoff(
+                                "eks", client.describe_nodegroup,
+                                clusterName=cluster_name, nodegroupName=ng_name,
+                            )
+                            ng = desc.get("nodegroup", {})
+                            resources.append({
+                                "resource_id": ng_name,
+                                "resource_type": "eks:nodegroup",
+                                "region": self.region,
+                                "tags": ng.get("tags", {}),
+                                "created_at": ng.get("createdAt"),
+                                "arn": ng.get("nodegroupArn", ""),
+                            })
+                        except AWSAPIError:
+                            continue
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EKS node groups: {str(e)}") from e
+
+    # ================================================================
+    # Storage: EFS, FSx
+    # ================================================================
+
+    async def get_efs_file_systems(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch EFS file systems with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("efs")
+            response = await self._call_with_backoff("efs", client.describe_file_systems)
+            resources = []
+            for fs in response.get("FileSystems", []):
+                tags = self._extract_tags(fs.get("Tags", []))
+                resources.append({
+                    "resource_id": fs.get("FileSystemId"),
+                    "resource_type": "elasticfilesystem:file-system",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": fs.get("CreationTime"),
+                    "arn": fs.get("FileSystemArn", ""),
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EFS file systems: {str(e)}") from e
+
+    async def get_fsx_file_systems(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch FSx file systems with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("fsx")
+            response = await self._call_with_backoff("fsx", client.describe_file_systems)
+            resources = []
+            for fs in response.get("FileSystems", []):
+                tags = self._extract_tags(fs.get("Tags", []))
+                resources.append({
+                    "resource_id": fs.get("FileSystemId"),
+                    "resource_type": "fsx:file-system",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": fs.get("CreationTime"),
+                    "arn": fs.get("ResourceARN", ""),
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch FSx file systems: {str(e)}") from e
+
+    # ================================================================
+    # Database: RDS Clusters, DynamoDB, ElastiCache, Redshift
+    # ================================================================
+
+    async def get_rds_clusters(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch RDS Aurora clusters with their tags."""
+        filters = filters or {}
+        try:
+            response = await self._call_with_backoff("rds", self.rds.describe_db_clusters)
+            resources = []
+            for cluster in response.get("DBClusters", []):
+                cluster_arn = cluster.get("DBClusterArn")
+                tags_response = await self._call_with_backoff(
+                    "rds", self.rds.list_tags_for_resource, ResourceName=cluster_arn,
+                )
+                tags = self._extract_tags(tags_response.get("TagList", []))
+                resources.append({
+                    "resource_id": cluster.get("DBClusterIdentifier"),
+                    "resource_type": "rds:cluster",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": cluster.get("ClusterCreateTime"),
+                    "arn": cluster_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch RDS clusters: {str(e)}") from e
+
+    async def get_dynamodb_tables(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch DynamoDB tables with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("dynamodb")
+            list_response = await self._call_with_backoff("dynamodb", client.list_tables)
+            resources = []
+            for table_name in list_response.get("TableNames", []):
+                try:
+                    desc = await self._call_with_backoff(
+                        "dynamodb", client.describe_table, TableName=table_name,
+                    )
+                    table = desc.get("Table", {})
+                    table_arn = table.get("TableArn", "")
+                    try:
+                        tags_resp = await self._call_with_backoff(
+                            "dynamodb", client.list_tags_of_resource, ResourceArn=table_arn,
+                        )
+                        tags = self._extract_tags(tags_resp.get("Tags", []))
+                    except AWSAPIError:
+                        tags = {}
+                    resources.append({
+                        "resource_id": table_name,
+                        "resource_type": "dynamodb:table",
+                        "region": self.region,
+                        "tags": tags,
+                        "created_at": table.get("CreationDateTime"),
+                        "arn": table_arn,
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch DynamoDB tables: {str(e)}") from e
+
+    async def get_elasticache_clusters(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch ElastiCache clusters with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("elasticache")
+            response = await self._call_with_backoff(
+                "elasticache", client.describe_cache_clusters, ShowCacheNodeInfo=False,
+            )
+            resources = []
+            for cluster in response.get("CacheClusters", []):
+                arn = cluster.get("ARN", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "elasticache", client.list_tags_for_resource, ResourceName=arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("TagList", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": cluster.get("CacheClusterId"),
+                    "resource_type": "elasticache:cluster",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": cluster.get("CacheClusterCreateTime"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch ElastiCache clusters: {str(e)}") from e
+
+    async def get_elasticache_replication_groups(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch ElastiCache replication groups with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("elasticache")
+            response = await self._call_with_backoff(
+                "elasticache", client.describe_replication_groups,
+            )
+            resources = []
+            for rg in response.get("ReplicationGroups", []):
+                arn = rg.get("ARN", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "elasticache", client.list_tags_for_resource, ResourceName=arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("TagList", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": rg.get("ReplicationGroupId"),
+                    "resource_type": "elasticache:replicationgroup",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": None,
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch ElastiCache replication groups: {str(e)}") from e
+
+    async def get_redshift_clusters(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Redshift clusters with their tags (inline)."""
+        filters = filters or {}
+        try:
+            client = self._get_client("redshift")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("redshift", client.describe_clusters)
+            resources = []
+            for cluster in response.get("Clusters", []):
+                cluster_id = cluster.get("ClusterIdentifier")
+                tags = self._extract_tags(cluster.get("Tags", []))
+                resources.append({
+                    "resource_id": cluster_id,
+                    "resource_type": "redshift:cluster",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": cluster.get("ClusterCreateTime"),
+                    "arn": f"arn:aws:redshift:{self.region}:{account_id}:cluster:{cluster_id}",
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Redshift clusters: {str(e)}") from e
+
+    # ================================================================
+    # AI/ML: SageMaker, Bedrock
+    # ================================================================
+
+    async def get_sagemaker_endpoints(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch SageMaker endpoints with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("sagemaker")
+            response = await self._call_with_backoff("sagemaker", client.list_endpoints)
+            resources = []
+            for ep in response.get("Endpoints", []):
+                ep_arn = ep.get("EndpointArn", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "sagemaker", client.list_tags, ResourceArn=ep_arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("Tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": ep.get("EndpointName"),
+                    "resource_type": "sagemaker:endpoint",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": ep.get("CreationTime"),
+                    "arn": ep_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch SageMaker endpoints: {str(e)}") from e
+
+    async def get_sagemaker_notebooks(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch SageMaker notebook instances with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("sagemaker")
+            response = await self._call_with_backoff("sagemaker", client.list_notebook_instances)
+            resources = []
+            for nb in response.get("NotebookInstances", []):
+                nb_arn = nb.get("NotebookInstanceArn", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "sagemaker", client.list_tags, ResourceArn=nb_arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("Tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": nb.get("NotebookInstanceName"),
+                    "resource_type": "sagemaker:notebook-instance",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": nb.get("CreationTime"),
+                    "arn": nb_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch SageMaker notebooks: {str(e)}") from e
+
+    async def get_bedrock_agents(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Bedrock agents with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("bedrock-agent")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("bedrock-agent", client.list_agents)
+            resources = []
+            for agent_summary in response.get("agentSummaries", []):
+                agent_id = agent_summary.get("agentId")
+                arn = f"arn:aws:bedrock:{self.region}:{account_id}:agent/{agent_id}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "bedrock-agent", client.list_tags_for_resource, resourceArn=arn,
+                    )
+                    tags = tags_resp.get("tags", {})
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": agent_id,
+                    "resource_type": "bedrock:agent",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": agent_summary.get("updatedAt"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Bedrock agents: {str(e)}") from e
+
+    async def get_bedrock_knowledge_bases(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Bedrock knowledge bases with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("bedrock-agent")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff(
+                "bedrock-agent", client.list_knowledge_bases,
+            )
+            resources = []
+            for kb in response.get("knowledgeBaseSummaries", []):
+                kb_id = kb.get("knowledgeBaseId")
+                arn = f"arn:aws:bedrock:{self.region}:{account_id}:knowledge-base/{kb_id}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "bedrock-agent", client.list_tags_for_resource, resourceArn=arn,
+                    )
+                    tags = tags_resp.get("tags", {})
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": kb_id,
+                    "resource_type": "bedrock:knowledge-base",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": kb.get("updatedAt"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Bedrock knowledge bases: {str(e)}") from e
+
+    # ================================================================
+    # Networking: Load Balancers, Target Groups
+    # ================================================================
+
+    async def get_load_balancers(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch ALB/NLB load balancers with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("elbv2")
+            response = await self._call_with_backoff("elbv2", client.describe_load_balancers)
+            lbs = response.get("LoadBalancers", [])
+            if not lbs:
+                return []
+            # Batch fetch tags (ELBv2 supports up to 20 ARNs per call)
+            lb_arns = [lb.get("LoadBalancerArn", "") for lb in lbs]
+            tags_map: dict[str, dict[str, str]] = {}
+            for i in range(0, len(lb_arns), 20):
+                batch = lb_arns[i : i + 20]
+                tags_response = await self._call_with_backoff(
+                    "elbv2", client.describe_tags, ResourceArns=batch,
+                )
+                for td in tags_response.get("TagDescriptions", []):
+                    tags_map[td["ResourceArn"]] = self._extract_tags(td.get("Tags", []))
+            resources = []
+            for lb in lbs:
+                lb_arn = lb.get("LoadBalancerArn", "")
+                resources.append({
+                    "resource_id": lb.get("LoadBalancerName"),
+                    "resource_type": "elasticloadbalancing:loadbalancer",
+                    "region": self.region,
+                    "tags": tags_map.get(lb_arn, {}),
+                    "created_at": lb.get("CreatedTime"),
+                    "arn": lb_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch load balancers: {str(e)}") from e
+
+    async def get_target_groups(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch ELB target groups with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("elbv2")
+            response = await self._call_with_backoff("elbv2", client.describe_target_groups)
+            tgs = response.get("TargetGroups", [])
+            if not tgs:
+                return []
+            tg_arns = [tg.get("TargetGroupArn", "") for tg in tgs]
+            tags_map: dict[str, dict[str, str]] = {}
+            for i in range(0, len(tg_arns), 20):
+                batch = tg_arns[i : i + 20]
+                tags_response = await self._call_with_backoff(
+                    "elbv2", client.describe_tags, ResourceArns=batch,
+                )
+                for td in tags_response.get("TagDescriptions", []):
+                    tags_map[td["ResourceArn"]] = self._extract_tags(td.get("Tags", []))
+            resources = []
+            for tg in tgs:
+                tg_arn = tg.get("TargetGroupArn", "")
+                resources.append({
+                    "resource_id": tg.get("TargetGroupName"),
+                    "resource_type": "elasticloadbalancing:targetgroup",
+                    "region": self.region,
+                    "tags": tags_map.get(tg_arn, {}),
+                    "created_at": None,
+                    "arn": tg_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch target groups: {str(e)}") from e
+
+    # ================================================================
+    # Analytics: Kinesis, Glue, EMR
+    # ================================================================
+
+    async def get_kinesis_streams(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Kinesis data streams with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("kinesis")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("kinesis", client.list_streams)
+            resources = []
+            for stream_name in response.get("StreamNames", []):
+                arn = f"arn:aws:kinesis:{self.region}:{account_id}:stream/{stream_name}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "kinesis", client.list_tags_for_stream, StreamName=stream_name,
+                    )
+                    tags = self._extract_tags(tags_resp.get("Tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": stream_name,
+                    "resource_type": "kinesis:stream",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": None,
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Kinesis streams: {str(e)}") from e
+
+    async def get_glue_jobs(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch Glue jobs with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("glue")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("glue", client.get_jobs)
+            resources = []
+            for job in response.get("Jobs", []):
+                job_name = job.get("Name")
+                arn = f"arn:aws:glue:{self.region}:{account_id}:job/{job_name}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "glue", client.get_tags, ResourceArn=arn,
+                    )
+                    tags = tags_resp.get("Tags", {})
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": job_name,
+                    "resource_type": "glue:job",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": job.get("CreatedOn"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Glue jobs: {str(e)}") from e
+
+    async def get_glue_crawlers(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Glue crawlers with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("glue")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("glue", client.get_crawlers)
+            resources = []
+            for crawler in response.get("Crawlers", []):
+                name = crawler.get("Name")
+                arn = f"arn:aws:glue:{self.region}:{account_id}:crawler/{name}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "glue", client.get_tags, ResourceArn=arn,
+                    )
+                    tags = tags_resp.get("Tags", {})
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": name,
+                    "resource_type": "glue:crawler",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": crawler.get("CreationTime"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Glue crawlers: {str(e)}") from e
+
+    async def get_glue_tables(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Glue catalog tables with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("glue")
+            account_id = await self._get_account_id()
+            db_response = await self._call_with_backoff("glue", client.get_databases)
+            resources = []
+            for db in db_response.get("DatabaseList", []):
+                db_name = db.get("Name")
+                try:
+                    tables_resp = await self._call_with_backoff(
+                        "glue", client.get_tables, DatabaseName=db_name,
+                    )
+                    for table in tables_resp.get("TableList", []):
+                        table_name = table.get("Name")
+                        arn = f"arn:aws:glue:{self.region}:{account_id}:table/{db_name}/{table_name}"
+                        try:
+                            tags_resp = await self._call_with_backoff(
+                                "glue", client.get_tags, ResourceArn=arn,
+                            )
+                            tags = tags_resp.get("Tags", {})
+                        except AWSAPIError:
+                            tags = {}
+                        resources.append({
+                            "resource_id": f"{db_name}/{table_name}",
+                            "resource_type": "glue:table",
+                            "region": self.region,
+                            "tags": tags,
+                            "created_at": table.get("CreateTime"),
+                            "arn": arn,
+                        })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Glue tables: {str(e)}") from e
+
+    async def get_emr_clusters(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch active EMR clusters with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("emr")
+            response = await self._call_with_backoff(
+                "emr", client.list_clusters,
+                ClusterStates=["STARTING", "BOOTSTRAPPING", "RUNNING", "WAITING"],
+            )
+            resources = []
+            for cs in response.get("Clusters", []):
+                cluster_id = cs.get("Id")
+                try:
+                    desc = await self._call_with_backoff(
+                        "emr", client.describe_cluster, ClusterId=cluster_id,
+                    )
+                    cluster = desc.get("Cluster", {})
+                    tags = self._extract_tags(cluster.get("Tags", []))
+                    created = cs.get("Status", {}).get("Timeline", {}).get("CreationDateTime")
+                    resources.append({
+                        "resource_id": cluster_id,
+                        "resource_type": "emr:cluster",
+                        "region": self.region,
+                        "tags": tags,
+                        "created_at": created,
+                        "arn": cluster.get("ClusterArn", ""),
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch EMR clusters: {str(e)}") from e
+
+    # ================================================================
+    # Security: Cognito, Secrets Manager, KMS
+    # ================================================================
+
+    async def get_cognito_user_pools(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Cognito user pools with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("cognito-idp")
+            response = await self._call_with_backoff(
+                "cognito-idp", client.list_user_pools, MaxResults=60,
+            )
+            resources = []
+            for pool in response.get("UserPools", []):
+                pool_id = pool.get("Id")
+                try:
+                    desc = await self._call_with_backoff(
+                        "cognito-idp", client.describe_user_pool, UserPoolId=pool_id,
+                    )
+                    detail = desc.get("UserPool", {})
+                    resources.append({
+                        "resource_id": pool_id,
+                        "resource_type": "cognito-idp:userpool",
+                        "region": self.region,
+                        "tags": detail.get("UserPoolTags", {}),
+                        "created_at": detail.get("CreationDate"),
+                        "arn": detail.get("Arn", ""),
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Cognito user pools: {str(e)}") from e
+
+    async def get_cognito_identity_pools(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Cognito identity pools with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("cognito-identity")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff(
+                "cognito-identity", client.list_identity_pools, MaxResults=60,
+            )
+            resources = []
+            for pool in response.get("IdentityPools", []):
+                pool_id = pool.get("IdentityPoolId")
+                arn = f"arn:aws:cognito-identity:{self.region}:{account_id}:identitypool/{pool_id}"
+                try:
+                    desc = await self._call_with_backoff(
+                        "cognito-identity", client.describe_identity_pool,
+                        IdentityPoolId=pool_id,
+                    )
+                    tags = desc.get("IdentityPoolTags", {})
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": pool_id,
+                    "resource_type": "cognito-identity:identitypool",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": None,
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Cognito identity pools: {str(e)}") from e
+
+    async def get_secrets(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch Secrets Manager secrets with their tags (inline)."""
+        filters = filters or {}
+        try:
+            client = self._get_client("secretsmanager")
+            response = await self._call_with_backoff("secretsmanager", client.list_secrets)
+            resources = []
+            for secret in response.get("SecretList", []):
+                tags = self._extract_tags(secret.get("Tags", []))
+                resources.append({
+                    "resource_id": secret.get("Name"),
+                    "resource_type": "secretsmanager:secret",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": secret.get("CreatedDate"),
+                    "arn": secret.get("ARN", ""),
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch secrets: {str(e)}") from e
+
+    async def get_kms_keys(self, filters: dict[str, Any] | None = None) -> list[dict[str, Any]]:
+        """Fetch customer-managed KMS keys with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("kms")
+            response = await self._call_with_backoff("kms", client.list_keys)
+            resources = []
+            for key in response.get("Keys", []):
+                key_id = key.get("KeyId")
+                key_arn = key.get("KeyArn", "")
+                try:
+                    desc = await self._call_with_backoff("kms", client.describe_key, KeyId=key_id)
+                    meta = desc.get("KeyMetadata", {})
+                    if meta.get("KeyManager") != "CUSTOMER":
+                        continue
+                    tags_resp = await self._call_with_backoff(
+                        "kms", client.list_resource_tags, KeyId=key_id,
+                    )
+                    tags = self._extract_tags(tags_resp.get("Tags", []))
+                    resources.append({
+                        "resource_id": key_id,
+                        "resource_type": "kms:key",
+                        "region": self.region,
+                        "tags": tags,
+                        "created_at": meta.get("CreationDate"),
+                        "arn": key_arn,
+                    })
+                except AWSAPIError:
+                    continue
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch KMS keys: {str(e)}") from e
+
+    # ================================================================
+    # Application: API Gateway, CloudFront, Route53, Step Functions,
+    #              CodeBuild, CodePipeline
+    # ================================================================
+
+    async def get_api_gateways(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch API Gateway REST APIs with their tags (inline)."""
+        filters = filters or {}
+        try:
+            client = self._get_client("apigateway")
+            response = await self._call_with_backoff("apigateway", client.get_rest_apis)
+            resources = []
+            for api in response.get("items", []):
+                api_id = api.get("id")
+                arn = f"arn:aws:apigateway:{self.region}::/restapis/{api_id}"
+                resources.append({
+                    "resource_id": api_id,
+                    "resource_type": "apigateway:restapi",
+                    "region": self.region,
+                    "tags": api.get("tags", {}),
+                    "created_at": api.get("createdDate"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch API Gateways: {str(e)}") from e
+
+    async def get_cloudfront_distributions(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch CloudFront distributions with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("cloudfront")
+            response = await self._call_with_backoff("cloudfront", client.list_distributions)
+            dist_list = response.get("DistributionList", {})
+            resources = []
+            for dist in dist_list.get("Items", []):
+                dist_arn = dist.get("ARN", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "cloudfront", client.list_tags_for_resource, Resource=dist_arn,
+                    )
+                    tag_items = tags_resp.get("Tags", {}).get("Items", [])
+                    tags = self._extract_tags(tag_items)
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": dist.get("Id"),
+                    "resource_type": "cloudfront:distribution",
+                    "region": "global",
+                    "tags": tags,
+                    "created_at": dist.get("LastModifiedTime"),
+                    "arn": dist_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch CloudFront distributions: {str(e)}") from e
+
+    async def get_route53_hosted_zones(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Route 53 hosted zones with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("route53")
+            response = await self._call_with_backoff("route53", client.list_hosted_zones)
+            resources = []
+            for zone in response.get("HostedZones", []):
+                zone_id = zone.get("Id", "").split("/")[-1]
+                arn = f"arn:aws:route53:::hostedzone/{zone_id}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "route53", client.list_tags_for_resource,
+                        ResourceType="hostedzone", ResourceId=zone_id,
+                    )
+                    tag_set = tags_resp.get("ResourceTagSet", {})
+                    tags = self._extract_tags(tag_set.get("Tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": zone_id,
+                    "resource_type": "route53:hostedzone",
+                    "region": "global",
+                    "tags": tags,
+                    "created_at": None,
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Route 53 hosted zones: {str(e)}") from e
+
+    async def get_step_functions(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch Step Functions state machines with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("stepfunctions")
+            response = await self._call_with_backoff("stepfunctions", client.list_state_machines)
+            resources = []
+            for sm in response.get("stateMachines", []):
+                sm_arn = sm.get("stateMachineArn", "")
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "stepfunctions", client.list_tags_for_resource, resourceArn=sm_arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": sm.get("name"),
+                    "resource_type": "stepfunctions:statemachine",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": sm.get("creationDate"),
+                    "arn": sm_arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch Step Functions: {str(e)}") from e
+
+    async def get_codebuild_projects(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch CodeBuild projects with their tags (via batch_get)."""
+        filters = filters or {}
+        try:
+            client = self._get_client("codebuild")
+            list_resp = await self._call_with_backoff("codebuild", client.list_projects)
+            names = list_resp.get("projects", [])
+            if not names:
+                return []
+            desc = await self._call_with_backoff(
+                "codebuild", client.batch_get_projects, names=names,
+            )
+            resources = []
+            for project in desc.get("projects", []):
+                tags = self._extract_tags(project.get("tags", []))
+                resources.append({
+                    "resource_id": project.get("name"),
+                    "resource_type": "codebuild:project",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": project.get("created"),
+                    "arn": project.get("arn", ""),
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch CodeBuild projects: {str(e)}") from e
+
+    async def get_codepipeline_pipelines(
+        self, filters: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """Fetch CodePipeline pipelines with their tags."""
+        filters = filters or {}
+        try:
+            client = self._get_client("codepipeline")
+            account_id = await self._get_account_id()
+            response = await self._call_with_backoff("codepipeline", client.list_pipelines)
+            resources = []
+            for pipeline in response.get("pipelines", []):
+                name = pipeline.get("name")
+                arn = f"arn:aws:codepipeline:{self.region}:{account_id}:{name}"
+                try:
+                    tags_resp = await self._call_with_backoff(
+                        "codepipeline", client.list_tags_for_resource, resourceArn=arn,
+                    )
+                    tags = self._extract_tags(tags_resp.get("tags", []))
+                except AWSAPIError:
+                    tags = {}
+                resources.append({
+                    "resource_id": name,
+                    "resource_type": "codepipeline:pipeline",
+                    "region": self.region,
+                    "tags": tags,
+                    "created_at": pipeline.get("created"),
+                    "arn": arn,
+                })
+            return resources
+        except AWSAPIError:
+            raise
+        except Exception as e:
+            raise AWSAPIError(f"Failed to fetch CodePipeline pipelines: {str(e)}") from e
 
     async def get_cost_data(
         self,

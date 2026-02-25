@@ -1,5 +1,5 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 """Metrics collection service for agent observability.
@@ -15,7 +15,7 @@ import logging
 from collections import defaultdict
 from datetime import datetime, timezone
 
-from ..middleware.budget_middleware import BudgetTracker, get_budget_tracker
+from ..utils.budget_tracker import BudgetTracker, get_budget_tracker
 from ..models.audit import AuditStatus
 from ..models.observability import (
     BudgetUtilizationMetrics,

@@ -2,323 +2,362 @@
 
 > **Turn Claude into your AWS tagging compliance assistant** — Ask in plain English, get real-time insights on your cloud costs and compliance.
 
-**Status**: ✅ Phase 2 Complete (February 2026) | **For**: FinOps Practitioners, Solution Architects, DevOps Engineers
+[![Watch the demo](https://cdn.loom.com/sessions/thumbnails/dba94ecd6ed44aa9b83d3e6a29b18d1d-acc33a893c37c354-full-play.gif)](https://www.loom.com/share/dba94ecd6ed44aa9b83d3e6a29b18d1d)
+
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![MCP](https://img.shields.io/badge/MCP-compatible-green.svg)](https://modelcontextprotocol.io)
 
 ---
 
-## What's This About?
+## Table of contents
 
-Ever wished you could just ask Claude "Hey, which of my AWS resources are missing cost center tags?" and get an instant, intelligent answer? That's exactly what this MCP server does. 
-
-**MCP (Model Context Protocol)** is like giving Claude a phone line to your infrastructure. Instead of Claude being limited to just chatting, it can now actively query your AWS environment, validate your tagging policies, calculate cost impacts, and even suggest fixes—all through natural conversation.
-
-Think of it as teaching Claude to be your FinOps analyst. You talk to Claude normally, and behind the scenes, this MCP server translates your questions into AWS API calls, validates data against your organization's policies, and brings back actionable insights.
-
-### 🎬 See It In Action
-
-Watch a 2-minute demo where Claude analyzes AWS resources, identifies untagged instances, calculates their cost impact, and suggests intelligent tag values:
-
-[![Watch Demo](https://cdn.loom.com/sessions/thumbnails/ccdf1e1aed4c4236bfa9e81367176376-with-play.gif)](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)
-
-**[▶️ Watch the demo](https://www.loom.com/share/ccdf1e1aed4c4236bfa9e81367176376)**
-
-Ready to try it yourself? Head to the **[Deployment Guide](./docs/DEPLOYMENT.md)** for setup instructions.
+- [The Problem](#the-problem)
+- [What Is MCP?](#what-is-mcp)
+- [What Is This Tagging MCP?](#what-is-this-tagging-mcp)
+- [Features](#features)
+- [Installation](#installation)
+- [Production Deployment](#production-deployment)
+- [Configuration](#configuration)
+- [Testing with MCP Inspector](#testing-with-mcp-inspector)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+- [License](#license)
 
 ---
 
-## Why This Matters
+## The problem
 
-Here's a sobering stat: According to the FinOps Foundation's 2025 report, **43% of cloud costs lack proper tagging**. For large enterprises, that's a $2.3B annual "attribution gap"—money being spent with no idea which team, project, or cost center is responsible.
+According to the FinOps Foundation's 2025 report, **43% of cloud costs lack proper tagging**. For large enterprises, that translates to billions in annual spend that cannot be attributed to a team, project, or cost center — the so-called "attribution gap."
 
-The official AWS MCP can read your resource tags, but that's like having a librarian who can only tell you which books exist—not whether they're organized correctly, which ones are missing ISBN numbers, or how much money you're losing from the chaos.
+Today, fixing tagging compliance means:
 
-This MCP server goes deeper. It validates tags against your organization's policies, links violations to actual dollar amounts, tracks compliance trends over time, and even uses ML to suggest corrections based on naming patterns and resource metadata.
+- **Manual audits**: Clicking through the AWS Console resource by resource
+- **Custom scripts**: Writing and maintaining boto3 scripts that check tags against a spreadsheet
+- **Delayed feedback**: Finding violations weeks after resources are launched
+- **No cost context**: Knowing a resource is untagged, but not how much money is at stake
 
-### Beyond Simple Tag Reading
-
-Here's what sets this apart from the standard AWS MCP:
-
-The official tool reads tags from your resources. This one **validates** them against your organization's schema, **quantifies** the financial impact when they're wrong or missing, **suggests** intelligent corrections using ML, and **tracks** compliance trends so you can see if things are getting better or worse over time. It's the difference between a read-only view and an active compliance assistant.
-
-See the detailed [comparison with AWS Native MCP](./docs/DIFFERENTIATION-FROM-AWS-NATIVE.md) for technical specifics.
+The AWS Console can show you *what* tags exist, but it doesn't tell you whether they're *correct*, how much you're *losing* from the gaps, or *what values* should go there.
 
 ---
 
-## What Can You Ask Claude?
+## What is MCP?
 
-Instead of wrestling with AWS Console filters or writing boto3 scripts, just ask Claude naturally:
+**[Model Context Protocol (MCP)](https://modelcontextprotocol.io)** is an open standard that lets AI assistants like Claude connect to external tools and data sources. Think of it as giving Claude a phone line to your infrastructure.
 
-**"Run a compliance check on all my EC2 and RDS instances"**
-Get a comprehensive score, see which resources fail policy checks, and understand why.
+**Without MCP:** Claude can only work with what you paste into the chat — it has no access to your live AWS environment.
 
-**"How much of our EC2 spend is unattributable due to missing tags?"**
-Links violations directly to dollars. Maybe those 47 untagged instances represent $12K/month—now you know where to focus.
+**With MCP:** Claude can call specialized tools to query your AWS resources, validate tags, calculate costs, and return real-time insights — all through natural conversation.
 
-**"Suggest tags for this EC2 instance based on its name and similar resources"**
-ML analyzes naming patterns, resource metadata, and sibling resources to recommend tag values with confidence scores.
-
-**"Show me the tagging compliance trend for the last 30 days"**
-Every compliance scan is automatically stored in SQLite. See if your compliance is improving, declining, or stuck.
-
-**"Generate a markdown report for our Q1 compliance review"**
-Beautiful, formatted reports ready for stakeholders. JSON and CSV options too.
-
-Behind the scenes, this MCP server is running sophisticated validation logic, cost calculations, and trend analysis. But you just talk to Claude like you're talking to a colleague.
+MCP servers expose "tools" that Claude invokes automatically based on what you ask. When you say *"Which S3 buckets are untagged?"*, Claude recognizes it needs the `find_untagged_resources` tool, calls it, gets structured data back, and translates that into a natural language answer.
 
 ---
 
-## How It Works
+## What is this Tagging MCP?
 
-This MCP server supports two transports: **stdio** (for Claude Desktop and MCP Inspector) and **HTTP** (for remote/cloud deployments). When you ask Claude a question about AWS tagging, Claude calls the appropriate "tool" from this server, which:
+An MCP server that gives Claude real-time access to your AWS tagging compliance data. Instead of writing boto3 scripts or clicking through the AWS Console, just ask Claude in natural language:
 
-1. **Queries your AWS environment** using IAM credentials (no hardcoded keys)
-2. **Validates resources** against your tagging policy (defined in a simple JSON file)
-3. **Calculates compliance scores** and identifies violations
-4. **Estimates financial impact** using AWS Cost Explorer data
-5. **Stores results** in SQLite for historical trend tracking
-6. **Returns insights** to Claude in a structured format
+- *"Run a compliance check on all my EC2 and RDS instances"*
+- *"How much of our EC2 spend is unattributable due to missing tags?"*
+- *"Suggest tags for this EC2 instance based on its name and similar resources"*
+- *"Generate a markdown compliance report for our Q1 review"*
 
-Claude then translates those technical results into natural language you can understand and act on.
+Behind the scenes, this MCP server queries your AWS environment, validates resources against your tagging policy, calculates cost impacts, and returns structured insights that Claude translates into natural language.
 
-### 14 Tools Claude Can Use
+### Beyond simple tag reading
 
-When you're chatting with Claude, it automatically picks the right tool for your question:
+The [official AWS MCP](https://github.com/awslabs/mcp) can read your resource tags — but that's like having a librarian who can tell you which books exist, not whether they're organized correctly.
 
-**check_tag_compliance** scans resources against your policy and calculates a compliance score. **find_untagged_resources** identifies resources missing required tags with cost impact. **validate_resource_tags** validates specific resources by ARN (great for CI/CD pipelines). **get_cost_attribution_gap** calculates how much spend is unattributable. **suggest_tags** provides ML-powered recommendations with confidence scores. **get_tagging_policy** shows your current policy configuration. **generate_compliance_report** creates formatted reports in JSON, CSV, or Markdown. **get_violation_history** shows compliance trends over time. **detect_tag_drift** finds unexpected tag changes since last scan. **generate_custodian_policy** creates Cloud Custodian enforcement YAML. **generate_openops_workflow** builds automated remediation workflows. **schedule_compliance_audit** configures recurring audit schedules. **export_violations_csv** exports violations for spreadsheet analysis. **import_aws_tag_policy** imports policies from AWS Organizations.
+This MCP server goes deeper. It **validates** tags against your organization's policy, **quantifies** the financial impact when they're wrong or missing, **suggests** corrections using pattern matching across similar resources, and **tracks** compliance trends over time.
 
-You don't need to memorize these—Claude figures out which tools to use based on what you're asking. But if you're curious about the implementation details, check out the [Tool Logic Reference](./docs/TOOL_LOGIC_REFERENCE.md).
+---
 
-### Running with stdio (Claude Desktop / MCP Inspector)
+## Features
 
-The stdio transport speaks the standard MCP JSON-RPC protocol over stdin/stdout. This is the recommended way to use the server with Claude Desktop.
+### 14 Tools
+
+| Tool | Description |
+|------|-------------|
+| `check_tag_compliance` | Scan resources and calculate compliance score |
+| `find_untagged_resources` | Find resources missing required tags with cost impact |
+| `validate_resource_tags` | Validate specific resources by ARN |
+| `get_cost_attribution_gap` | Calculate financial impact of tagging gaps |
+| `suggest_tags` | ML-powered tag recommendations with confidence scores |
+| `get_tagging_policy` | View current policy configuration |
+| `generate_compliance_report` | Generate reports in JSON, CSV, or Markdown |
+| `get_violation_history` | Track compliance trends over time |
+| `detect_tag_drift` | Find unexpected tag changes since last scan |
+| `generate_custodian_policy` | Create Cloud Custodian enforcement YAML |
+| `generate_openops_workflow` | Build automated remediation workflows |
+| `schedule_compliance_audit` | Configure recurring audit schedules |
+| `export_violations_csv` | Export violations for spreadsheet analysis |
+| `import_aws_tag_policy` | Import policies from AWS Organizations |
+
+### Multi-Region Scanning
+
+Scans all enabled AWS regions in parallel. Global resources (S3, IAM) are always included regardless of region filters.
+
+### 40+ AWS Resource Types
+
+EC2, S3, RDS, Lambda, ECS, DynamoDB, ElastiCache, EBS, EFS, Bedrock, OpenSearch, and many more. Use `"all"` to scan everything.
+
+### Cost Attribution
+
+Links tagging violations to actual dollar amounts using AWS Cost Explorer. State-aware cost attribution correctly assigns $0 to stopped EC2 instances.
+
+### Customizable Policy
+
+Define required and optional tags in a simple JSON file (`policies/tagging_policy.json`) with allowed values, regex validation, and per-resource-type rules.
+
+---
+
+## Installation
+
+[![Install](https://img.shields.io/badge/Install-Kiro-9046FF?style=flat-square&logo=kiro)](https://kiro.dev/launch/mcp/add?name=finops-tag-compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+[![Install](https://img.shields.io/badge/Install-Cursor-blue?style=flat-square&logo=cursor)](https://cursor.com/en/install-mcp?name=finops-tag-compliance&config=eyJjb21tYW5kIjoidXZ4IGZpbm9wcy10YWctY29tcGxpYW5jZS1tY3BAbGF0ZXN0IiwiZW52Ijp7IkFXU19SRUdJT04iOiJ1cy1lYXN0LTEifSwiZGlzYWJsZWQiOmZhbHNlLCJhdXRvQXBwcm92ZSI6W119)
+[![Install on VS Code](https://img.shields.io/badge/Install-VS_Code-FF9900?style=flat-square&logo=visualstudiocode&logoColor=white)](https://insiders.vscode.dev/redirect/mcp/install?name=FinOps%20Tag%20Compliance&config=%7B%22command%22%3A%22uvx%22%2C%22args%22%3A%5B%22finops-tag-compliance-mcp%40latest%22%5D%2C%22env%22%3A%7B%22AWS_REGION%22%3A%22us-east-1%22%7D%2C%22disabled%22%3Afalse%2C%22autoApprove%22%3A%5B%5D%7D)
+
+### Prerequisites
+
+- Python 3.10+
+- AWS credentials configured (`~/.aws/credentials` or environment variables)
+- [Claude Desktop](https://claude.ai/download) or any MCP-compatible client (VS Code, Cursor, Kiro)
+
+### Install from PyPI
 
 ```bash
-# Run the stdio server directly
-python -m mcp_server.stdio_server
-
-# Or after pip install:
-finops-tag-compliance
+pip install finops-tag-compliance-mcp
 ```
 
-**Claude Desktop configuration** (`claude_desktop_config.json`):
+### Install from source
 
+```bash
+git clone https://github.com/OptimNow/finops-tag-compliance-mcp.git
+cd finops-tag-compliance-mcp
+pip install -e .
+```
+
+### AWS Permissions
+
+The server needs read-only AWS permissions. See [IAM Permissions Guide](./docs/security/IAM_PERMISSIONS.md) for the full policy, but the key permissions are:
+
+- `ec2:Describe*`, `rds:Describe*`, `s3:List*`, `lambda:List*`
+- `tag:GetResources` (Resource Groups Tagging API)
+- `ce:GetCostAndUsage` (Cost Explorer — optional, for cost attribution)
+
+No write permissions are needed.
+
+### Production deployment
+
+This repository is designed for **local use** — the MCP server runs on your machine alongside Claude Desktop, Cursor, or VS Code. Your AWS credentials stay local and never leave your laptop.
+
+For **production and team environments**, we provide a separate deployment repository with the infrastructure to run this MCP server securely on AWS:
+
+- CloudFormation templates for VPC, ALB, and EC2/ECS deployment
+- API key authentication via AWS Secrets Manager
+- TLS termination and private subnet isolation
+- CloudWatch logging and security monitoring
+- CI/CD pipeline setup
+
+See [finops-tag-compliance-deploy](https://github.com/OptimNow/finops-tag-compliance-deploy) for the full production stack. For support on deploying in production, contact [jean@optimnow.io](mailto:jean@optimnow.io).
+
+---
+
+## Configuration
+
+### Claude Desktop
+
+Add to your `claude_desktop_config.json`:
+
+**Minimal** (uses default region and auto-discovers AWS credentials):
 ```json
 {
   "mcpServers": {
     "finops-tag-compliance": {
-      "command": "python",
-      "args": ["-m", "mcp_server.stdio_server"]
+      "command": "finops-tag-compliance"
     }
   }
 }
 ```
 
-### Testing with MCP Inspector
+**With options**:
+```json
+{
+  "mcpServers": {
+    "finops-tag-compliance": {
+      "command": "finops-tag-compliance",
+      "env": {
+        "AWS_REGION": "us-east-1",
+        "AWS_PROFILE": "my-profile",
+        "ALLOWED_REGIONS": "us-east-1,us-west-2,eu-west-1",
+        "POLICY_PATH": "/path/to/my/tagging_policy.json"
+      }
+    }
+  }
+}
+```
 
-The [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) is a browser-based tool for testing MCP servers interactively. It lets you list tools, fill in arguments, and see results in real time.
+**Config file location:**
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- Linux: `~/.config/Claude/claude_desktop_config.json`
+
+### Environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `AWS_REGION` | `us-east-1` | Default AWS region (e.g. `eu-west-1` for Ireland) |
+| `AWS_PROFILE` | (default) | AWS credentials profile |
+| `ALLOWED_REGIONS` | (all enabled) | Comma-separated list of regions to scan |
+| `MAX_CONCURRENT_REGIONS` | `5` | Max parallel region scans (1-20) |
+| `POLICY_PATH` | `policies/tagging_policy.json` | Path to tagging policy |
+| `RESOURCE_TYPES_CONFIG_PATH` | `config/resource_types.json` | Resource types configuration |
+| `REDIS_URL` | `redis://localhost:6379/0` | Redis URL (optional, for caching) |
+| `COMPLIANCE_CACHE_TTL_SECONDS` | `3600` | Cache TTL for compliance results |
+
+Redis is optional. Without it, results are not cached between invocations.
+
+### Tagging policy
+
+Define your organization's tagging rules in `policies/tagging_policy.json`:
+
+```json
+{
+  "required_tags": [
+    {
+      "name": "Environment",
+      "description": "Deployment environment",
+      "allowed_values": ["production", "staging", "development"],
+      "applies_to": ["ec2:instance", "rds:db", "s3:bucket"]
+    },
+    {
+      "name": "CostCenter",
+      "description": "Cost center for billing",
+      "validation_regex": "^CC-\\d{4}$",
+      "applies_to": []
+    }
+  ],
+  "optional_tags": [
+    {
+      "name": "Project",
+      "description": "Project name"
+    }
+  ]
+}
+```
+
+- `allowed_values`: Tag value must be in this list (case-sensitive)
+- `validation_regex`: Tag value must match this pattern
+- `applies_to`: Resource types this tag applies to (empty = all types)
+
+See [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) for full documentation.
+
+---
+
+## Testing with MCP Inspector
+
+The [MCP Inspector](https://modelcontextprotocol.io/docs/tools/inspector) lets you test the server interactively in your browser:
 
 ```bash
-# Launch the Inspector pointing at this server
 npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
 ```
 
-The Inspector opens a browser UI where you can:
-- See all 14 registered tools with their JSON schemas
-- Execute any tool with custom arguments
-- View structured results and server notifications
-
-### Running with HTTP (remote deployment)
-
-The HTTP transport is useful for cloud deployments where the server runs as a standalone service.
-
-```bash
-# Local development with Docker (includes Redis)
-docker-compose up -d
-
-# Or run directly
-python run_server.py
-```
-
-The HTTP server exposes `GET /mcp/tools` and `POST /mcp/tools/call` endpoints on port 8080.
-
----
-
-## For MCP Beginners
-
-If you're new to Model Context Protocol, here's the mental model:
-
-**Without MCP**: Claude is like a very smart person locked in a room with no phone or internet. It can only work with what you paste into the chat.
-
-**With MCP**: Claude now has a phone line to specific services. When you ask about AWS tagging, Claude can "call" this MCP server to get real-time data from your infrastructure.
-
-**Key concept**: MCP servers expose "tools" that Claude can invoke. Think of tools as functions. When you ask "Which S3 buckets are untagged?", Claude recognizes it needs the `find_untagged_resources` tool, calls it with the right parameters (`resource_types=["s3:bucket"]`), gets structured data back, and translates that into a natural language answer for you.
-
-**Two deployment modes:**
-
-For local testing, you run the MCP server on your laptop (just `docker-compose up`). Claude Desktop connects to `localhost:8080` via a small Python bridge script. It uses your local AWS credentials from `~/.aws`.
-
-For production use, you deploy the server to AWS EC2 or similar. Multiple team members can connect their Claude Desktop to the same server URL. It uses IAM roles instead of local credentials, provides centralized audit logging, and enables shared caching for faster responses.
-
-Same configuration approach for both—just change the URL from `localhost:8080` to your server address. See the [Deployment Guide](./docs/DEPLOYMENT.md) for step-by-step setup.
-
----
-
-## Smart Performance: Tool Search
-
-**New in January 2026**: Claude now supports "Tool Search"—a way to load tool definitions on-demand instead of upfront.
-
-Here's why this matters: Imagine Claude needs to load a manual for 8 different tools at the start of every conversation, even if you only use 2 of them. That wastes tokens (and your money).
-
-With Tool Search enabled, Claude loads only your most commonly used tools immediately (like `check_tag_compliance` and `find_untagged_resources`). The other tools? Claude discovers them only when needed. This cuts token costs by **85%** for tool definitions.
-
-Bonus: Studies show this improves Claude Opus 4.5 accuracy from 79.5% to 88.1% on tool-use tasks, because it's not overwhelmed by irrelevant tool definitions.
-
-Setup is simple: add one config flag to your Claude Desktop settings and mark which tools to defer. Check out the [Tool Search Configuration Guide](./docs/TOOL_SEARCH_CONFIGURATION.md) for copy-paste examples.
-
----
-
-## Real-World Use Cases
-
-**Monthly compliance audits**: Your CFO wants a quarterly report on tagging compliance. Instead of exporting CSV files from AWS and building spreadsheets, ask Claude: *"Generate a markdown report showing tagging compliance trends for Q1 2026."* Done. Formatted, with charts, ready to present.
-
-**Pre-deployment validation**: Before launching 50 new EC2 instances via Terraform, validate their tags: *"Validate these 10 resource ARNs against our policy."* Catch violations before they hit production. Integrates beautifully with CI/CD pipelines.
-
-**Cost attribution gap analysis**: Your finance team is frustrated because 40% of AWS costs can't be allocated to teams. Ask Claude: *"How much EC2 spend is unattributable due to missing CostCenter tags?"* Get a dollar amount, a list of offending resources, and remediation suggestions.
-
-**Intelligent tagging suggestions**: You have 200 EC2 instances with inconsistent tagging. Instead of manually fixing them, let ML do the heavy lifting: *"Suggest tags for instance i-0abc123 based on its name and VPC."* Get recommendations with confidence scores and reasoning.
-
----
-
-## What's Supported
-
-This server currently focuses on AWS, with support for over 50 resource types including EC2, S3, RDS, Lambda, ECS, DynamoDB, ElastiCache, EBS, EFS, and various AI/ML services like Bedrock. You can scan specific types or use `"all"` to check everything.
-
-Authentication uses IAM roles (no hardcoded credentials). The server integrates with AWS Organizations tag policies, stores compliance history in SQLite, caches results in Redis for fast repeat queries, and provides comprehensive audit logging.
-
-Security features include input validation, budget enforcement to prevent runaway queries, loop detection to catch infinite calls, and error sanitization to ensure no secrets leak into logs. See the [Security Configuration Guide](./docs/SECURITY_CONFIGURATION.md) for details.
-
----
-
-## Roadmap
-
-**Phase 1 (Complete - January 2026)**: AWS support with 8 tools, compliance history tracking, cost attribution, ML tag suggestions, Docker deployment on EC2.
-
-**Phase 2 (Complete - February 2026)**: Production deployment on ECS Fargate with 14 tools, multi-region scanning across 17 AWS regions, CloudFormation infrastructure-as-code, ALB with TLS, auto-scaling, and comprehensive UAT validation.
-
-**Phase 3 (Planned)**: Multi-cloud support for Azure and GCP with unified tagging policies and cross-cloud consistency checking.
-
-**Phase 4 (Planned)**: Automation integration—generate remediation scripts (Terraform, CloudFormation, Ansible), integrate with OpenOps and wiv.ai for automated workflows.
-
-See the [full Roadmap](./docs/ROADMAP.md) for timelines and decision points.
-
----
-
-## Documentation
-
-**Start here**: [User Manual](./docs/USER_MANUAL.md) — Practical guide for FinOps practitioners
-**Deploy**: [Deployment Guide](./docs/DEPLOYMENT.md) — Local and remote setup instructions
-**Configure**: [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) — Define your organization's rules | [Resource Type Configuration](./docs/RESOURCE_TYPE_CONFIGURATION.md) — Manage AWS resource types
-**Optimize**: [Tool Search Configuration](./docs/TOOL_SEARCH_CONFIGURATION.md) — Reduce token costs by 85%
-**Security**: [IAM Permissions Guide](./docs/IAM_PERMISSIONS.md) — Required AWS permissions
-
-For architecture deep dives, check out the [System Diagrams](./docs/diagrams/README.md). For testing and development, see [Testing Quick Start](./docs/TESTING_QUICK_START.md). Full technical specs are in [SPECIFICATION.md](./docs/SPECIFICATION.md).
-
----
-
-## Contributing
-
-This project is actively developed and we welcome contributions: bug reports, feature requests, documentation improvements, use case examples, and feedback on the MCP tool design.
-
-See [Development Journal](./docs/DEVELOPMENT_JOURNAL.md) for build history and [GitHub Issues](https://github.com/OptimNow/finops-tag-compliance-mcp/issues) for current work.
+This opens a UI where you can list tools, execute them with custom arguments, and inspect results.
 
 ---
 
 ## Architecture
 
-This project follows a **layered service-oriented architecture** with clear separation between the MCP protocol layer and reusable business logic:
-
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     MCP Protocol Layer                          │
-│  main.py (FastAPI) → mcp_handler.py (Protocol handling)         │
+│                   MCP Protocol Layer (stdio)                     │
+│  stdio_server.py → FastMCP with 14 registered tools              │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Tools Layer (Adapters)                     │
-│  check_tag_compliance.py, find_untagged_resources.py, etc.      │
-│  Thin wrappers that translate MCP calls to service methods      │
+│                    Tools Layer (Adapters)                        │
+│  Thin wrappers: MCP tool calls → service method calls            │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                 Services Layer (Core Library)                   │
-│  ComplianceService, CostService, PolicyService, AuditService    │
+│               Services Layer (Core Library)                      │
+│  ComplianceService, CostService, PolicyService, etc.             │
 │  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━  │
-│  ✓ Protocol-agnostic (no MCP knowledge)                         │
-│  ✓ Reusable in CLI, REST API, webhooks, etc.                    │
-│  ✓ All business logic lives here                                │
+│  Protocol-agnostic — no MCP knowledge                            │
+│  Reusable: from mcp_server.services import ComplianceService     │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      Models Layer (Pydantic)                    │
-│  17 model files with strict validation, type safety, schemas    │
-│  ComplianceResult, Violation, Resource, TagPolicy, etc.         │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      Clients Layer                              │
-│  AWSClient (boto3 wrapper), RedisCache, SQLite databases        │
+│                    Clients Layer                                  │
+│  AWSClient (boto3 + rate limiting), RedisCache, SQLite           │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-**Key design decisions:**
-- **Services are reusable**: The `mcp_server/services/` layer has zero knowledge of MCP. You could import `ComplianceService` into a CLI tool or webhook handler today.
-- **Pydantic everywhere**: All data structures use Pydantic models with validation, constraints, and automatic JSON schema generation for LLM compatibility.
-- **Thin tool adapters**: Each MCP tool in `mcp_server/tools/` is a lightweight wrapper that calls the corresponding service method.
+The services layer has zero knowledge of MCP. You can import `ComplianceService` directly into a CLI tool, webhook handler, or any other Python application.
 
 ---
 
-## Project Structure
+## Project structure
 
 ```
 finops-tag-compliance-mcp/
 ├── mcp_server/
-│   ├── main.py           # FastAPI app, MCP endpoints
-│   ├── mcp_handler.py    # MCP protocol handling
-│   ├── services/         # Core business logic (protocol-agnostic)
-│   ├── tools/            # MCP tool adapters
-│   ├── models/           # Pydantic data models (17 files)
-│   ├── clients/          # AWS, Redis, database clients
-│   └── middleware/       # Budget, security, sanitization
-├── policies/             # Your tagging policy (JSON)
-├── scripts/              # Utilities (mcp_bridge.py, converter)
-├── tests/                # Comprehensive test suite
-├── docs/                 # Documentation & diagrams
-├── docker-compose.yml    # Local development setup
-└── Dockerfile            # Container image
+│   ├── stdio_server.py      # MCP entry point (Claude Desktop)
+│   ├── container.py          # Service container (dependency injection)
+│   ├── config.py             # Configuration settings
+│   ├── services/             # Core business logic (12 services)
+│   ├── tools/                # MCP tool adapters (14 tools)
+│   ├── models/               # Pydantic data models (17 files)
+│   ├── clients/              # AWS, Redis, database clients
+│   └── utils/                # Correlation IDs, validation, error handling
+├── policies/                 # Tagging policy (JSON)
+├── config/                   # Resource types configuration
+├── examples/                 # Claude Desktop config examples
+├── tests/                    # Unit + property-based tests
+├── docs/                     # Documentation
+├── pyproject.toml            # Package configuration
+└── LICENSE                   # Apache 2.0
 ```
 
 ---
 
-## Project Stats
+## Documentation
 
-| Metric | Value |
-|--------|-------|
-| Application code (`mcp_server/`) | ~24,000 lines across 14 tools, 10 services, 17 data models |
-| Test suite (`tests/`) | ~46,000 lines — unit, property-based, integration, and regression tests |
-| Config, docs, infrastructure | ~40,000 lines — CloudFormation, YAML, Markdown, shell scripts |
-| Total codebase | **~111,000 lines** across **852 files** |
-| Git history | 212 commits over 54 days (Dec 2025 – Feb 2026) |
-| Test-to-code ratio | 1.9:1 — nearly 2x more test code than application code |
-| Infrastructure | 1,161-line CloudFormation template (VPC, ALB, ECS Fargate, EFS, ECR) |
-| Multi-region coverage | 17 AWS regions scanned in parallel |
-| UAT validation | 14 tools, 100% pass rate across gradient-tagged test infrastructure |
+| Guide | Description |
+|-------|-------------|
+| [User Manual](./docs/USER_MANUAL.md) | Practical guide for FinOps practitioners |
+| [Tagging Policy Guide](./docs/TAGGING_POLICY_GUIDE.md) | Define your organization's tagging rules |
+| [Tool Logic Reference](./docs/TOOL_LOGIC_REFERENCE.md) | Detailed logic for each of the 14 tools |
+| [IAM Permissions](./docs/security/IAM_PERMISSIONS.md) | Required AWS permissions (read-only) |
+| [Resource Type Configuration](./docs/RESOURCE_TYPE_CONFIGURATION.md) | Manage which AWS resource types to scan |
+| [Testing Quick Start](./docs/TESTING_QUICK_START.md) | Getting started with the test suite |
+| [Architecture Diagrams](./docs/diagrams/) | System architecture, sequence, state, and component diagrams |
 
 ---
 
-**License**: Apache 2.0
-**Support**: [GitHub Discussions](https://github.com/OptimNow/finops-tag-compliance-mcp/discussions)
-**Built with ❤️ for the FinOps community**
+## Contributing
+
+We welcome contributions! Bug reports, feature requests, documentation improvements, and code contributions are all appreciated.
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Run tests (`pytest tests/unit tests/property`)
+4. Commit your changes
+5. Open a Pull Request
+
+See [GitHub Issues](https://github.com/OptimNow/finops-tag-compliance-mcp/issues) for current work.
+
+---
+
+## License
+
+Apache 2.0 — see [LICENSE](./LICENSE) for details.
+
+---
+
+**Built for the FinOps community by [OptimNow](https://optimnow.io)**

@@ -1,5 +1,5 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 """Stdio MCP server using FastMCP from the mcp Python SDK.
@@ -43,6 +43,49 @@ _container: ServiceContainer | None = None
 
 
 # ---------------------------------------------------------------------------
+# Anti-hallucination: data quality metadata
+# ---------------------------------------------------------------------------
+def _build_data_quality(result: Any) -> dict:
+    """Build a data_quality block that tells LLMs whether results are complete.
+
+    This metadata is included in every scan response so that LLMs know whether
+    the data covers all regions and resource types, or is partial/incomplete.
+    LLMs MUST report partial data honestly rather than presenting it as complete.
+    """
+    quality: dict[str, Any] = {"status": "complete"}
+
+    if not hasattr(result, "region_metadata"):
+        return quality
+
+    meta = result.region_metadata
+    failed = meta.failed_regions or []
+    total = meta.total_regions or 0
+
+    if meta.discovery_failed:
+        quality["status"] = "partial"
+        quality["warning"] = (
+            "Region discovery failed. Results are from the default region only "
+            "and DO NOT represent the full AWS account. "
+            "Do not present these numbers as account-wide totals."
+        )
+        if meta.discovery_error:
+            quality["discovery_error"] = meta.discovery_error
+    elif failed:
+        quality["status"] = "partial"
+        quality["warning"] = (
+            f"{len(failed)} of {total} regions failed to scan. "
+            f"Results are incomplete and DO NOT cover: {', '.join(failed)}. "
+            "Do not present these numbers as account-wide totals."
+        )
+        quality["failed_regions"] = failed
+    else:
+        quality["status"] = "complete"
+        quality["note"] = f"All {total} regions scanned successfully."
+
+    return quality
+
+
+# ---------------------------------------------------------------------------
 # Tool 1: check_tag_compliance
 # ---------------------------------------------------------------------------
 @mcp.tool()
@@ -59,14 +102,31 @@ async def check_tag_compliance(
     organization's tagging policy. Returns a compliance score along
     with detailed violation information.
 
-    IMPORTANT: The 'all' mode scans 42 resource types across all AWS regions,
-    which may take several minutes. For faster results, specify resource types
-    explicitly: ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"]
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    1. FIRST call get_tagging_policy to retrieve the policy and extract ALL
+       resource types from the "applies_to" fields across all required tags.
+    2. THEN call this tool with those resource types — either in one call or
+       in batches of 4-6 types to avoid timeouts.
+    Do NOT pick resource types from memory (e.g., "EC2, S3, Lambda"). The
+    policy may include Bedrock, DynamoDB, ECS, EKS, SageMaker, and others
+    that you would miss. Always read the policy first.
+
+    TIMEOUT WARNING: MCP clients (e.g., Claude Desktop) may have a 60-second
+    response timeout. Scanning many resource types across all regions can
+    take 2-5 minutes and will silently timeout on the client side. To avoid
+    this, scan in batches of 4-6 resource types per call and aggregate the
+    results yourself. Only use ["all"] if the client supports long timeouts.
+
+    CRITICAL — data accuracy: Always check the "data_quality" field in the
+    response. If data_quality.status is "partial", some regions failed to scan
+    and the results are INCOMPLETE. You MUST disclose this to the user — do NOT
+    present partial data as if it were a complete account-wide picture. Never
+    estimate, extrapolate, or fabricate values for regions that failed.
 
     Args:
         resource_types: List of resource types to check. Examples:
-            - ["ec2:instance", "s3:bucket"] - specific types (faster)
-            - ["all"] - comprehensive scan (slower, may timeout)
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive scan (WARNING: will likely timeout on Claude Desktop)
         filters: Optional filters for region or account_id
         severity: Filter results by severity: "all", "errors_only", or "warnings_only"
         store_snapshot: If true, store result in history for trend tracking
@@ -150,6 +210,9 @@ async def check_tag_compliance(
         "stored_in_history": store_snapshot,
     }
 
+    # Add data quality metadata (anti-hallucination guard)
+    response["data_quality"] = _build_data_quality(result)
+
     # Add multi-region fields if this is a MultiRegionComplianceResult
     if hasattr(result, "region_metadata"):
         response["region_metadata"] = {
@@ -157,6 +220,7 @@ async def check_tag_compliance(
             "successful_regions": result.region_metadata.successful_regions,
             "failed_regions": result.region_metadata.failed_regions,
             "skipped_regions": result.region_metadata.skipped_regions,
+            "discovery_failed": result.region_metadata.discovery_failed,
         }
         response["regional_breakdown"] = [
             {
@@ -188,8 +252,23 @@ async def find_untagged_resources(
     Returns resource details and age to help prioritize remediation.
     Cost estimates are only included when explicitly requested via include_costs=true.
 
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+    Do NOT pick types from memory; the policy may include types you'd miss.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"].
+
+    CRITICAL — data accuracy: Always check the "data_quality" field in the
+    response. If data_quality.status is "partial", some regions failed and the
+    results are INCOMPLETE. You MUST tell the user which regions are missing.
+    Never estimate or fabricate resource counts for failed regions.
+
     Args:
-        resource_types: List of resource types to search (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to search. Get these from get_tagging_policy.
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive scan (WARNING: will likely timeout on Claude Desktop)
         regions: Optional list of AWS regions to search
         include_costs: Whether to include cost estimates (default false)
         min_cost_threshold: Optional minimum monthly cost threshold in USD
@@ -197,15 +276,33 @@ async def find_untagged_resources(
     _ensure_initialized()
     from .tools import find_untagged_resources as _find
 
-    result = await _find(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        regions=regions,
-        min_cost_threshold=min_cost_threshold,
-        include_costs=include_costs,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _find(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            regions=regions,
+            min_cost_threshold=min_cost_threshold,
+            include_costs=include_costs,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during find_untagged_resources: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try scanning specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during find_untagged_resources: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     resources = []
     for r in result.resources:
@@ -227,6 +324,7 @@ async def find_untagged_resources(
     response: dict[str, Any] = {
         "total_untagged": result.total_untagged,
         "resources": resources,
+        "data_quality": _build_data_quality(result),
         "scan_timestamp": result.scan_timestamp.isoformat(),
     }
     if include_costs:
@@ -310,8 +408,23 @@ async def get_cost_attribution_gap(
     Shows how much cloud spend cannot be allocated to teams/projects due to
     missing or invalid resource tags.
 
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+
+    TIMEOUT WARNING: This is the SLOWEST tool (3-5 minutes with "all"). MCP
+    clients like Claude Desktop timeout after 60 seconds. ALWAYS scan in small
+    batches of 3-4 cost-generating resource types per call.
+
+    CRITICAL — data accuracy: If this tool returns an error or timeout, report
+    the error to the user exactly as received. Never estimate, extrapolate, or
+    fabricate dollar amounts. If the tool succeeds, check the "data_quality"
+    field — if status is "partial", clearly disclose which data is missing.
+
     Args:
-        resource_types: List of resource types to analyze (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to analyze. Get these from get_tagging_policy.
+            - ["ec2:instance", "rds:db", "lambda:function"] — batch (recommended)
+            - ["all"] — comprehensive (WARNING: will timeout on Claude Desktop)
         time_period: Time period with Start and End dates in YYYY-MM-DD format
         group_by: Optional grouping dimension: "resource_type", "region", or "account"
         filters: Optional filters for region or account_id
@@ -319,15 +432,33 @@ async def get_cost_attribution_gap(
     _ensure_initialized()
     from .tools import get_cost_attribution_gap as _gap
 
-    result = await _gap(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        time_period=time_period,
-        group_by=group_by,
-        filters=filters,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _gap(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            time_period=time_period,
+            group_by=group_by,
+            filters=filters,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during cost attribution gap: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Cost attribution analysis timed out: {error_msg}",
+            "suggestion": "Try analyzing specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during cost attribution gap: {error_msg}")
+        return json.dumps({
+            "error": "analysis_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     breakdown = None
     if result.breakdown:
@@ -348,6 +479,7 @@ async def get_cost_attribution_gap(
             "attribution_gap_percentage": result.attribution_gap_percentage,
             "time_period": result.time_period,
             "breakdown": breakdown,
+            "data_quality": _build_data_quality(result),
             "scan_timestamp": result.scan_timestamp.isoformat(),
         },
         default=str,
@@ -391,6 +523,14 @@ async def get_tagging_policy() -> str:
 
     Returns required tags, optional tags, validation rules,
     and which resource types each tag applies to.
+
+    IMPORTANT: This is the starting point for all compliance workflows.
+    Call this FIRST before calling check_tag_compliance, find_untagged_resources,
+    get_cost_attribution_gap, or generate_compliance_report. The response includes
+    an "all_applicable_resource_types" field — a deduplicated list of every
+    resource type referenced in the policy. Use that list (in batches of 4-6)
+    as the resource_types parameter for scanning tools. NEVER guess or pick
+    resource types from memory.
     """
     _ensure_initialized()
     from .tools import get_tagging_policy as _policy
@@ -399,7 +539,20 @@ async def get_tagging_policy() -> str:
         policy_service=_container.policy_service,
     )
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    # Build response with helper field for LLM workflows
+    response = result.model_dump(mode="json")
+
+    # Extract all unique resource types from the policy for easy LLM consumption
+    all_types: set[str] = set()
+    for tag in response.get("required_tags", []):
+        for rt in tag.get("applies_to", []):
+            all_types.add(rt)
+    for tag in response.get("optional_tags", []):
+        for rt in tag.get("applies_to", []):
+            all_types.add(rt)
+    response["all_applicable_resource_types"] = sorted(all_types)
+
+    return json.dumps(response, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -416,8 +569,21 @@ async def generate_compliance_report(
     Includes overall compliance summary, top violations ranked by
     count and cost impact, and actionable recommendations.
 
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"].
+
+    CRITICAL — data accuracy: Always check the "data_quality" field. If status
+    is "partial", clearly state which regions or data are missing. Never present
+    partial scan results as a complete compliance report.
+
     Args:
-        resource_types: List of resource types to include (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to include. Get these from get_tagging_policy.
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive (WARNING: will likely timeout on Claude Desktop)
         format: Output format: "json", "csv", or "markdown"
         include_recommendations: Whether to include actionable recommendations
     """
@@ -425,13 +591,31 @@ async def generate_compliance_report(
     from .tools import check_tag_compliance as _check
     from .tools import generate_compliance_report as _report
 
-    compliance_result = await _check(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        severity="all",
-        history_service=_container.history_service,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        compliance_result = await _check(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            severity="all",
+            history_service=_container.history_service,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during compliance report scan: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Scan timed out: {error_msg}",
+            "suggestion": "Try generating a report for specific resource types instead of 'all'. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during compliance report scan: {error_msg}")
+        return json.dumps({
+            "error": "scan_failed",
+            "message": error_msg,
+            "suggestion": "If using 'all' mode, try specific resource types instead.",
+        })
 
     # Try to get actual cost attribution gap
     if _container.aws_client and _container.policy_service:
@@ -455,7 +639,9 @@ async def generate_compliance_report(
         include_recommendations=include_recommendations,
     )
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    report_data = result.model_dump(mode="json")
+    report_data["data_quality"] = _build_data_quality(compliance_result)
+    return json.dumps(report_data, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -644,8 +830,15 @@ async def detect_tag_drift(
     Classifies drift by severity: critical (required tag removed),
     warning (value changed), or info (optional tag changed).
 
+    RECOMMENDED: Call get_tagging_policy first to know which resource types
+    are in scope, then pass them here rather than relying on defaults.
+
+    CRITICAL — data accuracy: If the result contains a "data_quality" field
+    with status "partial", tell the user which regions were not scanned.
+    Never fabricate drift data for regions that failed.
+
     Args:
-        resource_types: Resource types to check (e.g. ["ec2:instance"]).
+        resource_types: Resource types to check. Get these from get_tagging_policy.
             Default: ["ec2:instance", "s3:bucket", "rds:db"]
         tag_keys: Specific tag keys to monitor. If None, monitors all
             required tags from the policy.
@@ -654,18 +847,37 @@ async def detect_tag_drift(
     _ensure_initialized()
     from .tools import detect_tag_drift as _drift
 
-    result = await _drift(
-        aws_client=_container.aws_client,
-        policy_service=_container.policy_service,
-        resource_types=resource_types,
-        tag_keys=tag_keys,
-        lookback_days=lookback_days,
-        history_service=_container.history_service,
-        compliance_service=_container.compliance_service,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _drift(
+            aws_client=_container.aws_client,
+            policy_service=_container.policy_service,
+            resource_types=resource_types,
+            tag_keys=tag_keys,
+            lookback_days=lookback_days,
+            history_service=_container.history_service,
+            compliance_service=_container.compliance_service,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during tag drift detection: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Tag drift detection timed out: {error_msg}",
+            "suggestion": "Try checking specific resource types instead of scanning all. "
+                         "Example: ['ec2:instance', 's3:bucket', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during tag drift detection: {error_msg}")
+        return json.dumps({
+            "error": "drift_detection_failed",
+            "message": error_msg,
+        })
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    drift_data = result.model_dump(mode="json")
+    drift_data["data_quality"] = _build_data_quality(result)
+    return json.dumps(drift_data, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -682,9 +894,18 @@ async def export_violations_csv(
     Runs a compliance scan and exports violations in CSV format for
     spreadsheet analysis, reporting, or integration with other tools.
 
+    RECOMMENDED: Call get_tagging_policy first to know which resource types
+    are in scope, then pass them here rather than guessing.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"] or None.
+
+    CRITICAL — data accuracy: Check "data_quality" in the response. If status
+    is "partial", note it in the export and tell the user which regions are missing.
+
     Args:
-        resource_types: Resource types to scan (e.g. ["ec2:instance"]).
-            If None, scans all resource types.
+        resource_types: Resource types to scan. Get these from get_tagging_policy.
+            If None, scans all resource types (WARNING: may timeout).
         severity: Filter by severity: "all", "errors_only", or "warnings_only"
         columns: CSV columns to include. Available: resource_id, resource_type,
             region, violation_type, tag_name, severity, current_value,
@@ -695,15 +916,34 @@ async def export_violations_csv(
     _ensure_initialized()
     from .tools import export_violations_csv as _export
 
-    result = await _export(
-        compliance_service=_container.compliance_service,
-        resource_types=resource_types,
-        severity=severity,
-        columns=columns,
-        multi_region_scanner=_container.multi_region_scanner,
-    )
+    try:
+        result = await _export(
+            compliance_service=_container.compliance_service,
+            resource_types=resource_types,
+            severity=severity,
+            columns=columns,
+            multi_region_scanner=_container.multi_region_scanner,
+        )
+    except asyncio.TimeoutError as e:
+        error_msg = str(e)
+        logger.error(f"Timeout during violations export: {error_msg}")
+        return json.dumps({
+            "error": "timeout",
+            "message": f"Export timed out: {error_msg}",
+            "suggestion": "Try exporting specific resource types instead of all. "
+                         "Example: ['ec2:instance', 's3:bucket', 'lambda:function', 'rds:db']",
+        })
+    except Exception as e:
+        error_msg = str(e)
+        logger.error(f"Error during violations export: {error_msg}")
+        return json.dumps({
+            "error": "export_failed",
+            "message": error_msg,
+        })
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    export_data = result.model_dump(mode="json")
+    export_data["data_quality"] = _build_data_quality(result)
+    return json.dumps(export_data, default=str)
 
 
 # ---------------------------------------------------------------------------

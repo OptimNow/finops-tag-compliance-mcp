@@ -1,4 +1,0 @@
-# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\models\compliance.py
-# hypothesis_version: 6.148.8
-
-[0.0, 0.75, 1.0, 5000.0, 100, '2025-12-29T22:00:00Z', 'compliance_score', 'compliant_resources', 'cost_attribution_gap', 'example', 'scan_timestamp', 'total_resources', 'violations']

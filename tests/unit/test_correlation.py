@@ -2,12 +2,8 @@
 
 import logging
 
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
-
 from mcp_server.utils.cloudwatch_logger import CorrelationIDFilter
 from mcp_server.utils.correlation import (
-    CorrelationIDMiddleware,
     generate_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
@@ -78,101 +74,6 @@ class TestCorrelationIdContext:
         set_correlation_id("")
         result = get_correlation_id_for_logging()
         assert result == {}
-
-
-class TestCorrelationIDMiddleware:
-    """Test the CorrelationIDMiddleware."""
-
-    def test_middleware_generates_correlation_id_if_not_present(self):
-        """Test that middleware generates correlation ID if not in headers."""
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        # Check that response has correlation ID header
-        assert "X-Correlation-ID" in response.headers
-        correlation_id = response.headers["X-Correlation-ID"]
-        assert correlation_id  # Should not be empty
-        assert len(correlation_id) > 0
-
-    def test_middleware_preserves_existing_correlation_id(self):
-        """Test that middleware preserves correlation ID from request headers."""
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        test_id = "existing-correlation-id-789"
-        response = client.get("/test", headers={"X-Correlation-ID": test_id})
-
-        # Check that response has the same correlation ID
-        assert response.headers["X-Correlation-ID"] == test_id
-
-    def test_middleware_adds_correlation_id_to_response_headers(self):
-        """Test that middleware adds correlation ID to response headers."""
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        # Check that response has correlation ID header
-        assert "X-Correlation-ID" in response.headers
-
-    def test_middleware_sets_correlation_id_in_context(self):
-        """Test that middleware sets correlation ID in context."""
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        captured_id = None
-
-        @app.get("/test")
-        async def test_endpoint():
-            nonlocal captured_id
-            captured_id = get_correlation_id()
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response = client.get("/test")
-
-        # Check that correlation ID was set in context
-        assert captured_id is not None
-        assert captured_id == response.headers["X-Correlation-ID"]
-
-    def test_middleware_with_multiple_requests(self):
-        """Test that middleware generates different IDs for different requests."""
-        app = FastAPI()
-        app.add_middleware(CorrelationIDMiddleware)
-
-        @app.get("/test")
-        async def test_endpoint():
-            return {"status": "ok"}
-
-        client = TestClient(app)
-        response1 = client.get("/test")
-        response2 = client.get("/test")
-
-        # Check that different requests get different correlation IDs
-        id1 = response1.headers["X-Correlation-ID"]
-        id2 = response2.headers["X-Correlation-ID"]
-        assert id1 != id2
-
-    def test_middleware_header_name_constant(self):
-        """Test that middleware uses correct header name."""
-        assert CorrelationIDMiddleware.CORRELATION_ID_HEADER == "X-Correlation-ID"
 
 
 class TestCorrelationIDFilter:

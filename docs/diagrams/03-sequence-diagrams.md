@@ -1,18 +1,18 @@
-# Sequence Diagrams
+# Sequence diagrams
 
-## 1. Full Compliance Check Workflow
+## 1. Full compliance check workflow
 
-This sequence diagram shows the complete flow for a compliance check, including caching, AWS API calls, and history storage.
+This sequence diagram shows the complete flow for a compliance check via stdio, including multi-region scanning, caching, AWS API calls, and history storage.
 
 ```mermaid
 sequenceDiagram
     actor User as Claude Desktop
-    participant API as FastAPI Server
-    participant MW as Middleware Stack
-    participant MCP as MCP Handler
+    participant MCP as FastMCP stdio server
+    participant Guard as Guardrails<br/>(Budget + Loop)
     participant Tool as check_tag_compliance
+    participant Scanner as MultiRegionScanner
     participant CS as ComplianceService
-    participant Cache as Redis Cache
+    participant Cache as Redis Cache<br/>(optional)
     participant PS as PolicyService
     participant AWS as AWS Client
     participant RGTA as Resource Groups<br/>Tagging API
@@ -22,113 +22,114 @@ sequenceDiagram
     participant Audit as AuditService
     participant ADB as SQLite Audit DB
 
-    User->>+API: POST /mcp/tools/call<br/>{tool: "check_tag_compliance", params}
+    User->>+MCP: JSON-RPC request<br/>{tool: "check_tag_compliance", params}
 
-    API->>+MW: Process Request
+    MCP->>MCP: Parse JSON-RPC
+    MCP->>MCP: Validate input schema
 
-    MW->>MW: CORS Check
-    MW->>MW: Sanitize Input
-    MW->>MW: Generate Correlation ID
-    MW->>MW: Check Budget (100 calls/hour)
-    MW->>MW: Check Loop Detection
-    MW->>MW: Security Validation
+    MCP->>+Guard: Check guardrails
+    Guard->>Guard: Budget check (100 calls/session)
+    Guard->>Guard: Loop detection (3 identical/5 min)
+    Guard-->>-MCP: Guardrails passed
 
-    MW->>+MCP: Forward Request
+    MCP->>+Tool: Invoke handler<br/>(resource_types, filters, severity,<br/>store_snapshot, force_refresh)
 
-    MCP->>MCP: Lookup Tool Definition
-    MCP->>MCP: Validate Input Schema
+    Tool->>+Scanner: scan_all_regions(params)
 
-    MCP->>+Tool: Invoke Handler<br/>(resource_types, filters, severity,<br/>store_snapshot, force_refresh)
+    Scanner->>Scanner: Discover enabled regions<br/>(via EC2 DescribeRegions)
 
-    Tool->>+CS: check_compliance(params)
+    par Parallel region scanning
+        Scanner->>+CS: check_compliance(region_1)
+    and
+        Scanner->>+CS: check_compliance(region_2)
+    and
+        Scanner->>+CS: check_compliance(region_N)
+    end
 
-    alt Cache Check (force_refresh=false)
-        CS->>CS: Generate Cache Key<br/>SHA256(params)
+    Note over CS: Each region follows same flow:
+
+    alt Cache check (force_refresh=false)
+        CS->>CS: Generate cache key<br/>SHA256(params + region)
         CS->>+Cache: get(cache_key)
-        Cache-->>-CS: Cache Hit / Miss
+        Cache-->>-CS: Cache hit / miss
 
-        alt Cache Hit
-            CS-->>Tool: Return Cached ComplianceResult
-            Note over CS,Cache: Cache hit - skip AWS calls
+        alt Cache hit
+            CS-->>Scanner: Return cached result
+            Note over CS,Cache: Cache hit — skip AWS calls
         end
     end
 
-    alt Cache Miss or Force Refresh
+    alt Cache miss or force refresh
         CS->>+PS: get_policy()
         PS->>PS: Load tagging_policy.json
         PS-->>-CS: Return TagPolicy
 
         CS->>+AWS: get_resources(resource_types, filters)
-        AWS->>+RGTA: GetResources API Call
-        RGTA-->>-AWS: Resource List with Tags
+        AWS->>+RGTA: GetResources API call
+        RGTA-->>-AWS: Resource list with tags
 
-        alt AWS Throttling
-            AWS->>AWS: Exponential Backoff Retry
+        alt AWS throttling
+            AWS->>AWS: Exponential backoff retry
         end
 
-        AWS-->>-CS: List of Resources + Tags
+        AWS-->>-CS: List of resources + tags
 
-        loop For Each Resource
-            CS->>CS: Validate Tags Against Policy
-            CS->>CS: Identify Violations
-            CS->>CS: Calculate Severity
+        loop For each resource
+            CS->>CS: Validate tags against policy
+            CS->>CS: Identify violations
+            CS->>CS: Calculate severity
         end
 
-        CS->>CS: Calculate Compliance Score<br/>(compliant / total * 100)
-
-        CS->>+AWS: Get Cost Data
-        AWS->>+Cost: GetCostAndUsage API Call<br/>(for non-compliant resources)
-        Cost-->>-AWS: Cost Data
-        AWS-->>-CS: Cost Attribution Gap
-
-        CS->>CS: Build ComplianceResult
+        CS->>CS: Calculate compliance score<br/>(compliant / total * 100)
 
         CS->>+Cache: set(cache_key, result, ttl=1h)
-        Cache-->>-CS: Cache Updated
+        Cache-->>-CS: Cache updated
     end
 
-    CS-->>-Tool: Return ComplianceResult
+    CS-->>-Scanner: Return regional result
+    CS-->>-Scanner: Return regional result
+    CS-->>-Scanner: Return regional result
+
+    Scanner->>Scanner: Aggregate regional results<br/>into MultiRegionComplianceResult
+
+    Scanner-->>-Tool: Return aggregated result
 
     alt store_snapshot=true
         Tool->>+HS: store_snapshot(result)
         HS->>+DB: INSERT INTO compliance_history
-        DB-->>-HS: Snapshot Stored
+        DB-->>-HS: Snapshot stored
         HS-->>-Tool: Success
     end
 
-    Tool->>Tool: Format Response as JSON
-    Tool-->>-MCP: Return MCPToolResult
-
-    MCP->>+Audit: log_invocation(tool_name, params, result)
+    Tool->>+Audit: log_invocation(tool_name, params, result)
     Audit->>+ADB: INSERT INTO audit_log
-    ADB-->>-Audit: Log Stored
-    Audit-->>-MCP: Audit Complete
+    ADB-->>-Audit: Log stored
+    Audit-->>-Tool: Audit complete
 
-    MCP-->>-MW: Return Response
-    MW-->>-API: Forward Response
-    API-->>-User: HTTP 200 OK<br/>{compliance_score, violations, cost_gap}
+    Tool->>Tool: Format response as JSON
+    Tool-->>-MCP: Return tool result
 
-    Note over User,ADB: Total Round Trip: ~2-5 seconds<br/>Cached: ~100-200ms
+    MCP-->>-User: JSON-RPC response<br/>{compliance_score, violations,<br/>regional_breakdown}
+
+    Note over User,ADB: Total: ~3-10 seconds (multi-region)<br/>Cached: ~100-200ms
 ```
 
-## 2. Tag Suggestion Workflow
+## 2. Tag suggestion workflow
 
 This sequence diagram shows how the system generates intelligent tag suggestions for a resource.
 
 ```mermaid
 sequenceDiagram
     actor User as Claude Desktop
-    participant API as FastAPI Server
-    participant MCP as MCP Handler
+    participant MCP as FastMCP stdio server
     participant Tool as suggest_tags
     participant SS as SuggestionService
     participant AWS as AWS Client
     participant EC2 as EC2 API
     participant PS as PolicyService
 
-    User->>+API: POST /mcp/tools/call<br/>{tool: "suggest_tags",<br/>params: {resource_arn}}
+    User->>+MCP: JSON-RPC request<br/>{tool: "suggest_tags",<br/>params: {resource_arn}}
 
-    API->>+MCP: Route Request
     MCP->>+Tool: Invoke suggest_tags(resource_arn)
 
     Tool->>+SS: suggest_tags_for_resource(arn)
@@ -137,54 +138,52 @@ sequenceDiagram
 
     SS->>+AWS: describe_resource(resource_id)
     AWS->>+EC2: DescribeInstances / DescribeVolumes / etc.
-    EC2-->>-AWS: Resource Details + Metadata
-    AWS-->>-SS: Resource Info
+    EC2-->>-AWS: Resource details + metadata
+    AWS-->>-SS: Resource info
 
-    SS->>SS: Analyze Resource Name Pattern<br/>(e.g., "web-prod-01")
+    SS->>SS: Analyze resource name pattern<br/>(e.g., "web-prod-01")
 
-    par Pattern Analysis
-        SS->>SS: Check for Environment Keywords<br/>(prod, dev, staging, test)
-        SS->>SS: Check for Team/Owner Keywords<br/>(backend, frontend, platform)
-        SS->>SS: Check for Application Keywords
+    par Pattern analysis
+        SS->>SS: Check for environment keywords<br/>(prod, dev, staging, test)
+        SS->>SS: Check for team/owner keywords<br/>(backend, frontend, platform)
+        SS->>SS: Check for application keywords
     end
 
-    SS->>+AWS: Find Similar Resources<br/>(same VPC, same subnet, etc.)
-    AWS->>+EC2: DescribeInstances with Filters
-    EC2-->>-AWS: Similar Resources
-    AWS-->>-SS: Similar Resource Tags
+    SS->>+AWS: Find similar resources<br/>(same VPC, same subnet, etc.)
+    AWS->>+EC2: DescribeInstances with filters
+    EC2-->>-AWS: Similar resources
+    AWS-->>-SS: Similar resource tags
 
-    SS->>SS: Analyze Common Tags<br/>on Similar Resources
+    SS->>SS: Analyze common tags<br/>on similar resources
 
     SS->>+PS: get_policy()
-    PS-->>-SS: Required Tags List
+    PS-->>-SS: Required tags list
 
-    loop For Each Required Tag
-        SS->>SS: Generate Suggestion
-        SS->>SS: Calculate Confidence Score<br/>(0.0 - 1.0)
-        SS->>SS: Generate Reasoning Text
+    loop For each required tag
+        SS->>SS: Generate suggestion
+        SS->>SS: Calculate confidence score<br/>(0.0 - 1.0)
+        SS->>SS: Generate reasoning text
     end
 
-    SS->>SS: Rank Suggestions by Confidence
+    SS->>SS: Rank suggestions by confidence
 
-    SS-->>-Tool: Return Tag Suggestions<br/>[{tag, value, confidence, reasoning}]
+    SS-->>-Tool: Return tag suggestions<br/>[{tag, value, confidence, reasoning}]
 
     Tool->>Tool: Format as JSON
-    Tool-->>-MCP: Return MCPToolResult
-    MCP-->>-API: Forward Response
-    API-->>-User: HTTP 200 OK<br/>{suggestions: [...]}
+    Tool-->>-MCP: Return tool result
+    MCP-->>-User: JSON-RPC response<br/>{suggestions: [...]}
 
-    Note over User,PS: Suggestion Quality Improves<br/>with More Tagged Resources
+    Note over User,PS: Suggestion quality improves<br/>with more tagged resources
 ```
 
-## 3. Cost Attribution Gap Analysis Workflow
+## 3. Cost attribution gap analysis workflow
 
 This sequence diagram shows how cost attribution gaps are calculated.
 
 ```mermaid
 sequenceDiagram
     actor User as Claude Desktop
-    participant API as FastAPI Server
-    participant MCP as MCP Handler
+    participant MCP as FastMCP stdio server
     participant Tool as get_cost_attribution_gap
     participant Cost as CostService
     participant CS as ComplianceService
@@ -193,256 +192,239 @@ sequenceDiagram
     participant RGTA as Resource Groups<br/>Tagging API
     participant PS as PolicyService
 
-    User->>+API: POST /mcp/tools/call<br/>{tool: "get_cost_attribution_gap",<br/>params: {resource_types, time_period, group_by}}
+    User->>+MCP: JSON-RPC request<br/>{tool: "get_cost_attribution_gap",<br/>params: {resource_types, time_period, group_by}}
 
-    API->>+MCP: Route Request
     MCP->>+Tool: Invoke get_cost_attribution_gap(params)
 
     Tool->>+Cost: calculate_attribution_gap(params)
 
-    par Get Resources and Costs
+    par Get resources and costs
         Cost->>+CS: get_resources(resource_types)
         CS->>+AWS: get_resources()
-        AWS->>+RGTA: GetResources API Call
-        RGTA-->>-AWS: All Resources
-        AWS-->>-CS: Resource List
-        CS-->>-Cost: Resources with Tags
+        AWS->>+RGTA: GetResources API call
+        RGTA-->>-AWS: All resources
+        AWS-->>-CS: Resource list
+        CS-->>-Cost: Resources with tags
     and
         Cost->>+AWS: get_cost_data(time_period)
-        AWS->>+CE: GetCostAndUsage API Call<br/>(GroupBy: SERVICE, REGION)
-        CE-->>-AWS: Cost Data
-        AWS-->>-Cost: Aggregated Costs
+        AWS->>+CE: GetCostAndUsage API call<br/>(GroupBy: SERVICE, REGION)
+        CE-->>-AWS: Cost data
+        AWS-->>-Cost: Aggregated costs
     end
 
     Cost->>+PS: get_policy()
-    PS-->>-Cost: Required Tags
+    PS-->>-Cost: Required tags
 
-    loop For Each Resource
-        Cost->>Cost: Check Tag Compliance
-        alt Resource is Compliant
-            Cost->>Cost: Add to attributable_resources
-        else Resource is Non-Compliant
-            Cost->>Cost: Add to unattributable_resources
+    loop For each resource
+        Cost->>Cost: Check tag compliance
+        alt Resource is compliant
+            Cost->>Cost: Add to attributable spend
+        else Resource is non-compliant
+            Cost->>Cost: Add to unattributable spend
         end
     end
 
-    loop For Each Resource
-        Cost->>+AWS: get_resource_cost(resource_id, time_period)
-        AWS->>+CE: GetCostAndUsage<br/>(Filter by Resource ID)
-        CE-->>-AWS: Resource-specific Cost
-        AWS-->>-Cost: Cost Amount
-
-        alt Resource is Compliant
-            Cost->>Cost: Add to attributable_spend
-        else Resource is Non-Compliant
-            Cost->>Cost: Add to unattributable_spend
-        end
-    end
-
-    Cost->>Cost: Calculate Total Spend
-    Cost->>Cost: Calculate Attribution Gap<br/>(unattributable / total * 100)
+    Cost->>Cost: Calculate total spend
+    Cost->>Cost: Calculate attribution gap<br/>(unattributable / total * 100)
 
     alt group_by specified
-        Cost->>Cost: Group Results by<br/>(resource_type, region, account)
+        Cost->>Cost: Group results by<br/>(resource_type, region, account)
 
-        loop For Each Group
-            Cost->>Cost: Calculate Group Metrics<br/>(spend, gap, percentage)
+        loop For each group
+            Cost->>Cost: Calculate group metrics<br/>(spend, gap, percentage)
         end
     end
 
-    Cost->>Cost: Build CostAttributionGap Response
-    Cost-->>-Tool: Return Gap Analysis
+    Cost->>Cost: Build CostAttributionGap response
+    Cost-->>-Tool: Return gap analysis
 
     Tool->>Tool: Format as JSON
-    Tool-->>-MCP: Return MCPToolResult
-    MCP-->>-API: Forward Response
-    API-->>-User: HTTP 200 OK<br/>{total_spend, attribution_gap,<br/>gap_percentage, breakdown}
+    Tool-->>-MCP: Return tool result
+    MCP-->>-User: JSON-RPC response<br/>{total_spend, attribution_gap,<br/>gap_percentage, breakdown}
 
-    Note over User,CE: Cost Explorer API Calls<br/>Can Take 3-10 seconds
+    Note over User,CE: Cost Explorer API calls<br/>can take 3-10 seconds
 ```
 
-## 4. Violation History Trend Analysis Workflow
+## 4. Violation history trend analysis workflow
 
 This sequence diagram shows how historical compliance trends are retrieved and analyzed.
 
 ```mermaid
 sequenceDiagram
     actor User as Claude Desktop
-    participant API as FastAPI Server
-    participant MCP as MCP Handler
+    participant MCP as FastMCP stdio server
     participant Tool as get_violation_history
     participant HS as HistoryService
     participant DB as SQLite History DB
 
-    User->>+API: POST /mcp/tools/call<br/>{tool: "get_violation_history",<br/>params: {days_back, group_by}}
+    User->>+MCP: JSON-RPC request<br/>{tool: "get_violation_history",<br/>params: {days_back, group_by}}
 
-    API->>+MCP: Route Request
     MCP->>+Tool: Invoke get_violation_history(params)
 
     Tool->>+HS: get_history(days_back, group_by)
 
-    HS->>HS: Calculate Start Date<br/>(today - days_back)
+    HS->>HS: Calculate start date<br/>(today - days_back)
 
     HS->>+DB: SELECT * FROM compliance_history<br/>WHERE timestamp >= start_date<br/>ORDER BY timestamp ASC
-    DB-->>-HS: Historical Snapshots
+    DB-->>-HS: Historical snapshots
 
-    alt No History Found
-        HS-->>Tool: Return Empty History
+    alt No history found
+        HS-->>Tool: Return empty history
         Note over HS,DB: No data available
     end
 
     alt group_by = "day"
-        HS->>HS: Group by Date (YYYY-MM-DD)
+        HS->>HS: Group by date (YYYY-MM-DD)
     else group_by = "week"
-        HS->>HS: Group by ISO Week Number
+        HS->>HS: Group by ISO week number
     else group_by = "month"
-        HS->>HS: Group by Year-Month
+        HS->>HS: Group by year-month
     end
 
-    loop For Each Time Period
-        HS->>HS: Aggregate Snapshots<br/>(avg compliance_score,<br/>sum violations, sum resources)
-        HS->>HS: Identify Most Common Violations
+    loop For each time period
+        HS->>HS: Aggregate snapshots<br/>(avg compliance_score,<br/>sum violations, sum resources)
+        HS->>HS: Identify most common violations
     end
 
-    HS->>HS: Calculate Trend Direction
+    HS->>HS: Calculate trend direction
 
-    alt Latest Score > First Score
+    alt Latest score > first score
         HS->>HS: Trend = IMPROVING
-    else Latest Score < First Score
+    else Latest score < first score
         HS->>HS: Trend = DECLINING
-    else Latest Score == First Score
+    else Latest score == first score
         HS->>HS: Trend = STABLE
     end
 
-    HS->>HS: Calculate Change Percentage<br/>((latest - first) / first * 100)
+    HS->>HS: Calculate change percentage<br/>((latest - first) / first * 100)
 
-    HS->>HS: Build History Response<br/>{snapshots, trend, change_percentage}
+    HS->>HS: Build history response<br/>{snapshots, trend, change_percentage}
 
     HS-->>-Tool: Return ViolationHistory
 
     Tool->>Tool: Format as JSON
-    Tool-->>-MCP: Return MCPToolResult
-    MCP-->>-API: Forward Response
-    API-->>-User: HTTP 200 OK<br/>{history: [...], trend, change_pct}
+    Tool-->>-MCP: Return tool result
+    MCP-->>-User: JSON-RPC response<br/>{history: [...], trend, change_pct}
 
-    Note over User,DB: Historical Analysis<br/>Enables Tracking Progress
+    Note over User,DB: Historical analysis<br/>enables tracking progress
 ```
 
-## 5. Error Handling and Retry Flow
+## 5. Error handling and retry flow
 
 This sequence diagram shows how the system handles AWS API errors and implements retry logic.
 
 ```mermaid
 sequenceDiagram
     actor User as Claude Desktop
-    participant API as FastAPI Server
-    participant Tool as Tool Handler
+    participant MCP as FastMCP stdio server
+    participant Tool as Tool handler
     participant CS as ComplianceService
     participant AWS as AWS Client
     participant API_AWS as AWS API
 
-    User->>+API: Request Tool Invocation
-    API->>+Tool: Invoke Tool
-    Tool->>+CS: Execute Service Method
+    User->>+MCP: JSON-RPC request
+    MCP->>+Tool: Invoke tool
+    Tool->>+CS: Execute service method
     CS->>+AWS: get_resources()
 
-    AWS->>+API_AWS: API Call (Attempt 1)
+    AWS->>+API_AWS: API call (attempt 1)
 
     alt Success
-        API_AWS-->>-AWS: 200 OK + Data
-        AWS-->>CS: Return Resources
-    else Throttling Error (429)
-        API_AWS-->>AWS: 429 ThrottlingException
-        AWS->>AWS: Wait 2s (Exponential Backoff)
-        AWS->>+API_AWS: API Call (Attempt 2)
+        API_AWS-->>-AWS: 200 OK + data
+        AWS-->>CS: Return resources
+    else Throttling error (429)
+        API_AWS-->>AWS: ThrottlingException
+        AWS->>AWS: Wait 2s (exponential backoff)
+        AWS->>+API_AWS: API call (attempt 2)
 
         alt Success
-            API_AWS-->>-AWS: 200 OK + Data
-            AWS-->>CS: Return Resources
-        else Still Throttled
-            API_AWS-->>AWS: 429 ThrottlingException
+            API_AWS-->>-AWS: 200 OK + data
+            AWS-->>CS: Return resources
+        else Still throttled
+            API_AWS-->>AWS: ThrottlingException
             AWS->>AWS: Wait 4s
-            AWS->>+API_AWS: API Call (Attempt 3)
+            AWS->>+API_AWS: API call (attempt 3)
 
             alt Success
-                API_AWS-->>-AWS: 200 OK + Data
-                AWS-->>CS: Return Resources
-            else Max Retries Exceeded
-                API_AWS-->>AWS: 429 ThrottlingException
+                API_AWS-->>-AWS: 200 OK + data
+                AWS-->>CS: Return resources
+            else Max retries exceeded
+                API_AWS-->>AWS: ThrottlingException
                 AWS-->>-CS: Raise AWSThrottlingError
-                CS-->>-Tool: Propagate Error
-                Tool-->>-API: Return Error Response
-                API-->>-User: HTTP 503 Service Unavailable<br/>{error: "AWS throttling", retry_after: 60}
+                CS-->>-Tool: Propagate error
+                Tool->>Tool: Sanitize error message<br/>(remove credentials, paths)
+                Tool-->>-MCP: Return error result
+                MCP-->>-User: JSON-RPC error response<br/>{error: "AWS rate limit exceeded"}
             end
         end
-    else Authorization Error (403)
-        API_AWS-->>-AWS: 403 AccessDenied
+    else Authorization error (403)
+        API_AWS-->>-AWS: AccessDenied
         AWS-->>-CS: Raise AWSAuthError
-        CS-->>-Tool: Propagate Error
-        Tool->>Tool: Sanitize Error Message<br/>(remove credentials, paths)
-        Tool-->>-API: Return Error Response
-        API-->>-User: HTTP 500 Internal Server Error<br/>{error: "AWS access denied"}
-    else Network Error
-        API_AWS-->>-AWS: Network Timeout
+        CS-->>-Tool: Propagate error
+        Tool->>Tool: Sanitize error message
+        Tool-->>-MCP: Return error result
+        MCP-->>-User: JSON-RPC error response<br/>{error: "AWS access denied"}
+    else Network error
+        API_AWS-->>-AWS: Network timeout
         AWS->>AWS: Wait 2s
-        AWS->>+API_AWS: API Call (Attempt 2)
+        AWS->>+API_AWS: API call (attempt 2)
 
         alt Success
-            API_AWS-->>-AWS: 200 OK + Data
-            AWS-->>CS: Return Resources
-        else Still Failing
-            API_AWS-->>-AWS: Network Timeout
+            API_AWS-->>-AWS: 200 OK + data
+            AWS-->>CS: Return resources
+        else Still failing
+            API_AWS-->>-AWS: Network timeout
             AWS-->>-CS: Raise NetworkError
-            CS-->>-Tool: Propagate Error
-            Tool-->>-API: Return Error Response
-            API-->>-User: HTTP 504 Gateway Timeout
+            CS-->>-Tool: Propagate error
+            Tool-->>-MCP: Return error result
+            MCP-->>-User: JSON-RPC error response<br/>{error: "AWS connection failed"}
         end
     end
 
-    Note over User,API_AWS: Retry Strategy:<br/>Exponential Backoff<br/>2s, 4s, 8s delays
+    Note over User,API_AWS: Retry strategy:<br/>Exponential backoff<br/>2s, 4s, 8s delays
 ```
 
-## Key Sequence Flow Insights
+## Key sequence flow insights
 
-### 1. Compliance Check Flow
-- **Duration**: 2-5 seconds (cache miss), 100-200ms (cache hit)
-- **Bottlenecks**: AWS API calls, Cost Explorer queries
+### 1. Compliance check flow
+- **Duration**: 3-10 seconds (multi-region, cache miss), 100-200ms (cache hit)
+- **Bottlenecks**: AWS API calls, Cost Explorer queries, number of regions
 - **Optimization**: Redis caching reduces AWS API calls by ~80%
 
-### 2. Tag Suggestion Flow
+### 2. Tag suggestion flow
 - **Duration**: 3-7 seconds
 - **Complexity**: Analyzes resource metadata, naming patterns, and similar resources
 - **Accuracy**: Improves as more resources become tagged
 
-### 3. Cost Attribution Flow
+### 3. Cost attribution flow
 - **Duration**: 3-10 seconds
 - **Cost**: Expensive due to Cost Explorer API calls
 - **Grouping**: Allows breakdown by resource type, region, or account
 
-### 4. History Flow
+### 4. History flow
 - **Duration**: 100-500ms
-- **Data Source**: SQLite local database
+- **Data source**: SQLite local database
 - **Analysis**: Supports day/week/month grouping for trend analysis
 
-### 5. Error Handling Flow
-- **Retry Logic**: Exponential backoff (2s, 4s, 8s)
-- **Max Retries**: 3 attempts
-- **Error Sanitization**: Removes sensitive data from user-facing errors
+### 5. Error handling flow
+- **Retry logic**: Exponential backoff (2s, 4s, 8s)
+- **Max retries**: 3 attempts
+- **Error sanitization**: Removes sensitive data from user-facing errors
 
-## Timing Summary
+## Timing summary
 
-| Workflow | Average Duration | Cache Impact |
+| Workflow | Average duration | Cache impact |
 |----------|-----------------|--------------|
-| Compliance Check | 2-5s | -90% (cached) |
-| Tag Suggestions | 3-7s | N/A |
-| Cost Attribution | 3-10s | -50% (partial cache) |
-| History Analysis | 100-500ms | N/A |
-| Policy Retrieval | 10-50ms | In-memory cache |
+| Compliance check (multi-region) | 3-10s | -90% (cached) |
+| Compliance check (single region) | 2-5s | -90% (cached) |
+| Tag suggestions | 3-7s | N/A |
+| Cost attribution | 3-10s | -50% (partial cache) |
+| History analysis | 100-500ms | N/A |
+| Policy retrieval | 10-50ms | In-memory cache |
 
-## Parallelization Opportunities
+## Parallelization opportunities
 
 Several operations can be parallelized:
-1. **Resource scanning across regions** - Multiple AWS API calls in parallel
-2. **Cost data retrieval** - Batch requests to Cost Explorer
-3. **Similar resource analysis** - Multiple EC2 DescribeInstances calls
-4. **Multi-tool invocations** - User can call multiple tools simultaneously
+1. **Multi-region scanning** — Compliance checks run in parallel across regions (default: 5 concurrent)
+2. **Resource and cost data retrieval** — Fetched in parallel during cost attribution
+3. **Similar resource analysis** — Multiple DescribeInstances calls for tag suggestions

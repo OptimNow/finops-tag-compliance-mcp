@@ -1,4 +1,0 @@
-# file: C:\Users\jlati\Documents\GitHub\finops-tag-compliance-mcp\mcp_server\tools\get_tagging_policy.py
-# hypothesis_version: 6.148.8
-
-['allowed_values', 'applies_to', 'case_sensitivity', 'description', 'last_updated', 'max_key_length', 'max_value_length', 'name', 'optional_tag_count', 'optional_tags', 'required_tag_count', 'required_tags', 'tag_naming_rules', 'validation_regex', 'version']

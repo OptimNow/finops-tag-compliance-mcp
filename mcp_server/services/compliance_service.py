@@ -1,9 +1,10 @@
-# Copyright (c) 2025 OptimNow - Jean Latiere. All Rights Reserved.
-# Licensed under the Proprietary Software License.
+# Copyright (c) 2025-2026 OptimNow. All Rights Reserved.
+# Licensed under the Apache License, Version 2.0.
 # See LICENSE file in the project root for full license information.
 
 """Compliance service with violation caching."""
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -224,23 +225,35 @@ class ComplianceService:
         )
 
         # Expand "all" to the full list of supported resource types
-        # This ensures we scan each type individually to catch resources with zero tags
         expanded_resource_types = expand_all_to_supported_types(resource_types)
         if expanded_resource_types != resource_types:
             logger.info(f"Expanded 'all' to {len(expanded_resource_types)} resource types")
 
-        # Collect all resources across resource types
+        # Fetch all resource types in parallel using direct service API fetchers.
+        # Every cost-generating type has a dedicated fetcher that returns ALL
+        # resources (including untagged), eliminating the Tagging API blind spot.
+        #
+        # asyncio.gather() runs all fetchers concurrently. Each fetcher failure
+        # is isolated — one type failing doesn't block others.
         all_resources = []
 
-        for resource_type in expanded_resource_types:
+        async def _fetch_one(resource_type: str) -> tuple[str, list[dict]]:
+            """Fetch a single resource type, returning (type, resources)."""
             try:
                 resources = await self._fetch_resources_by_type(resource_type, filters)
-                all_resources.extend(resources)
                 logger.info(f"Fetched {len(resources)} resources of type {resource_type}")
+                return resource_type, resources
             except Exception as e:
                 logger.error(f"Failed to fetch resources of type {resource_type}: {str(e)}")
-                # Continue with other resource types even if one fails
-                continue
+                return resource_type, []
+
+        # Run all fetchers in parallel
+        results = await asyncio.gather(
+            *[_fetch_one(rt) for rt in expanded_resource_types]
+        )
+
+        for resource_type, resources in results:
+            all_resources.extend(resources)
 
         logger.info(f"Total resources fetched before filtering: {len(all_resources)}")
 

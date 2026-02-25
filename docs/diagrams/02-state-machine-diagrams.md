@@ -1,92 +1,84 @@
-# State Machine Diagrams
+# State machine diagrams
 
-## 1. Tool Invocation Lifecycle State Machine
+## 1. Tool invocation lifecycle state machine
 
-This diagram shows the complete lifecycle of an MCP tool invocation, from request to response, including all validation, security, and error handling states.
+This diagram shows the complete lifecycle of an MCP tool invocation via stdio, from request to response, including validation and error handling states.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> RequestReceived: HTTP POST /mcp/tools/call
+    [*] --> RequestReceived: stdio JSON-RPC message
 
-    RequestReceived --> InputSanitization: Parse JSON
+    RequestReceived --> InputValidation: Parse JSON-RPC
     RequestReceived --> RequestError: Invalid JSON
 
-    InputSanitization --> SecurityValidation: Sanitized
-    InputSanitization --> RequestError: Malicious Input Detected
+    InputValidation --> BudgetCheck: Input validated
+    InputValidation --> ValidationError: Malicious input detected
 
-    SecurityValidation --> CorrelationTracking: Security OK
-    SecurityValidation --> SecurityBlocked: Security Threat Detected
+    BudgetCheck --> LoopDetection: Budget available
+    BudgetCheck --> BudgetExhausted: Budget exceeded
 
-    CorrelationTracking --> BudgetCheck: Correlation ID Assigned
+    LoopDetection --> ToolLookup: No loop detected
+    LoopDetection --> LoopDetected: Loop detected
 
-    BudgetCheck --> LoopDetection: Budget Available
-    BudgetCheck --> BudgetExhausted: Budget Exceeded
+    ToolLookup --> SchemaValidation: Tool found
+    ToolLookup --> UnknownTool: Tool not found
 
-    LoopDetection --> ToolLookup: No Loop Detected
-    LoopDetection --> LoopDetected: Loop Detected
+    SchemaValidation --> ToolExecution: Schema valid
+    SchemaValidation --> ValidationError: Schema invalid
 
-    ToolLookup --> SchemaValidation: Tool Found
-    ToolLookup --> UnknownTool: Tool Not Found
+    ToolExecution --> ServiceCall: Tool handler invoked
 
-    SchemaValidation --> ToolExecution: Schema Valid
-    SchemaValidation --> ValidationError: Schema Invalid
+    ServiceCall --> CacheCheck: Check cache
+    ServiceCall --> DirectExecution: No cache available
 
-    ToolExecution --> ServiceCall: Tool Handler Invoked
+    CacheCheck --> CacheHit: Data in cache
+    CacheCheck --> CacheMiss: No cache entry
 
-    ServiceCall --> CacheCheck: Check Cache
-    ServiceCall --> DirectExecution: No Cache
-
-    CacheCheck --> CacheHit: Data in Cache
-    CacheCheck --> CacheMiss: No Cache Entry
-
-    CacheHit --> ResultFormatting: Use Cached Data
+    CacheHit --> ResultFormatting: Use cached data
     CacheMiss --> AWSAPICall: Query AWS
 
     DirectExecution --> AWSAPICall
 
-    AWSAPICall --> PolicyValidation: AWS Data Retrieved
-    AWSAPICall --> AWSError: AWS API Error
+    AWSAPICall --> PolicyValidation: AWS data retrieved
+    AWSAPICall --> AWSError: AWS API error
 
-    PolicyValidation --> ResultCalculation: Policy Applied
+    PolicyValidation --> ResultCalculation: Policy applied
 
-    ResultCalculation --> CacheStorage: Results Computed
+    ResultCalculation --> CacheStorage: Results computed
 
-    CacheStorage --> HistoryStorage: Cache Updated
-    CacheStorage --> ResultFormatting: Cache Failed (Degrade)
+    CacheStorage --> HistoryStorage: Cache updated
+    CacheStorage --> ResultFormatting: Cache unavailable (degrade)
 
-    HistoryStorage --> ResultFormatting: History Stored
-    HistoryStorage --> ResultFormatting: History Failed (Warn)
+    HistoryStorage --> ResultFormatting: History stored
+    HistoryStorage --> ResultFormatting: History failed (warn)
 
-    ResultFormatting --> AuditLogging: Format Response
+    ResultFormatting --> AuditLogging: Format response
 
-    AuditLogging --> ResponseSuccess: Audit Logged
+    AuditLogging --> ResponseSuccess: Audit logged
 
-    ResponseSuccess --> [*]: HTTP 200 OK
+    ResponseSuccess --> [*]: JSON-RPC response
 
     %% Error States
-    RequestError --> ErrorResponse: Bad Request
-    SecurityBlocked --> SecurityAudit: Log Security Event
-    SecurityAudit --> ErrorResponse
-    BudgetExhausted --> ErrorResponse: HTTP 429
-    LoopDetected --> ErrorResponse: HTTP 429
-    UnknownTool --> SecurityService: Log Unknown Tool Attempt
-    SecurityService --> ErrorResponse: HTTP 400
-    ValidationError --> ErrorResponse: HTTP 400
-    AWSError --> ErrorRetry: Retriable Error
-    ErrorRetry --> AWSAPICall: Retry with Backoff
-    ErrorRetry --> ErrorResponse: Max Retries Exceeded
-    AWSError --> ErrorResponse: Non-retriable Error
+    RequestError --> ErrorResponse: Bad request
+    BudgetExhausted --> ErrorResponse: Budget exceeded
+    LoopDetected --> ErrorResponse: Loop detected
+    UnknownTool --> ErrorResponse: Unknown tool
+    ValidationError --> ErrorResponse: Validation failed
+    AWSError --> ErrorRetry: Retriable error
+    ErrorRetry --> AWSAPICall: Retry with backoff
+    ErrorRetry --> ErrorResponse: Max retries exceeded
+    AWSError --> ErrorResponse: Non-retriable error
 
-    ErrorResponse --> ErrorAuditLogging: Log Error
-    ErrorAuditLogging --> [*]: HTTP 4xx/5xx
+    ErrorResponse --> ErrorAuditLogging: Log error
+    ErrorAuditLogging --> [*]: JSON-RPC error response
 
     %% State Notes
     note right of RequestReceived
         Entry point for all
-        tool invocations
+        tool invocations via stdio
     end note
 
-    note right of SecurityValidation
+    note right of InputValidation
         Checks for:
         - SQL injection
         - Command injection
@@ -94,8 +86,7 @@ stateDiagram-v2
     end note
 
     note right of BudgetCheck
-        Default: 100 calls/hour
-        per session
+        Default: 100 calls/session
     end note
 
     note right of LoopDetection
@@ -105,7 +96,7 @@ stateDiagram-v2
 
     note right of CacheCheck
         Redis cache with 1hr TTL
-        Reduces AWS API calls
+        Optional — degrades gracefully
     end note
 
     note right of AuditLogging
@@ -114,58 +105,59 @@ stateDiagram-v2
     end note
 ```
 
-## 2. Resource Compliance Status State Machine
+## 2. Resource compliance status state machine
 
 This diagram shows the different states a resource can be in from a compliance perspective.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Discovered: Resource Found in AWS
+    [*] --> Discovered: Resource found in AWS
 
-    Discovered --> Scanning: Compliance Check Initiated
+    Discovered --> Scanning: Compliance check initiated
 
-    Scanning --> TagsRetrieved: Get Resource Tags
+    Scanning --> TagsRetrieved: Get resource tags
 
-    TagsRetrieved --> PolicyEvaluation: Tags Retrieved
+    TagsRetrieved --> PolicyEvaluation: Tags retrieved
 
-    PolicyEvaluation --> FullyCompliant: All Required Tags Present<br/>All Values Valid
-    PolicyEvaluation --> PartiallyCompliant: Some Required Tags Present<br/>Some Missing or Invalid
-    PolicyEvaluation --> NonCompliant: Required Tags Missing<br/>or Invalid Values
-    PolicyEvaluation --> Untagged: No Tags Present
+    PolicyEvaluation --> FullyCompliant: All required tags present<br/>All values valid
+    PolicyEvaluation --> PartiallyCompliant: Some required tags present<br/>Some missing or invalid
+    PolicyEvaluation --> NonCompliant: Required tags missing<br/>or invalid values
+    PolicyEvaluation --> Untagged: No tags present
 
-    FullyCompliant --> ReportIncluded: Add to Compliance Report
-    PartiallyCompliant --> ViolationLogged: Log Violations
+    FullyCompliant --> ReportIncluded: Add to compliance report
+    PartiallyCompliant --> ViolationLogged: Log violations
     NonCompliant --> ViolationLogged
     Untagged --> ViolationLogged
 
-    ViolationLogged --> CostImpactCalculated: Calculate Cost Attribution Gap
+    ViolationLogged --> CostImpactCalculated: Calculate cost attribution gap
 
-    CostImpactCalculated --> RemediationSuggested: Generate Tag Suggestions
+    CostImpactCalculated --> RemediationSuggested: Generate tag suggestions
 
-    RemediationSuggested --> AwaitingRemediation: Waiting for Tag Updates
+    RemediationSuggested --> AwaitingRemediation: Waiting for tag updates
 
-    AwaitingRemediation --> TagsUpdated: Tags Applied to Resource
-    AwaitingRemediation --> Ignored: Marked as Exception
+    AwaitingRemediation --> TagsUpdated: Tags applied to resource
+    AwaitingRemediation --> Ignored: Marked as exception
 
-    TagsUpdated --> Scanning: Re-scan for Compliance
+    TagsUpdated --> Scanning: Re-scan for compliance
 
-    ReportIncluded --> HistoryStored: Store Snapshot
-    HistoryStored --> [*]: Compliance Check Complete
+    ReportIncluded --> HistoryStored: Store snapshot
+    HistoryStored --> [*]: Compliance check complete
 
-    Ignored --> ReportIncluded: Exclude from Violations
+    Ignored --> ReportIncluded: Exclude from violations
 
     %% Error States
-    Scanning --> ScanError: AWS API Error
-    TagsRetrieved --> RetrievalError: Failed to Get Tags
+    Scanning --> ScanError: AWS API error
+    TagsRetrieved --> RetrievalError: Failed to get tags
 
-    ScanError --> ErrorLogged: Log Error
+    ScanError --> ErrorLogged: Log error
     RetrievalError --> ErrorLogged
-    ErrorLogged --> [*]: Skip Resource
+    ErrorLogged --> [*]: Skip resource
 
     %% State Notes
     note right of Discovered
         Resources discovered via
         Resource Groups Tagging API
+        or direct service APIs
     end note
 
     note right of PolicyEvaluation
@@ -174,22 +166,22 @@ stateDiagram-v2
     end note
 
     note right of FullyCompliant
-        Compliance Score: 100%
+        Compliance score: 100%
         No violations
     end note
 
     note right of PartiallyCompliant
-        Compliance Score: 50-99%
+        Compliance score: 50-99%
         Some violations
     end note
 
     note right of NonCompliant
-        Compliance Score: 1-49%
+        Compliance score: 1-49%
         Multiple violations
     end note
 
     note right of Untagged
-        Compliance Score: 0%
+        Compliance score: 0%
         Critical violation
     end note
 
@@ -199,54 +191,54 @@ stateDiagram-v2
     end note
 ```
 
-## 3. Cache State Machine
+## 3. Cache state machine
 
-This diagram shows the lifecycle of cached data in the Redis cache.
+This diagram shows the lifecycle of cached data in the Redis cache (optional).
 
 ```mermaid
 stateDiagram-v2
-    [*] --> CacheQuery: Service Requests Data
+    [*] --> CacheQuery: Service requests data
 
-    CacheQuery --> KeyGeneration: Generate Cache Key
+    CacheQuery --> KeyGeneration: Generate cache key
 
     KeyGeneration --> CacheLookup: SHA256(params)
 
-    CacheLookup --> CacheHit: Key Found
-    CacheLookup --> CacheMiss: Key Not Found
-    CacheLookup --> CacheError: Redis Unavailable
+    CacheLookup --> CacheHit: Key found
+    CacheLookup --> CacheMiss: Key not found
+    CacheLookup --> CacheUnavailable: Redis not configured
 
-    CacheHit --> TTLCheck: Check Expiration
+    CacheHit --> TTLCheck: Check expiration
 
     TTLCheck --> ValidData: Within TTL
     TTLCheck --> ExpiredData: Expired
 
-    ValidData --> DataReturned: Return Cached Data
-    DataReturned --> [*]: Cache Hit Success
+    ValidData --> DataReturned: Return cached data
+    DataReturned --> [*]: Cache hit success
 
-    ExpiredData --> CacheInvalidation: Remove from Cache
-    CacheInvalidation --> DataFetch: Fetch Fresh Data
+    ExpiredData --> CacheInvalidation: Remove from cache
+    CacheInvalidation --> DataFetch: Fetch fresh data
 
     CacheMiss --> DataFetch
-    CacheError --> DataFetch: Degrade Gracefully
+    CacheUnavailable --> DataFetch: Proceed without cache
 
     DataFetch --> AWSQuery: Query AWS APIs
 
-    AWSQuery --> DataProcessing: Data Retrieved
-    AWSQuery --> FetchError: AWS Error
+    AWSQuery --> DataProcessing: Data retrieved
+    AWSQuery --> FetchError: AWS error
 
-    DataProcessing --> CacheWrite: Process Results
+    DataProcessing --> CacheWrite: Process results
 
-    CacheWrite --> CacheStored: Data Cached with TTL
-    CacheWrite --> WriteError: Cache Write Failed
+    CacheWrite --> CacheStored: Data cached with TTL
+    CacheWrite --> WriteError: Cache write failed
 
-    CacheStored --> DataReturned: Return Fresh Data
-    WriteError --> DataReturned: Return Data (No Cache)
+    CacheStored --> DataReturned: Return fresh data
+    WriteError --> DataReturned: Return data (no cache)
 
-    FetchError --> [*]: Return Error
+    FetchError --> [*]: Return error
 
     %% Force Refresh Path
     CacheQuery --> ForceRefresh: force_refresh=true
-    ForceRefresh --> DataFetch: Bypass Cache
+    ForceRefresh --> DataFetch: Bypass cache
 
     %% State Notes
     note right of KeyGeneration
@@ -254,17 +246,17 @@ stateDiagram-v2
         - Resource types
         - Filters
         - Severity level
+        - Scanned regions
     end note
 
     note right of TTLCheck
         Default TTL: 1 hour
-        Configurable via
-        REDIS_TTL env var
+        Configurable via settings
     end note
 
-    note right of CacheError
-        Graceful degradation
-        System continues without cache
+    note right of CacheUnavailable
+        Graceful degradation:
+        System works without Redis
     end note
 
     note right of ForceRefresh
@@ -273,58 +265,59 @@ stateDiagram-v2
     end note
 ```
 
-## 4. Budget Tracking State Machine
+## 4. Budget tracking state machine
 
 This diagram shows how the session budget is tracked and enforced.
 
 ```mermaid
 stateDiagram-v2
-    [*] --> SessionStart: New Session Initiated
+    [*] --> SessionStart: First tool call in session
 
-    SessionStart --> BudgetInitialization: Create Session Budget
+    SessionStart --> BudgetInitialization: Create session budget
 
-    BudgetInitialization --> BudgetActive: Set Counter = 0<br/>Max = 100<br/>TTL = 1 hour
+    BudgetInitialization --> BudgetActive: Set counter = 0<br/>Max = 100<br/>TTL = 1 hour
 
-    BudgetActive --> ToolInvocation: Tool Called
+    BudgetActive --> ToolInvocation: Tool called
 
-    ToolInvocation --> BudgetCheck: Check Current Count
+    ToolInvocation --> BudgetCheck: Check current count
 
-    BudgetCheck --> WithinBudget: Count < Max
-    BudgetCheck --> BudgetWarning: Count = Max * 0.8
-    BudgetCheck --> BudgetExceeded: Count >= Max
+    BudgetCheck --> WithinBudget: Count less than max
+    BudgetCheck --> BudgetWarning: Count at 80% threshold
+    BudgetCheck --> BudgetExceeded: Count at max
 
-    WithinBudget --> CounterIncrement: Proceed with Tool
-    BudgetWarning --> CounterIncrement: Proceed with Warning
+    WithinBudget --> CounterIncrement: Proceed with tool
+    BudgetWarning --> CounterIncrement: Proceed with warning
 
-    CounterIncrement --> ToolExecution: Increment Counter
+    CounterIncrement --> ToolExecution: Increment counter
 
-    ToolExecution --> BudgetUpdate: Update Redis
+    ToolExecution --> BudgetUpdate: Update counter
 
-    BudgetUpdate --> BudgetActive: Tool Complete
+    BudgetUpdate --> BudgetActive: Tool complete
 
-    BudgetExceeded --> RateLimited: Return 429 Error
+    BudgetExceeded --> RateLimited: Return error
 
-    RateLimited --> AwaitingReset: Cooldown Period
+    RateLimited --> AwaitingReset: Cooldown period
 
-    AwaitingReset --> BudgetReset: TTL Expired
+    AwaitingReset --> BudgetReset: TTL expired
 
-    BudgetReset --> BudgetActive: Reset Counter to 0
+    BudgetReset --> BudgetActive: Reset counter to 0
 
     %% Session End
-    BudgetActive --> SessionEnd: Session Expires
-    SessionEnd --> BudgetCleanup: Remove from Redis
-    BudgetCleanup --> [*]: Session Closed
+    BudgetActive --> SessionEnd: Session expires
+    SessionEnd --> BudgetCleanup: Clean up state
+    BudgetCleanup --> [*]: Session closed
 
     %% Redis Failure Path
-    BudgetCheck --> RedisError: Redis Unavailable
-    BudgetUpdate --> RedisError: Write Failed
+    BudgetCheck --> StorageError: Redis unavailable
+    BudgetUpdate --> StorageError: Write failed
 
-    RedisError --> FallbackMode: Use In-Memory Tracking
-    FallbackMode --> BudgetActive: Degraded Mode
+    StorageError --> FallbackMode: Use in-memory tracking
+    FallbackMode --> BudgetActive: Degraded mode
 
     %% State Notes
     note right of BudgetInitialization
-        Session ID used as Redis key
+        Uses Redis if available,
+        falls back to in-memory
         Defaults: 100 calls/hour
     end note
 
@@ -334,55 +327,55 @@ stateDiagram-v2
     end note
 
     note right of BudgetExceeded
-        HTTP 429 Too Many Requests
-        Includes Retry-After header
+        Returns JSON-RPC error
+        to the AI assistant
     end note
 
     note right of FallbackMode
-        Graceful degradation
+        Graceful degradation:
         Budget tracking continues
         without distributed state
     end note
 ```
 
-## State Transition Summary
+## State transition summary
 
-### Tool Invocation States
-1. **Request States**: RequestReceived, InputSanitization, SecurityValidation
-2. **Validation States**: BudgetCheck, LoopDetection, SchemaValidation
-3. **Execution States**: ToolExecution, ServiceCall, AWSAPICall
-4. **Caching States**: CacheCheck, CacheHit, CacheMiss, CacheStorage
-5. **Finalization States**: ResultFormatting, AuditLogging, ResponseSuccess
-6. **Error States**: RequestError, SecurityBlocked, ValidationError, AWSError
+### Tool invocation states
+1. **Request states**: RequestReceived, InputValidation
+2. **Guardrail states**: BudgetCheck, LoopDetection, SchemaValidation
+3. **Execution states**: ToolExecution, ServiceCall, AWSAPICall
+4. **Caching states**: CacheCheck, CacheHit, CacheMiss, CacheStorage
+5. **Finalization states**: ResultFormatting, AuditLogging, ResponseSuccess
+6. **Error states**: RequestError, ValidationError, AWSError, BudgetExhausted, LoopDetected
 
-### Compliance States
+### Compliance states
 1. **Discovery**: Discovered, Scanning
 2. **Evaluation**: PolicyEvaluation
-3. **Compliance Levels**: FullyCompliant, PartiallyCompliant, NonCompliant, Untagged
+3. **Compliance levels**: FullyCompliant, PartiallyCompliant, NonCompliant, Untagged
 4. **Remediation**: ViolationLogged, RemediationSuggested, AwaitingRemediation
 
-### Cache States
+### Cache states
 1. **Lookup**: CacheQuery, KeyGeneration, CacheLookup
 2. **Hit/Miss**: CacheHit, CacheMiss, TTLCheck
-3. **Data Operations**: DataFetch, DataProcessing, CacheWrite
-4. **Degradation**: CacheError, WriteError
+3. **Data operations**: DataFetch, DataProcessing, CacheWrite
+4. **Degradation**: CacheUnavailable, WriteError
 
-### Budget States
+### Budget states
 1. **Active**: BudgetActive, WithinBudget
 2. **Warning**: BudgetWarning
 3. **Exceeded**: BudgetExceeded, RateLimited
 4. **Recovery**: AwaitingReset, BudgetReset
 
-## State Machine Properties
+## State machine properties
 
-### Deterministic Transitions
-All state machines are deterministic - given the same input and current state, they always transition to the same next state.
+### Deterministic transitions
+All state machines are deterministic — given the same input and current state, they always transition to the same next state.
 
-### Error Recovery
+### Error recovery
 Each state machine includes error states with recovery paths, ensuring system resilience.
 
-### Observability
-All state transitions are logged to enable debugging and monitoring.
+### Graceful degradation
+When Redis is unavailable, the system continues working with in-memory tracking for budgets and without caching for compliance results.
 
 ### Idempotency
-Many operations (like compliance checks) are idempotent - repeated calls with same parameters produce same results.
+Many operations (like compliance checks) are idempotent — repeated calls with same parameters produce same results (from cache when available).

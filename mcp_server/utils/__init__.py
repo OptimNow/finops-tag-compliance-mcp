@@ -2,7 +2,6 @@
 
 from .cloudwatch_logger import CloudWatchHandler, configure_cloudwatch_logging
 from .correlation import (
-    CorrelationIDMiddleware,
     generate_correlation_id,
     get_correlation_id,
     get_correlation_id_for_logging,
@@ -31,7 +30,6 @@ __all__ = [
     "set_correlation_id",
     "get_correlation_id",
     "get_correlation_id_for_logging",
-    "CorrelationIDMiddleware",
     "InputValidator",
     "ValidationError",
     "SecurityViolationError",
