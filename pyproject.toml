@@ -63,11 +63,15 @@ Documentation = "https://github.com/OptimNow/finops-tag-compliance-mcp"
 Repository = "https://github.com/OptimNow/finops-tag-compliance-mcp.git"
 Issues = "https://github.com/OptimNow/finops-tag-compliance-mcp/issues"
 
-[tool.setuptools]
-packages = ["mcp_server"]
+[tool.setuptools.packages.find]
+include = ["mcp_server*"]
 
 [tool.setuptools.package-data]
-mcp_server = ["py.typed"]
+mcp_server = [
+    "py.typed",
+    "../config/*.json",
+    "../policies/*.json",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
