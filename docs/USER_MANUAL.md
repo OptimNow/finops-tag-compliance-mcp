@@ -484,7 +484,10 @@ Broad or vague prompts (e.g. "check compliance for all resources", "what's my to
 | `check_tag_compliance` | ~50s |
 | `get_cost_attribution_gap` | ~3–4 min |
 
+**Important**: Claude Desktop has a **hardcoded 60-second timeout** for MCP tool responses. Any scan that takes longer than 60 seconds will silently fail, and Claude may fabricate a response instead of reporting the timeout. This is a [known limitation](https://github.com/anthropics/claude-code/issues/22542) that cannot be changed through configuration.
+
 **Tips to avoid timeouts:**
+- **Follow the recommended workflow**: Ask Claude to read the tagging policy first (`get_tagging_policy`), then scan in batches of 4-6 resource types per call
 - Be specific with resource types: `"Check compliance for EC2 and S3"` instead of `"Check compliance for all resources"`
 - Filter by region when possible: `"Check EC2 compliance in us-east-1"`
 - Use `check_tag_compliance` before `get_cost_attribution_gap` — it's faster and covers more ground
@@ -554,6 +557,22 @@ Each scanning tool includes explicit instructions in its description telling the
 ### What you can do
 
 Even with these safeguards, following these practices will help you get the most accurate results:
+
+**Use the recommended workflow: policy first, then scan**
+
+The most reliable way to scan all your resources is to follow a two-step workflow:
+
+1. **First, ask Claude to read the tagging policy**: "Show me my tagging policy" or "What resource types are in my tagging policy?" — this calls `get_tagging_policy` which returns all applicable resource types.
+2. **Then, ask Claude to scan in batches**: "Now check compliance for all those resource types" — Claude will scan in batches of 4-6 types per call to avoid timeouts.
+
+This workflow prevents Claude from guessing resource types (and missing Bedrock, DynamoDB, ECS, etc.) and ensures every type in your policy gets scanned.
+
+Example prompt:
+```
+First show me my tagging policy and list all the resource types it covers.
+Then check tag compliance for ALL of those resource types, scanning them
+in batches to avoid timeouts.
+```
 
 **Be specific with your prompts**
 

@@ -102,9 +102,20 @@ async def check_tag_compliance(
     organization's tagging policy. Returns a compliance score along
     with detailed violation information.
 
-    IMPORTANT: The 'all' mode scans 42 resource types across all AWS regions,
-    which may take several minutes. For faster results, specify resource types
-    explicitly: ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"]
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    1. FIRST call get_tagging_policy to retrieve the policy and extract ALL
+       resource types from the "applies_to" fields across all required tags.
+    2. THEN call this tool with those resource types — either in one call or
+       in batches of 4-6 types to avoid timeouts.
+    Do NOT pick resource types from memory (e.g., "EC2, S3, Lambda"). The
+    policy may include Bedrock, DynamoDB, ECS, EKS, SageMaker, and others
+    that you would miss. Always read the policy first.
+
+    TIMEOUT WARNING: MCP clients (e.g., Claude Desktop) may have a 60-second
+    response timeout. Scanning many resource types across all regions can
+    take 2-5 minutes and will silently timeout on the client side. To avoid
+    this, scan in batches of 4-6 resource types per call and aggregate the
+    results yourself. Only use ["all"] if the client supports long timeouts.
 
     CRITICAL — data accuracy: Always check the "data_quality" field in the
     response. If data_quality.status is "partial", some regions failed to scan
@@ -114,8 +125,8 @@ async def check_tag_compliance(
 
     Args:
         resource_types: List of resource types to check. Examples:
-            - ["ec2:instance", "s3:bucket"] - specific types (faster)
-            - ["all"] - comprehensive scan (slower, may timeout)
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive scan (WARNING: will likely timeout on Claude Desktop)
         filters: Optional filters for region or account_id
         severity: Filter results by severity: "all", "errors_only", or "warnings_only"
         store_snapshot: If true, store result in history for trend tracking
@@ -241,13 +252,23 @@ async def find_untagged_resources(
     Returns resource details and age to help prioritize remediation.
     Cost estimates are only included when explicitly requested via include_costs=true.
 
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+    Do NOT pick types from memory; the policy may include types you'd miss.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"].
+
     CRITICAL — data accuracy: Always check the "data_quality" field in the
     response. If data_quality.status is "partial", some regions failed and the
     results are INCOMPLETE. You MUST tell the user which regions are missing.
     Never estimate or fabricate resource counts for failed regions.
 
     Args:
-        resource_types: List of resource types to search (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to search. Get these from get_tagging_policy.
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive scan (WARNING: will likely timeout on Claude Desktop)
         regions: Optional list of AWS regions to search
         include_costs: Whether to include cost estimates (default false)
         min_cost_threshold: Optional minimum monthly cost threshold in USD
@@ -387,8 +408,13 @@ async def get_cost_attribution_gap(
     Shows how much cloud spend cannot be allocated to teams/projects due to
     missing or invalid resource tags.
 
-    IMPORTANT: This is the slowest tool when used with "all" resource types
-    (3-4 minutes). Prefer specific resource types for faster results.
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+
+    TIMEOUT WARNING: This is the SLOWEST tool (3-5 minutes with "all"). MCP
+    clients like Claude Desktop timeout after 60 seconds. ALWAYS scan in small
+    batches of 3-4 cost-generating resource types per call.
 
     CRITICAL — data accuracy: If this tool returns an error or timeout, report
     the error to the user exactly as received. Never estimate, extrapolate, or
@@ -396,7 +422,9 @@ async def get_cost_attribution_gap(
     field — if status is "partial", clearly disclose which data is missing.
 
     Args:
-        resource_types: List of resource types to analyze (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to analyze. Get these from get_tagging_policy.
+            - ["ec2:instance", "rds:db", "lambda:function"] — batch (recommended)
+            - ["all"] — comprehensive (WARNING: will timeout on Claude Desktop)
         time_period: Time period with Start and End dates in YYYY-MM-DD format
         group_by: Optional grouping dimension: "resource_type", "region", or "account"
         filters: Optional filters for region or account_id
@@ -495,6 +523,14 @@ async def get_tagging_policy() -> str:
 
     Returns required tags, optional tags, validation rules,
     and which resource types each tag applies to.
+
+    IMPORTANT: This is the starting point for all compliance workflows.
+    Call this FIRST before calling check_tag_compliance, find_untagged_resources,
+    get_cost_attribution_gap, or generate_compliance_report. The response includes
+    an "all_applicable_resource_types" field — a deduplicated list of every
+    resource type referenced in the policy. Use that list (in batches of 4-6)
+    as the resource_types parameter for scanning tools. NEVER guess or pick
+    resource types from memory.
     """
     _ensure_initialized()
     from .tools import get_tagging_policy as _policy
@@ -503,7 +539,20 @@ async def get_tagging_policy() -> str:
         policy_service=_container.policy_service,
     )
 
-    return json.dumps(result.model_dump(mode="json"), default=str)
+    # Build response with helper field for LLM workflows
+    response = result.model_dump(mode="json")
+
+    # Extract all unique resource types from the policy for easy LLM consumption
+    all_types: set[str] = set()
+    for tag in response.get("required_tags", []):
+        for rt in tag.get("applies_to", []):
+            all_types.add(rt)
+    for tag in response.get("optional_tags", []):
+        for rt in tag.get("applies_to", []):
+            all_types.add(rt)
+    response["all_applicable_resource_types"] = sorted(all_types)
+
+    return json.dumps(response, default=str)
 
 
 # ---------------------------------------------------------------------------
@@ -520,12 +569,21 @@ async def generate_compliance_report(
     Includes overall compliance summary, top violations ranked by
     count and cost impact, and actionable recommendations.
 
+    REQUIRED WORKFLOW — do NOT guess resource types:
+    Call get_tagging_policy first to get ALL resource types from the policy.
+    Then pass those types here — in batches of 4-6 to avoid client timeouts.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"].
+
     CRITICAL — data accuracy: Always check the "data_quality" field. If status
     is "partial", clearly state which regions or data are missing. Never present
     partial scan results as a complete compliance report.
 
     Args:
-        resource_types: List of resource types to include (e.g. ["ec2:instance"] or ["all"])
+        resource_types: List of resource types to include. Get these from get_tagging_policy.
+            - ["ec2:instance", "s3:bucket", "lambda:function", "rds:db"] — batch (recommended)
+            - ["all"] — comprehensive (WARNING: will likely timeout on Claude Desktop)
         format: Output format: "json", "csv", or "markdown"
         include_recommendations: Whether to include actionable recommendations
     """
@@ -772,12 +830,15 @@ async def detect_tag_drift(
     Classifies drift by severity: critical (required tag removed),
     warning (value changed), or info (optional tag changed).
 
+    RECOMMENDED: Call get_tagging_policy first to know which resource types
+    are in scope, then pass them here rather than relying on defaults.
+
     CRITICAL — data accuracy: If the result contains a "data_quality" field
     with status "partial", tell the user which regions were not scanned.
     Never fabricate drift data for regions that failed.
 
     Args:
-        resource_types: Resource types to check (e.g. ["ec2:instance"]).
+        resource_types: Resource types to check. Get these from get_tagging_policy.
             Default: ["ec2:instance", "s3:bucket", "rds:db"]
         tag_keys: Specific tag keys to monitor. If None, monitors all
             required tags from the policy.
@@ -833,12 +894,18 @@ async def export_violations_csv(
     Runs a compliance scan and exports violations in CSV format for
     spreadsheet analysis, reporting, or integration with other tools.
 
+    RECOMMENDED: Call get_tagging_policy first to know which resource types
+    are in scope, then pass them here rather than guessing.
+
+    TIMEOUT WARNING: MCP clients may timeout after 60 seconds. Scan in batches
+    of 4-6 resource types per call rather than using ["all"] or None.
+
     CRITICAL — data accuracy: Check "data_quality" in the response. If status
     is "partial", note it in the export and tell the user which regions are missing.
 
     Args:
-        resource_types: Resource types to scan (e.g. ["ec2:instance"]).
-            If None, scans all resource types.
+        resource_types: Resource types to scan. Get these from get_tagging_policy.
+            If None, scans all resource types (WARNING: may timeout).
         severity: Filter by severity: "all", "errors_only", or "warnings_only"
         columns: CSV columns to include. Available: resource_id, resource_type,
             region, violation_type, tag_name, severity, current_value,

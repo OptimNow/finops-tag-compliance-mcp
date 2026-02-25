@@ -472,6 +472,9 @@ Development mistakes encountered during this project. **Claude must check this s
 
 - **Never hardcode `force_refresh=True`**: Propagate the parameter through all function calls.
 - **Include all context in cache keys**: Region, resource types, filters, severity, scanned regions — changing any must produce a different cache key.
+- **Claude Desktop has a 60-second MCP client timeout**: This is hardcoded in the MCP TypeScript SDK and cannot be changed. Our server-side timeout (300s) is irrelevant if the client gives up at 60s. Tool docstrings must instruct LLMs to scan in batches of 4-6 resource types, never use `["all"]` on Claude Desktop. (`mcp_server/stdio_server.py` docstrings)
+- **`tool_execution_timeout_seconds` is dead code**: The config field exists but is never referenced anywhere. Real timeouts are per-region in `multi_region_scanner.py` via `asyncio.wait_for()` with `ALL_MODE_DEFAULT_TIMEOUT_SECONDS = 180`.
+- **LLMs guess resource types instead of reading the policy**: When told to "check compliance", Claude picks common types (EC2, S3, Lambda) and misses Bedrock, DynamoDB, ECS, etc. Tool docstrings now instruct LLMs to call `get_tagging_policy` first. The `get_tagging_policy` response includes an `all_applicable_resource_types` helper field.
 
 ### Git & Repository Hygiene
 
