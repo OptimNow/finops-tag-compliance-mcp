@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "finops-tagging": {
+      "command": "finops-tag-compliance",
+      "env": {
+        "AWS_REGION": "${AWS_REGION}",
+        "AWS_PROFILE": "${AWS_PROFILE}",
+        "POLICY_PATH": "${POLICY_PATH}",
+        "ALLOWED_REGIONS": "${ALLOWED_REGIONS}",
+        "LOG_LEVEL": "${LOG_LEVEL}"
+      }
+    }
+  }
+}
