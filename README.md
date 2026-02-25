@@ -20,6 +20,7 @@
 - [Production Deployment](#production-deployment)
 - [Configuration](#configuration)
 - [Testing with MCP Inspector](#testing-with-mcp-inspector)
+- [Kiro Power](#kiro-power)
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Documentation](#documentation)
@@ -265,6 +266,38 @@ npx @modelcontextprotocol/inspector python -m mcp_server.stdio_server
 ```
 
 This opens a UI where you can list tools, execute them with custom arguments, and inspect results.
+
+---
+
+## Kiro Power
+
+This server is also available as a [Kiro Power](https://kiro.dev/docs/powers/) — a packaging format that lets Kiro IDE load the tools **on-demand** based on conversation context, rather than loading all 14 tool definitions upfront.
+
+### Install in Kiro
+
+**From GitHub** (recommended):
+
+In Kiro, open the Powers panel and select **Add power from GitHub**, then enter:
+
+```
+OptimNow/finops-tag-compliance-mcp
+```
+
+**From a local clone:**
+
+```
+Powers panel → Add power from Local Path → select the repo root
+```
+
+### How it works
+
+When you mention keywords like *"tag compliance"*, *"untagged resources"*, *"cost attribution"*, or *"finops"* in a Kiro conversation, the power activates automatically and loads the MCP tools and workflow guidance. When you're working on unrelated tasks, the tools stay out of the way.
+
+The power includes steering files (`steering/`) with step-by-step workflows for compliance checking, cost analysis, remediation, and policy management.
+
+### Requirements
+
+Same as the standard MCP installation — Python 3.10+, AWS credentials, and `pip install finops-tag-compliance-mcp`. See [Installation](#installation) for details.
 
 ---
 
