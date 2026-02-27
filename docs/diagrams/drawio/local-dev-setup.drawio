@@ -1,0 +1,241 @@
+<mxfile host="app.diagrams.net" modified="2026-02-25T00:00:00.000Z" agent="Kiro" version="21.0.0" type="device">
+  <diagram name="Local Development Setup" id="local-dev-setup">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Header Bar -->
+        <mxCell id="header" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0066CC;strokeColor=#0066CC;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1020" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="header-title" value="FinOps Tag Compliance MCP — Local Development Setup" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="35" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Developer Laptop Zone -->
+        <mxCell id="laptop-zone" value="" style="rounded=1;fillColor=#f0f4f8;strokeColor=#0066CC;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="40" y="100" width="620" height="660" as="geometry" />
+        </mxCell>
+        <mxCell id="laptop-label" value="Developer Laptop" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#0066CC;" vertex="1" parent="1">
+          <mxGeometry x="55" y="108" width="200" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- MCP Client Section -->
+        <mxCell id="client-section" value="" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="145" width="260" height="200" as="geometry" />
+        </mxCell>
+        <mxCell id="client-label" value="MCP Client (pick one)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="70" y="150" width="260" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- Claude Desktop -->
+        <mxCell id="claude" value="Claude Desktop" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="185" width="200" height="35" as="geometry" />
+        </mxCell>
+        <!-- Kiro -->
+        <mxCell id="kiro" value="Kiro IDE" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="230" width="200" height="35" as="geometry" />
+        </mxCell>
+        <!-- VS Code -->
+        <mxCell id="vscode" value="VS Code / Cursor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="275" width="200" height="35" as="geometry" />
+        </mxCell>
+        <!-- MCP Inspector -->
+        <mxCell id="inspector" value="MCP Inspector (testing)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#6c8ebf;fontSize=11;fontStyle=0;" vertex="1" parent="1">
+          <mxGeometry x="100" y="315" width="200" height="20" as="geometry" />
+        </mxCell>
+
+        <!-- MCP Server Section -->
+        <mxCell id="server-section" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="70" y="380" width="560" height="350" as="geometry" />
+        </mxCell>
+        <mxCell id="server-label" value="finops-tag-compliance-mcp (Python process)" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=12;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="70" y="385" width="560" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- stdio_server.py -->
+        <mxCell id="stdio" value="stdio_server.py&#xa;(FastMCP — 14 tools)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="100" y="420" width="200" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- container.py -->
+        <mxCell id="container" value="ServiceContainer&#xa;(dependency injection)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="100" y="485" width="200" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Services -->
+        <mxCell id="services" value="Services Layer&#xa;ComplianceService, CostService,&#xa;PolicyService, SuggestionService, ..." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="550" width="230" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Clients -->
+        <mxCell id="clients" value="Clients Layer&#xa;AWSClient (boto3), RedisCache, SQLite" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="100" y="625" width="230" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Config files -->
+        <mxCell id="config-section" value="" style="rounded=1;fillColor=#fff2cc;strokeColor=#d6b656;strokeWidth=1;" vertex="1" parent="1">
+          <mxGeometry x="370" y="420" width="240" height="300" as="geometry" />
+        </mxCell>
+        <mxCell id="config-label" value="Local Config Files" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=11;fontStyle=1;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="370" y="425" width="240" height="20" as="geometry" />
+        </mxCell>
+
+        <mxCell id="policy-file" value="policies/tagging_policy.json" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="455" width="210" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="resource-config" value="config/resource_types.json" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="493" width="210" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="env-file" value=".env (AWS_REGION, etc.)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="531" width="210" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="aws-creds" value="~/.aws/credentials" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;align=left;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="385" y="569" width="210" height="28" as="geometry" />
+        </mxCell>
+        <mxCell id="sqlite-audit" value="data/audit_logs.db (SQLite)" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="390" y="615" width="90" height="55" as="geometry" />
+        </mxCell>
+        <mxCell id="sqlite-history" value="data/compliance_history.db" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=10;fillColor=#FFFFFF;strokeColor=#d6b656;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="500" y="615" width="90" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- AWS Cloud Zone -->
+        <mxCell id="aws-zone" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="720" y="100" width="340" height="660" as="geometry" />
+        </mxCell>
+        <mxCell id="aws-label" value="AWS Cloud" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=top;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="735" y="108" width="120" height="25" as="geometry" />
+        </mxCell>
+
+        <!-- AWS Services -->
+        <mxCell id="ec2-icon" value="EC2" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ec2;" vertex="1" parent="1">
+          <mxGeometry x="745" y="155" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="s3-icon" value="S3" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.s3;" vertex="1" parent="1">
+          <mxGeometry x="820" y="155" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="rds-icon" value="RDS" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.rds;" vertex="1" parent="1">
+          <mxGeometry x="895" y="155" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="lambda-icon" value="Lambda" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1">
+          <mxGeometry x="970" y="155" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="dynamodb-icon" value="DynamoDB" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#C925D1;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.dynamodb;" vertex="1" parent="1">
+          <mxGeometry x="745" y="240" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="ecs-icon" value="ECS" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#ED7100;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.ecs;" vertex="1" parent="1">
+          <mxGeometry x="820" y="240" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="efs-icon" value="EFS" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#7AA116;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.elastic_file_system;" vertex="1" parent="1">
+          <mxGeometry x="895" y="240" width="50" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="more-label" value="+ 40 more&#xa;resource types" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=10;fontColor=#666666;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="960" y="250" width="80" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Resource Groups Tagging API -->
+        <mxCell id="tagging-api" value="Resource Groups&#xa;Tagging API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="745" y="350" width="140" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Cost Explorer -->
+        <mxCell id="cost-explorer" value="Cost Explorer&#xa;API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="910" y="350" width="120" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- EC2 Describe Regions -->
+        <mxCell id="ec2-api" value="EC2 API&#xa;(DescribeRegions)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#b85450;fontSize=11;" vertex="1" parent="1">
+          <mxGeometry x="745" y="420" width="140" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- IAM -->
+        <mxCell id="iam-icon" value="IAM&#xa;(read-only role)" style="sketch=0;outlineConnect=0;fontColor=#232F3E;fillColor=#DD344C;strokeColor=#ffffff;dashed=0;verticalLabelPosition=bottom;verticalAlign=top;align=center;html=1;fontSize=10;fontStyle=0;aspect=fixed;shape=mxgraph.aws4.resourceIcon;resIcon=mxgraph.aws4.iam;" vertex="1" parent="1">
+          <mxGeometry x="830" y="500" width="50" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Redis (optional) -->
+        <mxCell id="redis-optional" value="Redis (optional)&#xa;localhost:6379" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=2;dashed=1;dashPattern=8 8;" vertex="1" parent="1">
+          <mxGeometry x="745" y="600" width="140" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Arrows -->
+        <!-- Client to Server (stdio) -->
+        <mxCell id="arrow-stdio" value="stdio&#xa;(JSON-RPC)" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#0066CC;fontSize=10;fontColor=#0066CC;fontStyle=1;" edge="1" parent="1">
+          <mxGeometry x="-0.1" relative="1" as="geometry">
+            <mxPoint x="200" y="345" as="sourcePoint" />
+            <mxPoint x="200" y="420" as="targetPoint" />
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server internal arrows -->
+        <mxCell id="arrow-container" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="465" as="sourcePoint" />
+            <mxPoint x="200" y="485" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-services" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="530" as="sourcePoint" />
+            <mxPoint x="200" y="550" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="arrow-clients" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="200" y="605" as="sourcePoint" />
+            <mxPoint x="200" y="625" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server to Config -->
+        <mxCell id="arrow-config" value="reads" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#d6b656;dashed=1;dashPattern=5 5;fontSize=9;fontColor=#999999;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="510" as="sourcePoint" />
+            <mxPoint x="370" y="510" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server to AWS -->
+        <mxCell id="arrow-aws" value="boto3 API calls&#xa;(HTTPS)" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450;fontSize=10;fontColor=#b85450;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="650" as="sourcePoint" />
+            <mxPoint x="720" y="380" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="680" y="650" />
+              <mxPoint x="680" y="380" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Server to Redis -->
+        <mxCell id="arrow-redis" value="" style="endArrow=classic;startArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#9673a6;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="330" y="660" as="sourcePoint" />
+            <mxPoint x="745" y="620" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="690" y="660" />
+              <mxPoint x="690" y="620" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Note: credentials stay local -->
+        <mxCell id="security-note" value="AWS credentials stay on&#xa;your machine — never sent&#xa;to Claude or any LLM" style="shape=note;whiteSpace=wrap;html=1;backgroundOutline=1;size=15;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=2;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="745" y="680" width="180" height="60" as="geometry" />
+        </mxCell>
+
+        <!-- Footer -->
+        <mxCell id="footer" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="1020" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="footer-text" value="© OptimNow | Local Development Architecture | Credentials never leave your machine" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=9;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="1020" height="25" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

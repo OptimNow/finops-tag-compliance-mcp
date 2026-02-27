@@ -7,7 +7,7 @@ This diagram shows the high-level architecture of the FinOps Tag Compliance MCP 
 ```mermaid
 graph TB
     subgraph "Client layer"
-        Client[Claude Desktop / MCP Inspector]
+        Client[Claude Desktop / Kiro IDE /<br/>VS Code / MCP Inspector]
     end
 
     subgraph "MCP transport layer"
@@ -185,6 +185,8 @@ graph TB
 
 ### 1. Client layer
 - **Claude Desktop**: AI assistant that invokes MCP tools via stdio
+- **Kiro IDE**: AWS IDE with MCP client support
+- **VS Code / Cursor**: IDEs with MCP extensions
 - **MCP Inspector**: Browser-based tool for interactive testing
 
 ### 2. MCP transport layer
