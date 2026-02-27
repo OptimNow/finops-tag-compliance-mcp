@@ -1,0 +1,253 @@
+<mxfile host="app.diagrams.net" modified="2026-02-25T00:00:00.000Z" agent="Kiro" version="21.0.0" type="device">
+  <diagram name="MCP Tool Request Flow" id="mcp-tool-flow">
+    <mxGraphModel dx="1200" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1100" pageHeight="850" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Header -->
+        <mxCell id="header" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#0066CC;strokeColor=#0066CC;" vertex="1" parent="1">
+          <mxGeometry x="40" y="30" width="1020" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="header-title" value="MCP Tool Request Flow — check_tag_compliance Example" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;whiteSpace=wrap;rounded=0;fontSize=14;fontStyle=1;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="50" y="35" width="500" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Swimlane columns -->
+        <!-- User/Claude -->
+        <mxCell id="col1-header" value="User + Claude" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="60" y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="col1-line" value="" style="endArrow=none;html=1;rounded=0;strokeWidth=1;strokeColor=#6c8ebf;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="140" y="120" as="sourcePoint" />
+            <mxPoint x="140" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- MCP Protocol -->
+        <mxCell id="col2-header" value="MCP Protocol" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="280" y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="col2-line" value="" style="endArrow=none;html=1;rounded=0;strokeWidth=1;strokeColor=#d6b656;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="360" y="120" as="sourcePoint" />
+            <mxPoint x="360" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Services -->
+        <mxCell id="col3-header" value="Services" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="500" y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="col3-line" value="" style="endArrow=none;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="580" y="120" as="sourcePoint" />
+            <mxPoint x="580" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- AWS -->
+        <mxCell id="col4-header" value="AWS APIs" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="720" y="90" width="160" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="col4-line" value="" style="endArrow=none;html=1;rounded=0;strokeWidth=1;strokeColor=#b85450;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="800" y="120" as="sourcePoint" />
+            <mxPoint x="800" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Cache -->
+        <mxCell id="col5-header" value="Cache / DB" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=11;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="920" y="90" width="120" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="col5-line" value="" style="endArrow=none;html=1;rounded=0;strokeWidth=1;strokeColor=#9673a6;dashed=1;dashPattern=5 5;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="980" y="120" as="sourcePoint" />
+            <mxPoint x="980" y="780" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 1: User asks -->
+        <mxCell id="step1" value="&quot;Check compliance&#xa;for my EC2 instances&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="145" width="140" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Step 2: Claude selects tool -->
+        <mxCell id="step2-arrow" value="Claude selects tool" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#0066CC;fontSize=9;fontColor=#0066CC;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="210" y="167" as="sourcePoint" />
+            <mxPoint x="290" y="167" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 2: JSON-RPC call -->
+        <mxCell id="step2" value="JSON-RPC call&#xa;check_tag_compliance&#xa;{resource_types: [&quot;ec2&quot;]}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="290" y="145" width="180" height="50" as="geometry" />
+        </mxCell>
+
+        <!-- Step 3: Middleware -->
+        <mxCell id="step3-box" value="Middleware Pipeline" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="290" y="220" width="180" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="step3a" value="1. Correlation ID" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="300" y="245" width="120" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="step3b" value="2. Input validation" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="300" y="260" width="120" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="step3c" value="3. Budget check" style="text;html=1;strokeColor=none;fillColor=none;align=left;verticalAlign=middle;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="300" y="275" width="120" height="15" as="geometry" />
+        </mxCell>
+        <mxCell id="step3-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#d6b656;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="380" y="195" as="sourcePoint" />
+            <mxPoint x="380" y="220" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 4: Tool adapter -->
+        <mxCell id="step4-arrow" value="call service" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;fontSize=9;fontColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="470" y="260" as="sourcePoint" />
+            <mxPoint x="510" y="260" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 4: ComplianceService -->
+        <mxCell id="step4" value="ComplianceService&#xa;.check_compliance()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;fontStyle=1;" vertex="1" parent="1">
+          <mxGeometry x="510" y="240" width="160" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Step 5: Check cache -->
+        <mxCell id="step5-arrow" value="check cache" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#9673a6;fontSize=9;fontColor=#9673a6;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="670" y="262" as="sourcePoint" />
+            <mxPoint x="940" y="262" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step5-cache" value="Cache&#xa;MISS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;fontStyle=2;" vertex="1" parent="1">
+          <mxGeometry x="940" y="245" width="80" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Step 6: Load policy -->
+        <mxCell id="step6" value="PolicyService&#xa;.get_policy()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="320" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step6-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="285" as="sourcePoint" />
+            <mxPoint x="590" y="320" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 7: Discover regions -->
+        <mxCell id="step7" value="RegionDiscovery&#xa;.get_enabled_regions()" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="385" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step7-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="360" as="sourcePoint" />
+            <mxPoint x="590" y="385" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step7-aws-arrow" value="ec2:DescribeRegions" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#b85450;fontSize=9;fontColor=#b85450;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="670" y="405" as="sourcePoint" />
+            <mxPoint x="760" y="405" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step7-aws" value="EC2 API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="760" y="390" width="80" height="30" as="geometry" />
+        </mxCell>
+
+        <!-- Step 8: Fetch resources -->
+        <mxCell id="step8" value="AWSClient&#xa;.get_resources()&#xa;(parallel per region)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="450" width="160" height="50" as="geometry" />
+        </mxCell>
+        <mxCell id="step8-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="425" as="sourcePoint" />
+            <mxPoint x="590" y="450" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step8-aws-arrow" value="tag:GetResources" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#b85450;fontSize=9;fontColor=#b85450;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="670" y="475" as="sourcePoint" />
+            <mxPoint x="760" y="475" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step8-aws" value="Resource&#xa;Groups&#xa;Tagging API" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=9;" vertex="1" parent="1">
+          <mxGeometry x="760" y="455" width="80" height="45" as="geometry" />
+        </mxCell>
+
+        <!-- Step 9: Validate tags -->
+        <mxCell id="step9" value="Validate each resource&#xa;against policy rules" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="525" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step9-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="500" as="sourcePoint" />
+            <mxPoint x="590" y="525" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 10: Calculate score -->
+        <mxCell id="step10" value="Calculate compliance&#xa;score (0-100%)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="510" y="590" width="160" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="step10-arrow" value="" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="590" y="565" as="sourcePoint" />
+            <mxPoint x="590" y="590" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 11: Store + cache -->
+        <mxCell id="step11-cache-arrow" value="store result" style="endArrow=classic;html=1;rounded=0;strokeWidth=1;strokeColor=#9673a6;fontSize=9;fontColor=#9673a6;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="670" y="610" as="sourcePoint" />
+            <mxPoint x="940" y="610" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step11-cache" value="Cache +&#xa;SQLite" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="940" y="595" width="80" height="35" as="geometry" />
+        </mxCell>
+
+        <!-- Step 12: Return result -->
+        <mxCell id="step12-arrow" value="ComplianceResult" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#82b366;fontSize=9;fontColor=#82b366;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="510" y="660" as="sourcePoint" />
+            <mxPoint x="380" y="660" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+
+        <!-- Step 13: Format JSON-RPC response -->
+        <mxCell id="step13" value="JSON-RPC response&#xa;{score: 72, violations: [...]}" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=9;align=left;spacingLeft=5;" vertex="1" parent="1">
+          <mxGeometry x="290" y="680" width="180" height="40" as="geometry" />
+        </mxCell>
+
+        <!-- Step 14: Claude formats -->
+        <mxCell id="step14-arrow" value="natural language" style="endArrow=classic;html=1;rounded=0;strokeWidth=2;strokeColor=#0066CC;fontSize=9;fontColor=#0066CC;" edge="1" parent="1">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="290" y="700" as="sourcePoint" />
+            <mxPoint x="210" y="700" as="targetPoint" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="step14" value="&quot;Your EC2 compliance&#xa;score is 72%. Found&#xa;3 violations...&quot;" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=10;" vertex="1" parent="1">
+          <mxGeometry x="70" y="680" width="140" height="55" as="geometry" />
+        </mxCell>
+
+        <!-- Footer -->
+        <mxCell id="footer" value="" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#1a1a2e;strokeColor=#1a1a2e;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="1020" height="25" as="geometry" />
+        </mxCell>
+        <mxCell id="footer-text" value="© OptimNow | End-to-end tool request lifecycle | All AWS calls are read-only" style="text;html=1;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;fontSize=9;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="40" y="790" width="1020" height="25" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
